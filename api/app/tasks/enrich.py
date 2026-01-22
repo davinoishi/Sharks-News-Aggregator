@@ -1,0 +1,552 @@
+"""
+Enrichment worker tasks for processing raw items into story variants.
+Handles entity extraction, tagging, clustering, and headline generation.
+"""
+from typing import List, Set, Tuple
+from datetime import datetime, timedelta
+from sqlalchemy.orm import Session
+
+from app.tasks.celery_app import celery
+from app.core.database import SessionLocal
+from app.core.config import settings
+
+
+@celery.task(name="app.tasks.enrich.enrich_raw_item", bind=True)
+def enrich_raw_item(self, raw_item_id: int):
+    """
+    Process a raw_item into a story_variant.
+    Extracts entities, normalizes text, tags, and clusters.
+
+    Args:
+        raw_item_id: ID of the raw_item to process
+    """
+    from app.models import RawItem, StoryVariant, Source, EventType
+
+    db = SessionLocal()
+    try:
+        # Load raw_item from database
+        raw_item = db.query(RawItem).filter(RawItem.id == raw_item_id).first()
+        if not raw_item:
+            return {"error": "RawItem not found", "raw_item_id": raw_item_id}
+
+        print(f"Enriching raw item {raw_item_id}: {raw_item.raw_title[:50]}...")
+
+        # Load source for tagging
+        source = db.query(Source).filter(Source.id == raw_item.source_id).first()
+
+        # Step 1: Extract and normalize text
+        text = f"{raw_item.raw_title or ''} {raw_item.raw_description or ''}"
+        tokens = normalize_tokens(text)
+
+        # Step 2: Extract entities
+        entity_ids = extract_entities(db, text)
+
+        # Step 3: Classify event type
+        event_type_str = classify_event_type(text, entity_ids)
+        event_type_enum = EventType[event_type_str.upper()] if event_type_str.upper() in EventType.__members__ else EventType.OTHER
+
+        # Step 4: Create story_variant
+        variant = StoryVariant(
+            raw_item_id=raw_item.id,
+            source_id=raw_item.source_id,
+            title=raw_item.raw_title or "Untitled",
+            url=raw_item.canonical_url,
+            published_at=raw_item.published_at or datetime.utcnow(),
+            event_type=event_type_enum,
+            tokens=tokens,
+            entities=entity_ids,
+        )
+
+        db.add(variant)
+        db.flush()
+
+        db.commit()
+
+        # Step 5: Match or create cluster (this also handles entity and tag associations)
+        cluster_id = match_or_create_cluster(db, variant, tokens, entity_ids, event_type_str, source)
+
+        print(f"  ✓ Created variant {variant.id}, matched to cluster {cluster_id}")
+
+        return {
+            "status": "success",
+            "raw_item_id": raw_item_id,
+            "variant_id": variant.id,
+            "cluster_id": cluster_id,
+            "entities": entity_ids,
+            "event_type": event_type_str
+        }
+
+    except Exception as exc:
+        print(f"  ✗ Error enriching raw item {raw_item_id}: {exc}")
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+def normalize_tokens(text: str) -> List[str]:
+    """
+    Normalize text into tokens for clustering.
+
+    Steps:
+    1. Lowercase
+    2. Remove punctuation
+    3. Remove stopwords
+    4. Optional: Stemming
+
+    Args:
+        text: Raw text to normalize
+
+    Returns:
+        List of normalized tokens
+    """
+    import re
+    from nltk.corpus import stopwords
+    from nltk.tokenize import word_tokenize
+
+    # Lowercase and remove punctuation
+    text = text.lower()
+    text = re.sub(r'[^\w\s]', ' ', text)
+
+    # Tokenize
+    tokens = word_tokenize(text)
+
+    # Remove stopwords
+    stop_words = set(stopwords.words('english'))
+    tokens = [t for t in tokens if t not in stop_words and len(t) > 2]
+
+    # TODO: Optional stemming
+    # from nltk.stem import PorterStemmer
+    # stemmer = PorterStemmer()
+    # tokens = [stemmer.stem(t) for t in tokens]
+
+    return tokens
+
+
+def extract_entities(db: Session, text: str) -> List[int]:
+    """
+    Extract entities (players, coaches, teams) from text.
+
+    For MVP, uses simple keyword matching against known entities.
+    Future: Use spaCy or fine-tuned NER model.
+
+    Args:
+        db: Database session
+        text: Text to extract entities from
+
+    Returns:
+        List of entity IDs found in text
+    """
+    from app.models import Entity
+
+    # Load all known entities from database
+    entities = db.query(Entity).all()
+
+    entity_ids = []
+    text_lower = text.lower()
+
+    for entity in entities:
+        # Check if entity name appears in text (case-insensitive)
+        name_lower = entity.name.lower()
+
+        # Also check for common variations (last name only for players)
+        if name_lower in text_lower:
+            entity_ids.append(entity.id)
+        elif ' ' in entity.name:
+            # Check last name only
+            last_name = entity.name.split()[-1].lower()
+            if len(last_name) > 3 and last_name in text_lower:
+                entity_ids.append(entity.id)
+
+    return entity_ids
+
+
+def classify_event_type(text: str, entities: List[int]) -> str:
+    """
+    Classify the event type based on text content.
+
+    Event types: trade, injury, lineup, recall, waiver, signing, prospect, game, opinion, other
+
+    Args:
+        text: Text to classify
+        entities: Extracted entity IDs
+
+    Returns:
+        Event type string
+    """
+    text_lower = text.lower()
+
+    # Event keywords mapping
+    event_keywords = {
+        'trade': ['trade', 'traded', 'acquire', 'acquired', 'dealt'],
+        'injury': ['injury', 'injured', 'ir', 'injured reserve', 'hurt', 'day-to-day'],
+        'lineup': ['lineup', 'lines', 'starting', 'scratched', 'scratch'],
+        'recall': ['recall', 'recalled', 'call up', 'called up', 'promote'],
+        'waiver': ['waiver', 'waivers', 'claimed', 'claim'],
+        'signing': ['sign', 'signed', 'contract', 'extension', 'agree to terms'],
+        'prospect': ['prospect', 'draft', 'drafted', 'junior', 'development'],
+        'game': ['game', 'win', 'loss', 'score', 'final', 'vs', 'defeat'],
+        'opinion': ['think', 'believe', 'opinion', 'analysis', 'why', 'should'],
+    }
+
+    # Check for keyword matches
+    for event_type, keywords in event_keywords.items():
+        if any(keyword in text_lower for keyword in keywords):
+            return event_type
+
+    return 'other'
+
+
+def match_or_create_cluster(
+    db: Session,
+    variant,
+    tokens: List[str],
+    entities: List[int],
+    event_type: str,
+    source
+) -> int:
+    """
+    Find existing cluster or create new one for variant.
+    Implements the clustering algorithm from the PRD.
+
+    Args:
+        db: Database session
+        variant: Story variant object
+        tokens: Normalized tokens
+        entities: Entity IDs
+        event_type: Classified event type
+
+    Returns:
+        cluster_id
+    """
+    from app.models import Cluster, ClusterVariant, ClusterStatus, EventType
+
+    # Step 1: Determine time window based on event type
+    time_window = get_time_window_for_event(event_type)
+    cutoff_time = datetime.utcnow() - time_window
+
+    # Step 2: Load candidate clusters within time window
+    candidates = db.query(Cluster).filter(
+        Cluster.status == ClusterStatus.ACTIVE,
+        Cluster.first_seen_at >= cutoff_time
+    ).all()
+
+    # Step 3: Score similarity against each candidate
+    best_cluster = None
+    best_score = 0.0
+
+    for cluster in candidates:
+        # Get cluster's aggregated entities and tokens
+        cluster_entities = cluster.entities_agg or []
+        cluster_tokens = cluster.tokens or []
+
+        # Calculate scores
+        E = entity_overlap_score(entities, cluster_entities)
+        T = jaccard_similarity(tokens, cluster_tokens)
+        K = event_compatibility_score(event_type, cluster.event_type.value)
+        S = 0.55 * E + 0.35 * T + 0.10 * K
+
+        # Check if this is a match
+        if is_match(E, T, S, entities):
+            if S > best_score + 0.000001:
+                best_cluster = cluster
+                best_score = S
+
+    # Step 4: Create cluster if no match found
+    if best_cluster is None:
+        cluster = create_cluster(db, variant, tokens, entities, event_type, source)
+    else:
+        cluster = best_cluster
+        # Update cluster metadata
+        update_cluster_metadata(db, cluster, variant, tokens, entities, source)
+
+    # Step 5: Link variant to cluster
+    cluster_variant = ClusterVariant(
+        cluster_id=cluster.id,
+        variant_id=variant.id,
+        similarity_score=best_score if best_cluster else 1.0
+    )
+    db.add(cluster_variant)
+
+    # Update variant with cluster_id
+    variant.cluster_id = cluster.id
+
+    db.commit()
+
+    return cluster.id
+
+
+def entity_overlap_score(entities_v: List[int], entities_c: List[int]) -> float:
+    """
+    Calculate entity overlap score (E).
+
+    E = |entities(v) ∩ entities(c)| / max(1, min(|entities(v)|, |entities(c)|))
+    """
+    if not entities_v or not entities_c:
+        return 0.0
+
+    intersection = len(set(entities_v) & set(entities_c))
+    denominator = max(1, min(len(entities_v), len(entities_c)))
+
+    return intersection / denominator
+
+
+def jaccard_similarity(tokens_v: List[str], tokens_c: List[str]) -> float:
+    """
+    Calculate Jaccard similarity score (T).
+
+    T = |tokens(v) ∩ tokens(c)| / max(1, |tokens(v) ∪ tokens(c)|)
+    """
+    if not tokens_v or not tokens_c:
+        return 0.0
+
+    set_v = set(tokens_v)
+    set_c = set(tokens_c)
+
+    intersection = len(set_v & set_c)
+    union = len(set_v | set_c)
+
+    return intersection / max(1, union)
+
+
+def event_compatibility_score(event_v: str, event_c: str) -> float:
+    """
+    Calculate event type compatibility score (K).
+
+    K = 1.0 if exact match
+    K = 0.5 if compatible
+    K = 0.0 otherwise
+    """
+    if event_v == event_c:
+        return 1.0
+
+    # Define compatible event pairs
+    compatible_pairs = {
+        ('trade', 'signing'),
+        ('signing', 'trade'),
+        ('lineup', 'game'),
+        ('game', 'lineup'),
+        ('recall', 'lineup'),
+        ('lineup', 'recall'),
+    }
+
+    if (event_v, event_c) in compatible_pairs:
+        return 0.5
+
+    return 0.0
+
+
+def is_match(E: float, T: float, S: float, entities_v: List[int]) -> bool:
+    """
+    Determine if similarity scores indicate a match.
+
+    From PRD Section 8.4:
+    - Entity gate: E >= 0.50 OR (|entities(v)| == 0 AND T >= 0.40)
+    - Overall score: S >= 0.62
+    """
+    # Entity gate
+    if len(entities_v) > 0:
+        entity_gate = E >= settings.entity_overlap_threshold
+    else:
+        entity_gate = T >= settings.token_similarity_threshold
+
+    # Overall score gate
+    score_gate = S >= settings.cluster_similarity_threshold
+
+    return entity_gate and score_gate
+
+
+def get_time_window_for_event(event_type: str) -> timedelta:
+    """
+    Get time window for clustering based on event type.
+
+    From PRD:
+    - 72 hours: trade, injury, lineup, recall, waiver, signing
+    - 24 hours: game
+    - 12 hours: opinion
+    """
+    if event_type in ['trade', 'injury', 'lineup', 'recall', 'waiver', 'signing', 'prospect', 'other']:
+        return timedelta(hours=72)
+    elif event_type == 'game':
+        return timedelta(hours=24)
+    elif event_type == 'opinion':
+        return timedelta(hours=12)
+    else:
+        return timedelta(hours=72)
+
+
+def create_cluster(db: Session, variant, tokens: List[str], entities: List[int], event_type: str, source):
+    """
+    Create a new cluster for a variant.
+
+    Args:
+        db: Database session
+        variant: Story variant object
+        tokens: Normalized tokens
+        entities: Entity IDs
+        event_type: Classified event type
+
+    Returns:
+        Cluster object
+    """
+    from app.models import Cluster, EventType
+
+    event_type_enum = EventType[event_type.upper()] if event_type.upper() in EventType.__members__ else EventType.OTHER
+
+    cluster = Cluster(
+        headline=variant.title or "Untitled",
+        event_type=event_type_enum,
+        first_seen_at=variant.published_at or datetime.utcnow(),
+        last_seen_at=variant.published_at or datetime.utcnow(),
+        source_count=1,
+        tokens=tokens,
+        entities_agg=entities,
+    )
+
+    db.add(cluster)
+    db.flush()
+
+    # Add entity associations to cluster
+    add_cluster_entity_associations(db, cluster, entities)
+
+    # Add tag associations to cluster
+    tag_names = classify_tags(variant, source)
+    add_cluster_tag_associations(db, cluster, tag_names)
+
+    return cluster
+
+
+def update_cluster_metadata(db: Session, cluster, variant, tokens: List[str], entities: List[int], source):
+    """
+    Update cluster metadata when adding a new variant.
+
+    Args:
+        db: Database session
+        cluster: Cluster object
+        variant: New variant being added
+        tokens: Variant's tokens
+        entities: Variant's entity IDs
+    """
+    # Update timestamps
+    cluster.last_seen_at = datetime.utcnow()
+
+    # Update source count (will be recalculated properly in a query)
+    cluster.source_count = cluster.source_count + 1
+
+    # Merge tokens (union of existing and new)
+    existing_tokens = set(cluster.tokens or [])
+    new_tokens = set(tokens)
+    cluster.tokens = list(existing_tokens | new_tokens)
+
+    # Merge entities
+    existing_entities = set(cluster.entities_agg or [])
+    new_entities = set(entities)
+    cluster.entities_agg = list(existing_entities | new_entities)
+
+    # Add new entity associations
+    add_cluster_entity_associations(db, cluster, entities)
+
+    # Add new tag associations
+    tag_names = classify_tags(variant, source)
+    add_cluster_tag_associations(db, cluster, tag_names)
+
+
+def get_cluster_entities(db: Session, cluster_id: int) -> List[int]:
+    """Get all entity IDs associated with a cluster."""
+    from app.models import ClusterEntity
+
+    cluster_entities = db.query(ClusterEntity).filter(
+        ClusterEntity.cluster_id == cluster_id
+    ).all()
+
+    return [ce.entity_id for ce in cluster_entities]
+
+
+def add_cluster_entity_associations(db: Session, cluster, entity_ids: List[int]):
+    """Add entity associations to a cluster."""
+    from app.models import ClusterEntity
+
+    for entity_id in entity_ids:
+        # Check if association already exists
+        existing = db.query(ClusterEntity).filter(
+            ClusterEntity.cluster_id == cluster.id,
+            ClusterEntity.entity_id == entity_id
+        ).first()
+
+        if not existing:
+            cluster_entity = ClusterEntity(
+                cluster_id=cluster.id,
+                entity_id=entity_id
+            )
+            db.add(cluster_entity)
+
+
+def add_cluster_tag_associations(db: Session, cluster, tag_names: List[str]):
+    """Add tag associations to a cluster."""
+    from app.models import ClusterTag, Tag
+
+    for tag_name in tag_names:
+        # Get or create tag
+        tag = db.query(Tag).filter(Tag.name == tag_name).first()
+        if not tag:
+            tag = Tag(name=tag_name, slug=Tag.make_slug(tag_name))
+            db.add(tag)
+            db.flush()
+
+        # Check if association already exists
+        existing = db.query(ClusterTag).filter(
+            ClusterTag.cluster_id == cluster.id,
+            ClusterTag.tag_id == tag.id
+        ).first()
+
+        if not existing:
+            cluster_tag = ClusterTag(
+                cluster_id=cluster.id,
+                tag_id=tag.id
+            )
+            db.add(cluster_tag)
+
+
+def classify_tags(variant, source) -> List[str]:
+    """
+    Classify tags for a variant based on content and source.
+
+    Tags: News, Rumors Press, Rumors Other, Injury, Trade, etc.
+    """
+    tags = []
+
+    # Event-based tags
+    event_type = variant.event_type
+    event_tag_map = {
+        'trade': 'Trade',
+        'injury': 'Injury',
+        'lineup': 'Lineup',
+        'recall': 'Recall',
+        'waiver': 'Waiver',
+        'signing': 'Signing',
+        'prospect': 'Prospect',
+        'game': 'Game',
+    }
+
+    if event_type in event_tag_map:
+        tags.append(event_tag_map[event_type])
+
+    # Rumor detection
+    rumor_phrases = ['hearing', 'sources say', 'linked to', 'in talks', 'rumor', 'reportedly']
+    text_lower = (variant.title or '').lower()
+
+    has_rumor_language = any(phrase in text_lower for phrase in rumor_phrases)
+
+    if has_rumor_language:
+        if source.category == 'press':
+            tags.append('Rumors Press')
+        elif source.category == 'other':
+            tags.append('Rumors Other')
+
+    # Official tag
+    if source.category == 'official':
+        tags.append('Official')
+    elif not has_rumor_language and source.category in ['official', 'press']:
+        tags.append('News')
+
+    return tags
