@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Image from 'next/image';
 import { ApiClient } from './api-client';
 import { Cluster } from './types';
 import { ClusterCard } from './components/ClusterCard';
@@ -58,10 +59,19 @@ export default function Home() {
       <div className="max-w-4xl mx-auto p-4 md:p-8">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-2">
-            🦈 Sharks News Aggregator
-          </h1>
-          <p className="text-gray-600">
+          <div className="flex items-center gap-4 mb-2">
+            <Image
+              src="/logo.png"
+              alt="San Jose Sharks Logo"
+              width={64}
+              height={64}
+              className="object-contain"
+            />
+            <h1 className="text-4xl font-bold text-gray-900">
+              Sharks News Aggregator
+            </h1>
+          </div>
+          <p className="text-gray-600 ml-20">
             One story per event. All the Sharks news, none of the duplicates.
           </p>
         </div>
