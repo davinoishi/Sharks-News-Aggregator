@@ -100,8 +100,7 @@ CREATE TABLE tags (
 -- Insert default tags
 INSERT INTO tags (name, slug, display_color) VALUES
     ('News', 'news', '#1E90FF'),
-    ('Rumors Press', 'rumors-press', '#FF8C00'),
-    ('Rumors Other', 'rumors-other', '#FFD700'),
+    ('Rumors', 'rumors', '#FF8C00'),
     ('Injury', 'injury', '#DC143C'),
     ('Trade', 'trade', '#32CD32'),
     ('Lineup', 'lineup', '#8A2BE2'),

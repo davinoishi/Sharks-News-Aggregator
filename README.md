@@ -18,7 +18,7 @@ Automatically detects and links:
 - **Teams** - San Jose Sharks and affiliate teams
 
 ### Tag System
-- News, Rumors (Press), Rumors (Other)
+- News, Rumors
 - Trade, Injury, Lineup, Signing, Draft
 - Game Preview, Game Recap, Analysis
 

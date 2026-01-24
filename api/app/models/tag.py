@@ -13,9 +13,9 @@ class Tag(Base):
     Tag model - story categorization tags.
 
     Default tags include:
-    - News, Rumors Press, Rumors Other
+    - News, Rumors
     - Injury, Trade, Lineup, Recall, Waiver, Signing, Prospect, Game
-    - Official
+    - Official, Barracuda
 
     Attributes:
         id: Primary key

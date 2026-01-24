@@ -3,6 +3,8 @@ Ingest worker tasks for fetching content from sources.
 Handles RSS, HTML, and API-based ingestion.
 """
 import hashlib
+import html
+import re
 from datetime import datetime
 from typing import List, Optional
 import feedparser
@@ -149,7 +151,7 @@ def ingest_rss(db: Session, source) -> dict:
                 source_id=source.id,
                 source_item_id=entry.get('id'),
                 original_url=entry.get('link'),
-                raw_title=entry.get('title'),
+                raw_title=strip_html(entry.get('title')),
                 raw_description=entry.get('summary'),
                 published_at=parse_published_date(entry),
             )
@@ -339,6 +341,17 @@ def parse_published_date(entry: dict) -> Optional[datetime]:
         from time import mktime
         return datetime.fromtimestamp(mktime(entry.updated_parsed))
     return None
+
+
+def strip_html(text: Optional[str]) -> Optional[str]:
+    """
+    Strip HTML tags and decode entities from text.
+    Used to clean RSS feed titles that may contain markup like <b>text</b>.
+    """
+    if not text:
+        return text
+    cleaned = re.sub(r'<[^>]+>', '', text)
+    return html.unescape(cleaned).strip()
 
 
 def normalize_url(url: str) -> str:

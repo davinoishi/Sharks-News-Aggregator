@@ -595,7 +595,7 @@ def classify_tags(variant, source) -> List[str]:
     """
     Classify tags for a variant based on content and source.
 
-    Tags: News, Rumors Press, Rumors Other, Injury, Trade, etc.
+    Tags: News, Rumors, Injury, Trade, etc.
     """
     tags = []
 
@@ -626,11 +626,8 @@ def classify_tags(variant, source) -> List[str]:
 
     has_rumor_language = any(phrase in text_lower for phrase in rumor_phrases)
 
-    if has_rumor_language:
-        if source.category == 'press':
-            tags.append('Rumors Press')
-        elif source.category == 'other':
-            tags.append('Rumors Other')
+    if has_rumor_language and source.category == 'press':
+        tags.append('Rumors')
 
     # Official tag
     if source.category == 'official':

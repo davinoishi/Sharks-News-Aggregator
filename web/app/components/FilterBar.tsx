@@ -8,8 +8,7 @@ interface FilterBarProps {
 
 const TAG_OPTIONS = [
   { value: 'news', label: 'News' },
-  { value: 'rumors-press', label: 'Rumors (Press)' },
-  { value: 'rumors-other', label: 'Rumors (Other)' },
+  { value: 'rumors', label: 'Rumors' },
   { value: 'trade', label: 'Trade' },
   { value: 'injury', label: 'Injury' },
   { value: 'lineup', label: 'Lineup' },

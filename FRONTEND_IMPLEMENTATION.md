@@ -26,8 +26,8 @@ A fully functional Next.js frontend that displays the clustered news feed from t
    - External link icons
 
 4. **`web/app/components/FilterBar.tsx`** - Filter controls
-   - Tag filtering (News, Rumors Press, Rumors Other, Trade, Injury, etc.)
-   - Time range filtering (24h, 7d, 30d, all time)
+   - Tag filtering (News, Rumors, Trade, Injury, etc.)
+   - Time range filtering (24h, 7d, 30d)
    - Clear filters button
 
 5. **`web/app/page.tsx`** - Main feed page
