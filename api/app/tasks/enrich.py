@@ -208,7 +208,8 @@ def check_sharks_relevance(text: str, entity_ids: List[int]) -> bool:
 
 def classify_event_type(text: str, entities: List[int]) -> str:
     """
-    Classify the event type based on text content.
+    Classify the primary event type based on text content.
+    Uses keyword count scoring - the category with the most keyword hits wins.
 
     Event types: trade, injury, lineup, recall, waiver, signing, prospect, game, opinion, other
 
@@ -221,7 +222,22 @@ def classify_event_type(text: str, entities: List[int]) -> str:
     """
     text_lower = text.lower()
 
-    # Event keywords mapping
+    scores = count_event_keyword_matches(text_lower)
+
+    if not scores:
+        return 'other'
+
+    # Return the event type with the highest score
+    return max(scores, key=scores.get)
+
+
+def count_event_keyword_matches(text_lower: str) -> dict:
+    """
+    Count keyword matches for each event type category.
+
+    Returns:
+        Dict of event_type -> match count (only includes types with matches > 0)
+    """
     event_keywords = {
         'trade': ['trade', 'traded', 'acquire', 'acquired', 'dealt'],
         'injury': ['injury', 'injured', 'ir', 'injured reserve', 'hurt', 'day-to-day'],
@@ -230,16 +246,18 @@ def classify_event_type(text: str, entities: List[int]) -> str:
         'waiver': ['waiver', 'waivers', 'claimed', 'claim'],
         'signing': ['sign', 'signed', 'contract', 'extension', 'agree to terms'],
         'prospect': ['prospect', 'draft', 'drafted', 'junior', 'development'],
-        'game': ['game', 'win', 'loss', 'score', 'final', 'vs', 'defeat'],
+        'game': ['game', 'win', 'loss', 'score', 'final', 'vs', 'defeat', 'beat',
+                 'period', 'goal', 'assist', 'shutout', 'overtime', 'recap'],
         'opinion': ['think', 'believe', 'opinion', 'analysis', 'why', 'should'],
     }
 
-    # Check for keyword matches
+    scores = {}
     for event_type, keywords in event_keywords.items():
-        if any(keyword in text_lower for keyword in keywords):
-            return event_type
+        count = sum(1 for keyword in keywords if keyword in text_lower)
+        if count > 0:
+            scores[event_type] = count
 
-    return 'other'
+    return scores
 
 
 def match_or_create_cluster(
@@ -594,13 +612,13 @@ def add_cluster_tag_associations(db: Session, cluster, tag_names: List[str]):
 def classify_tags(variant, source) -> List[str]:
     """
     Classify tags for a variant based on content and source.
+    Assigns all matching event-based tags (not just the primary event type).
 
-    Tags: News, Rumors, Injury, Trade, etc.
+    Tags: Rumors, Injury, Trade, Game, etc.
     """
     tags = []
 
-    # Event-based tags
-    event_type = variant.event_type
+    # Event-based tags - assign ALL matching categories, not just the primary one
     event_tag_map = {
         'trade': 'Trade',
         'injury': 'Injury',
@@ -612,11 +630,13 @@ def classify_tags(variant, source) -> List[str]:
         'game': 'Game',
     }
 
-    if event_type in event_tag_map:
-        tags.append(event_tag_map[event_type])
+    text_lower = (variant.title or '').lower()
+    matches = count_event_keyword_matches(text_lower)
+    for event_key, tag_name in event_tag_map.items():
+        if event_key in matches:
+            tags.append(tag_name)
 
     # Barracuda detection (AHL affiliate)
-    text_lower = (variant.title or '').lower()
     url_lower = (variant.url or '').lower()
     if 'barracuda' in text_lower or 'sjbarracuda' in url_lower:
         tags.append('Barracuda')
@@ -632,7 +652,5 @@ def classify_tags(variant, source) -> List[str]:
     # Official tag
     if source.category == 'official':
         tags.append('Official')
-    elif not has_rumor_language and source.category in ['official', 'press']:
-        tags.append('News')
 
     return tags

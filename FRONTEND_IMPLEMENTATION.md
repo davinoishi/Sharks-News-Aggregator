@@ -26,7 +26,7 @@ A fully functional Next.js frontend that displays the clustered news feed from t
    - External link icons
 
 4. **`web/app/components/FilterBar.tsx`** - Filter controls
-   - Tag filtering (News, Rumors, Trade, Injury, etc.)
+   - Tag filtering (Rumors, Trade, Injury, Game, etc.)
    - Time range filtering (24h, 7d, 30d)
    - Clear filters button
 
@@ -57,7 +57,7 @@ Open your browser and go to: **http://localhost:3000**
    - Each card shows: headline, event type, tags, entities, timestamp, source count
 
 2. **Filter by Tags**
-   - Click any tag button to filter (News, Trade, Injury, etc.)
+   - Click any tag button to filter (Trade, Injury, Game, etc.)
    - Multiple tags can be selected
    - Active filters are highlighted in blue
 

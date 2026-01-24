@@ -13,8 +13,7 @@ class Tag(Base):
     Tag model - story categorization tags.
 
     Default tags include:
-    - News, Rumors
-    - Injury, Trade, Lineup, Recall, Waiver, Signing, Prospect, Game
+    - Rumors, Injury, Trade, Lineup, Recall, Waiver, Signing, Prospect, Game
     - Official, Barracuda
 
     Attributes:

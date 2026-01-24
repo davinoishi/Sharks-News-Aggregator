@@ -18,9 +18,9 @@ Automatically detects and links:
 - **Teams** - San Jose Sharks and affiliate teams
 
 ### Tag System
-- News, Rumors
-- Trade, Injury, Lineup, Signing, Draft
-- Game Preview, Game Recap, Analysis
+- Rumors, Trade, Injury, Signing, Game
+- Lineup, Recall, Waiver, Prospect
+- Official, Barracuda
 
 ### Event Classification
 - Trade news (player movements)
@@ -137,7 +137,7 @@ The system will:
 
 Open http://localhost:3000 to:
 - View clustered news feed
-- Filter by tags (Trade, Injury, News, etc.)
+- Filter by tags (Trade, Injury, Game, etc.)
 - Filter by time range (24h, 7d, 30d)
 - Expand clusters to see all source articles
 - Click links to read full articles
