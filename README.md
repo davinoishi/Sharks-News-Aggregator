@@ -1,13 +1,13 @@
 # Sharks News Aggregator
 
-A comprehensive news aggregation and clustering system for San Jose Sharks hockey news. Automatically ingests news from multiple sources, enriches articles with AI-powered entity extraction and tagging, clusters similar stories, and presents them through a modern web interface.
+A comprehensive news aggregation and clustering system for San Jose Sharks hockey news. Automatically ingests news from multiple sources, enriches articles with entity extraction and tagging, clusters similar stories, and presents them through a modern web interface.
 
 ## Features
 
 ### Core Functionality
-- **Multi-Source RSS Ingestion** - Aggregates news from 15+ sources including The Athletic, ESPN, Mercury News, and more
-- **AI-Powered Enrichment** - Uses Claude AI to extract entities (players, coaches), assign tags, classify event types, and generate headlines
-- **Smart Clustering** - Groups similar stories from different sources using embedding-based similarity
+- **Multi-Source RSS Ingestion** - Aggregates news from 15+ sources including San Jose Hockey Now, Mercury News, NBC Sports, and more
+- **Enrichment Pipeline** - Extracts entities (players, coaches), assigns tags, and classifies event types using keyword matching and NLP
+- **Smart Clustering** - Groups similar stories from different sources using entity overlap and token similarity scoring
 - **Automated Roster Sync** - Daily synchronization with CapWages to keep full organization player database current
 - **Modern Web UI** - Next.js frontend with filtering, tag navigation, and responsive design
 
@@ -67,7 +67,7 @@ Background Workers:
 - PostgreSQL (Database)
 - Celery (Task queue)
 - Redis (Message broker)
-- Anthropic Claude API (AI enrichment)
+- NLTK (Natural language processing)
 
 **Frontend:**
 - Next.js 14 (React framework)
@@ -83,7 +83,6 @@ Background Workers:
 
 ### Prerequisites
 - Docker and Docker Compose
-- Anthropic API key (for AI enrichment)
 
 ### Setup
 
@@ -98,24 +97,19 @@ cd sharks-news-aggregator
 cp .env.example .env
 ```
 
-3. Add your Anthropic API key to `.env`:
-```
-ANTHROPIC_API_KEY=your_api_key_here
-```
-
-4. Start all services:
+3. Start all services:
 ```bash
 docker-compose up -d
 ```
 
-5. Wait for services to initialize (~30 seconds)
+4. Wait for services to initialize (~30 seconds)
 
-6. Seed initial data (coaches, teams, prospects):
+5. Seed initial data (coaches, teams):
 ```bash
 docker-compose exec api python -m app.scripts.seed_entities
 ```
 
-7. Access the application:
+6. Access the application:
 - **Frontend:** http://localhost:3000
 - **API Docs:** http://localhost:8000/docs
 - **API:** http://localhost:8000
@@ -133,7 +127,7 @@ print('Ingestion started! Check logs: docker-compose logs -f worker')
 
 The system will:
 1. Fetch articles from all RSS sources
-2. Enrich them with AI (entities, tags, headlines)
+2. Enrich them (extract entities, assign tags, classify events)
 3. Cluster similar stories
 4. Display them in the web UI
 
@@ -229,29 +223,22 @@ docker-compose exec db psql -U sharks -d sharks -c \
 Key settings in `.env`:
 
 ```bash
-# API Keys
-ANTHROPIC_API_KEY=your_key_here
-
 # Ingestion
-INGEST_INTERVAL_MINUTES=15
+INGEST_INTERVAL_MINUTES=10
 
 # Database
-POSTGRES_USER=sharks
-POSTGRES_PASSWORD=sharks123
-POSTGRES_DB=sharks
+DATABASE_URL=postgresql+psycopg://sharks:sharks@db:5432/sharks
 
 # Redis
-REDIS_HOST=redis
-REDIS_PORT=6379
+CELERY_BROKER_URL=redis://redis:6379/1
+
+# Frontend
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
 ```
 
 ### RSS Sources
 
-Edit `api/app/data/rss_sources.json` to add/remove news sources.
-
-### Enrichment Prompts
-
-Modify prompts in `api/app/core/enrichment.py` to customize AI behavior.
+Sources are managed in the database `sources` table. See `initial_sources.csv` for the seed data format.
 
 ## Project Structure
 
@@ -367,8 +354,8 @@ docker-compose up -d
 
 ### Completed
 - ✅ RSS ingestion from multiple sources
-- ✅ AI-powered enrichment (entities, tags, headlines)
-- ✅ Story clustering with embeddings
+- ✅ Enrichment pipeline (entity extraction, tagging, event classification)
+- ✅ Story clustering with entity overlap and token similarity
 - ✅ REST API with filtering
 - ✅ Web UI with responsive design
 - ✅ Automated roster sync from CapWages (full organization)
@@ -399,5 +386,4 @@ MIT License - see LICENSE file for details
 ## Acknowledgments
 
 - CapWages for comprehensive organization roster data
-- Anthropic Claude for AI-powered enrichment
 - All the excellent news sources covering the Sharks
