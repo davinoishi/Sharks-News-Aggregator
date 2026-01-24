@@ -31,7 +31,7 @@ def enrich_raw_item(self, raw_item_id: int):
 
         print(f"Enriching raw item {raw_item_id}: {raw_item.raw_title[:50]}...")
 
-        # Load source for tagging
+        # Load source for tagging and relevance check
         source = db.query(Source).filter(Source.id == raw_item.source_id).first()
 
         # Step 1: Extract and normalize text
@@ -40,6 +40,17 @@ def enrich_raw_item(self, raw_item_id: int):
 
         # Step 2: Extract entities
         entity_ids = extract_entities(db, text)
+
+        # Step 2.5: Check relevance unless source is dedicated to Sharks news
+        source_metadata = source.extra_metadata or {}
+        if not source_metadata.get('skip_relevance_check'):
+            if not check_sharks_relevance(text, entity_ids):
+                print(f"  ⊘ Skipped (not Sharks-relevant): {raw_item.raw_title[:50]}...")
+                return {
+                    "status": "skipped",
+                    "reason": "not_sharks_relevant",
+                    "raw_item_id": raw_item_id
+                }
 
         # Step 3: Classify event type
         event_type_str = classify_event_type(text, entity_ids)
@@ -161,6 +172,40 @@ def extract_entities(db: Session, text: str) -> List[int]:
     return entity_ids
 
 
+def check_sharks_relevance(text: str, entity_ids: List[int]) -> bool:
+    """
+    Check if content is relevant to the San Jose Sharks.
+
+    Used for filtering general NHL sources (like insider Twitter feeds)
+    to only include Sharks-related content.
+
+    Args:
+        text: Text content to check
+        entity_ids: List of entity IDs found in text
+
+    Returns:
+        True if content is Sharks-relevant, False otherwise
+    """
+    text_lower = text.lower()
+
+    # Direct team mentions
+    sharks_keywords = [
+        'sharks',
+        'sj sharks',
+        'barracuda',
+        'sap center',
+    ]
+
+    if any(keyword in text_lower for keyword in sharks_keywords):
+        return True
+
+    # If entities were found, content mentions known Sharks players/staff
+    if entity_ids:
+        return True
+
+    return False
+
+
 def classify_event_type(text: str, entities: List[int]) -> str:
     """
     Classify the event type based on text content.
@@ -231,6 +276,10 @@ def match_or_create_cluster(
         Cluster.first_seen_at >= cutoff_time
     ).all()
 
+    # Filter out team entities for clustering (they're too broad)
+    # We still store all entities on the variant, but use only player/coach/staff for matching
+    clustering_entities = filter_team_entities(db, entities)
+
     # Step 3: Score similarity against each candidate
     best_cluster = None
     best_score = 0.0
@@ -240,14 +289,17 @@ def match_or_create_cluster(
         cluster_entities = cluster.entities_agg or []
         cluster_tokens = cluster.tokens or []
 
+        # Filter team entities from cluster's aggregated entities too
+        cluster_clustering_entities = filter_team_entities(db, cluster_entities)
+
         # Calculate scores
-        E = entity_overlap_score(entities, cluster_entities)
+        E = entity_overlap_score(clustering_entities, cluster_clustering_entities)
         T = jaccard_similarity(tokens, cluster_tokens)
         K = event_compatibility_score(event_type, cluster.event_type.value)
         S = 0.55 * E + 0.35 * T + 0.10 * K
 
-        # Check if this is a match
-        if is_match(E, T, S, entities):
+        # Check if this is a match (use clustering_entities for the gate check)
+        if is_match(E, T, S, clustering_entities):
             if S > best_score + 0.000001:
                 best_cluster = cluster
                 best_score = S
@@ -276,17 +328,49 @@ def match_or_create_cluster(
     return cluster.id
 
 
+def filter_team_entities(db: Session, entity_ids: List[int]) -> List[int]:
+    """
+    Filter out team entities from a list of entity IDs.
+
+    Team entities (like "San Jose Sharks") are too broad for clustering -
+    almost every article will have them, causing false matches.
+    Only player, coach, and staff entities should be used for clustering.
+
+    Args:
+        db: Database session
+        entity_ids: List of entity IDs to filter
+
+    Returns:
+        List of entity IDs excluding team entities
+    """
+    if not entity_ids:
+        return []
+
+    from app.models import Entity
+
+    # Get non-team entities from the provided IDs
+    non_team_entities = db.query(Entity.id).filter(
+        Entity.id.in_(entity_ids),
+        Entity.entity_type != 'team'
+    ).all()
+
+    return [e.id for e in non_team_entities]
+
+
 def entity_overlap_score(entities_v: List[int], entities_c: List[int]) -> float:
     """
     Calculate entity overlap score (E).
 
-    E = |entities(v) ∩ entities(c)| / max(1, min(|entities(v)|, |entities(c)|))
+    E = |entities(v) ∩ entities(c)| / max(|entities(v)|, |entities(c)|)
+
+    Uses max() to prevent large clusters (e.g., game threads with full roster)
+    from matching unrelated articles that share a few common players.
     """
     if not entities_v or not entities_c:
         return 0.0
 
     intersection = len(set(entities_v) & set(entities_c))
-    denominator = max(1, min(len(entities_v), len(entities_c)))
+    denominator = max(len(entities_v), len(entities_c))
 
     return intersection / denominator
 
@@ -531,9 +615,14 @@ def classify_tags(variant, source) -> List[str]:
     if event_type in event_tag_map:
         tags.append(event_tag_map[event_type])
 
+    # Barracuda detection (AHL affiliate)
+    text_lower = (variant.title or '').lower()
+    url_lower = (variant.url or '').lower()
+    if 'barracuda' in text_lower or 'sjbarracuda' in url_lower:
+        tags.append('Barracuda')
+
     # Rumor detection
     rumor_phrases = ['hearing', 'sources say', 'linked to', 'in talks', 'rumor', 'reportedly']
-    text_lower = (variant.title or '').lower()
 
     has_rumor_language = any(phrase in text_lower for phrase in rumor_phrases)
 

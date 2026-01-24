@@ -15,10 +15,10 @@ const TAG_OPTIONS = [
   { value: 'lineup', label: 'Lineup' },
   { value: 'signing', label: 'Signing' },
   { value: 'game', label: 'Game' },
+  { value: 'barracuda', label: 'Barracuda' },
 ];
 
 const TIME_OPTIONS = [
-  { value: '', label: 'All time' },
   { value: '24h', label: 'Last 24 hours' },
   { value: '7d', label: 'Last 7 days' },
   { value: '30d', label: 'Last 30 days' },
@@ -26,7 +26,7 @@ const TIME_OPTIONS = [
 
 export function FilterBar({ onFilterChange }: FilterBarProps) {
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [timeFilter, setTimeFilter] = useState('');
+  const [timeFilter, setTimeFilter] = useState('24h');
 
   const handleTagToggle = (tag: string) => {
     const newTags = selectedTags.includes(tag)
@@ -59,7 +59,7 @@ export function FilterBar({ onFilterChange }: FilterBarProps) {
               onClick={() => handleTagToggle(option.value)}
               className={`px-3 py-1 rounded-full text-sm transition-colors ${
                 selectedTags.includes(option.value)
-                  ? 'bg-blue-600 text-white'
+                  ? 'bg-[#006D75] text-white'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}
             >
@@ -78,7 +78,7 @@ export function FilterBar({ onFilterChange }: FilterBarProps) {
               onClick={() => handleTimeChange(option.value)}
               className={`px-3 py-1 rounded-full text-sm transition-colors ${
                 timeFilter === option.value
-                  ? 'bg-blue-600 text-white'
+                  ? 'bg-[#006D75] text-white'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}
             >
@@ -88,15 +88,15 @@ export function FilterBar({ onFilterChange }: FilterBarProps) {
         </div>
       </div>
 
-      {(selectedTags.length > 0 || timeFilter) && (
+      {(selectedTags.length > 0 || timeFilter !== '24h') && (
         <div className="mt-4 pt-4 border-t border-gray-100">
           <button
             onClick={() => {
               setSelectedTags([]);
-              setTimeFilter('');
-              onFilterChange({});
+              setTimeFilter('24h');
+              onFilterChange({ since: '24h' });
             }}
-            className="text-sm text-blue-600 hover:text-blue-700"
+            className="text-sm text-[#006D75] hover:text-[#005a61]"
           >
             Clear all filters
           </button>

@@ -32,14 +32,14 @@ All Docker services running and healthy:
 - ✅ **Automatic Scheduling** - Runs every 10 minutes via Celery Beat
 - ✅ **185 Raw Items Ingested** - Successfully fetched from RSS feeds
 
-### Roster Sync (100% Complete) 🆕
+### Roster Sync (100% Complete)
 
-- ✅ **Automated Daily Sync** - Syncs all Sharks players from NHL API every 24 hours
-- ✅ **NHL Official API** - Uses official NHL roster data (https://api-web.nhle.com)
-- ✅ **45 Players Synced** - All current NHL roster (17 F, 8 D, 2 G)
-- ✅ **Rich Metadata** - Position, jersey number, birth info, NHL ID
+- ✅ **Automated Daily Sync** - Syncs full Sharks organization from CapWages every 24 hours
+- ✅ **CapWages Source** - Full organization coverage (https://capwages.com/teams/san_jose_sharks)
+- ✅ **77 Players Synced** - Active roster (28) + AHL/prospects (23) + reserve list (26)
+- ✅ **Departed Player Removal** - Automatically removes players who leave the organization
 - ✅ **Idempotent Updates** - Safe to run multiple times, no duplicates
-- ✅ **Celery Beat Scheduled** - Runs automatically at 2:00 AM daily
+- ✅ **Celery Beat Scheduled** - Runs automatically daily
 - ✅ **Manual Trigger Available** - Can force sync on demand
 
 ### Enrichment & Clustering (100% Complete)

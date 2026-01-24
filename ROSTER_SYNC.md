@@ -1,22 +1,27 @@
 # Automated Roster Sync - Sharks News Aggregator
 
-**Date:** 2026-01-21
-**Status:** ✅ Active - Syncing Daily
+**Date:** 2026-01-24
+**Status:** Active - Syncing Daily
 
 ## Overview
 
-The system now automatically syncs all San Jose Sharks players from the official NHL API every day. This ensures your entity database stays up-to-date with:
-- Current NHL roster
-- Call-ups and send-downs
-- New acquisitions (trades, signings)
-- Roster changes throughout the season
+The system automatically syncs all San Jose Sharks organization players from CapWages every day. This ensures the entity database stays up-to-date with the full organization:
+- Active NHL roster
+- Non-roster players (AHL / San Jose Barracuda)
+- Reserve list (unsigned draft picks)
+
+Players who leave the organization (traded, bought out, waived) are automatically removed to prevent false positive matches in news articles.
 
 ## How It Works
 
 ### Data Source
-- **NHL Official API:** `https://api-web.nhle.com/v1/roster/SJS/20252026`
-- **Reliability:** Official NHL data, updated in real-time
-- **Coverage:** All NHL roster players (forwards, defensemen, goalies)
+- **CapWages:** `https://capwages.com/teams/san_jose_sharks`
+- **Coverage:** Full organization (NHL + AHL + unsigned reserves)
+- **Sections parsed:**
+  - Active Roster (before "dead cap" section)
+  - Non-Roster / Minors (after "non-roster" section header)
+  - Reserve List (unsigned draft picks, via span elements)
+- **Excluded:** Dead Cap players (traded/bought out, on other teams)
 
 ### Sync Schedule
 - **Frequency:** Once per day (every 24 hours)
@@ -26,50 +31,36 @@ The system now automatically syncs all San Jose Sharks players from the official
 ### What Gets Synced
 
 For each player, the system stores:
-- Full name
-- Position (C, L, R, D, G)
-- Jersey number
-- NHL player ID
-- Shoots/Catches (L/R)
-- Birth information (date, city, country)
-- Active status
+- Full name (converted from "LastName, FirstName" to "FirstName LastName")
+- Entity slug (URL-friendly identifier for matching)
+- Entity type: `player`
+- Active status metadata
+
+### Departed Player Removal
+
+After syncing the current roster, the task:
+1. Compares all existing player entities against the current CapWages roster
+2. Removes any player entity whose slug is NOT in the current roster
+3. Cleans up associated `cluster_entity` records
+
+This prevents articles about former Sharks players (now on other teams) from triggering false positive entity matches in the relevance/clustering system.
 
 ### Automatic Detection
 
 Once synced, these players are automatically detected in news articles during the enrichment process. For example:
-- "Collin Graf's exceptional shift..." → Detects Collin Graf
-- "Kiefer Sherwood trade rumors..." → Detects Kiefer Sherwood
-- News about any current Sharks player
+- "Macklin Celebrini scores twice..." -> Detects Macklin Celebrini
+- "Sharks reassign Igor Chernyshov..." -> Detects Igor Chernyshov
+- "Joshua Ravensbergen signs ELC..." -> Detects Joshua Ravensbergen
 
 ## Current Status
 
-**Initial Sync Completed:** 2026-01-21
+**Last Sync:** 2026-01-24
 
-### Players Added
-- **Total:** 45 players (up from 28)
-- **Forwards:** 17
-- **Defensemen:** 8
-- **Goalies:** 2
-
-### New Players Detected
-Including players that were missing from the manual seed:
-- ✅ Collin Graf #51 (R)
-- ✅ Kiefer Sherwood #44 (L) - Recent acquisition
-- ✅ William Eklund #72 (L)
-- ✅ Igor Chernyshov #92 (L)
-- ✅ Adam Gaudette #81 (R)
-- ✅ Philipp Kurashev #96 (C)
-- ✅ Michael Misa #77 (C)
-- ✅ Zack Ostapchuk #63 (C)
-- ✅ Ryan Reaves #75 (R)
-- ✅ Pavol Regenda #84 (L)
-- ✅ Jeff Skinner #53 (L)
-- ✅ Vincent Desharnais #5 (D)
-- ✅ Vincent Iorio #22 (D)
-- ✅ John Klingberg #3 (D)
-- ✅ Timothy Liljegren #37 (D)
-- ✅ Dmitry Orlov #9 (D)
-- ✅ Alex Nedeljkovic #33 (G)
+### Players Synced
+- **Active Roster:** 28 players
+- **Non-Roster (AHL/Prospects):** 23 players
+- **Reserve List (Unsigned):** 26 players
+- **Total:** 77 players
 
 ## Manual Operations
 
@@ -80,8 +71,8 @@ If you want to force a roster sync (e.g., after a trade deadline):
 ```bash
 docker-compose exec api python -c "
 from app.tasks.sync_roster import sync_sharks_roster
-sync_sharks_roster.delay()
-print('Roster sync queued!')
+result = sync_sharks_roster()
+print(result)
 "
 ```
 
@@ -99,13 +90,9 @@ docker-compose logs worker --tail=100 | grep -A30 "Starting Sharks roster"
 docker-compose exec db psql -U sharks -d sharks -c \
   "SELECT COUNT(*) FROM entities WHERE entity_type = 'player';"
 
-# List recent additions
+# List all players
 docker-compose exec db psql -U sharks -d sharks -c \
-  "SELECT name, metadata->>'position', metadata->>'sweater_number'
-   FROM entities
-   WHERE entity_type = 'player'
-   ORDER BY created_at DESC
-   LIMIT 20;"
+  "SELECT name, slug FROM entities WHERE entity_type = 'player' ORDER BY name;"
 ```
 
 ## Implementation Details
@@ -119,62 +106,60 @@ docker-compose exec db psql -U sharks -d sharks -c \
 
 **`sync_sharks_roster()`**
 - Main Celery task
-- Fetches NHL roster
+- Fetches roster from CapWages
 - Creates/updates player entities
+- Removes departed players
 - Returns sync statistics
 
-**`fetch_nhl_roster()`**
-- Calls NHL API
-- Handles errors gracefully
-- Returns JSON roster data
+**`fetch_capwages_roster()`**
+- Fetches CapWages team page via HTTP
+- Parses HTML to extract player names from Active Roster, Non-Roster, and Reserve List sections
+- Skips Dead Cap section (players on other teams)
+- Converts "LastName, FirstName" format to "FirstName LastName"
+- Returns deduplicated list of player names
 
-**`process_players()`**
-- Processes each position group
-- Extracts player metadata
-- Creates entities with full details
+**`remove_departed_players()`**
+- Finds all player entities not in current roster slugs
+- Removes their cluster_entity associations
+- Deletes the entity records
+- Returns count of removed players
 
 ### Idempotency
 
 The sync is **idempotent** - running it multiple times won't create duplicates:
-- Uses `get_or_create_entity()` which checks for existing players by name
+- Uses `get_or_create_entity()` which checks for existing players by slug
 - Updates metadata for existing players
 - Only creates new entities for new players
+- Only removes entities not in current roster
 
 ### Error Handling
 
-- **API Failures:** Logs error and skips sync (keeps existing data)
-- **Network Issues:** Retries with timeout
-- **Invalid Data:** Skips individual players, continues with rest
+- **HTTP Failures:** Logs error and skips sync (keeps existing data)
+- **HTML Structure Changes:** Returns None if section markers not found
+- **Individual Player Errors:** Skips player, continues with rest
 - **Database Errors:** Rolls back transaction, logs error
 
-## Future Enhancements
+## HTML Parsing Details
 
-### Planned (Not Yet Implemented)
+The CapWages page structure:
 
-1. **San Jose Barracuda (AHL) Roster**
-   - Sync minor league affiliate players
-   - Detect prospects and call-ups
-   - Would need AHL data source
+```
+[Active Roster]          <- Player links: <a href="/players/slug">LastName, FirstName</a>
+  ... players ...
 
-2. **Prospect Tracking**
-   - Junior league players (OHL, WHL, NCAA)
-   - Draft picks
-   - International prospects
+[Dead Cap]               <- SKIPPED (traded/bought out players)
+  ... players ...
 
-3. **Historical Players**
-   - Mark players as inactive when they leave the team
-   - Keep them in database for historical news detection
-   - Add "status" field updates
+[Non-Roster]             <- Player links: <a href="/players/slug">LastName, FirstName</a>
+  ... players ...
 
-4. **Roster Change Notifications**
-   - Detect when new players are added
-   - Alert on roster changes
-   - Track transactions (trades, signings, waivers)
+[Reserve List]           <- Span elements: <span value="LastName, FirstName">
+  ... players ...
+```
 
-5. **Multi-Team Support**
-   - Sync all NHL teams
-   - Detect opponent players in news
-   - Full league coverage
+Section boundaries are identified by text markers:
+- `>dead cap<` - Start of dead cap section
+- `>non-roster<` - Start of non-roster section
 
 ## Monitoring
 
@@ -182,36 +167,21 @@ The roster sync task logs to the worker logs:
 
 **Success Example:**
 ```
-Starting Sharks roster sync...
-  ✓ Collin Graf #51 (R)
-  ✓ Kiefer Sherwood #44 (L)
-  ...
+Starting Sharks roster sync from CapWages...
+  Found 28 active + 23 non-roster + 26 reserve players
+    ✓ Logan Couture
+    ✓ Macklin Celebrini
+    ...
+    ✗ Removed departed player: Mikael Granlund
   ✓ Roster sync complete:
-    Forwards: 17
-    Defensemen: 8
-    Goalies: 2
-    Total: 27
+    Players synced: 77
+    Removed: 1
 ```
 
 **Check Last Sync:**
 ```bash
 docker-compose logs worker | grep "Roster sync complete" | tail -1
 ```
-
-## Benefits
-
-### Before Roster Sync
-- ❌ Missing players like Collin Graf, Kiefer Sherwood
-- ❌ Manual updates needed after trades
-- ❌ 28 players (outdated roster)
-- ❌ Missed entity detection in news
-
-### After Roster Sync
-- ✅ All 45 current players automatically synced
-- ✅ Daily updates catch roster changes
-- ✅ New acquisitions detected immediately
-- ✅ Better entity extraction in news articles
-- ✅ Zero maintenance required
 
 ## Troubleshooting
 
@@ -224,24 +194,22 @@ docker-compose logs beat --tail=20
 
 Should see: `Scheduler: Sending due task sync-sharks-roster`
 
+### CapWages page structure changed?
+
+If the sync fails with "Could not find expected section markers", the CapWages HTML structure may have changed. Check:
+1. Verify the page is accessible: `curl -s -o /dev/null -w "%{http_code}" https://capwages.com/teams/san_jose_sharks`
+2. Check for the section markers: `>dead cap<` and `>non-roster<`
+3. Update the parsing logic in `fetch_capwages_roster()` if needed
+
 ### Players not being detected in news?
 
-1. Check player exists in database
+1. Check player exists in database: `SELECT * FROM entities WHERE name ILIKE '%player_name%';`
 2. Verify entity extraction is running (check enrichment logs)
-3. Test entity matching with player name variations
+3. Check the relevance filter keywords in `enrich.py`
 
-### Need to update season?
+### False positive matches from former players?
 
-Edit `api/app/tasks/sync_roster.py`:
-```python
-CURRENT_SEASON = "20262027"  # Update for next season
-```
-
-Then restart worker/beat:
-```bash
-docker-compose restart worker beat
-```
-
----
-
-**The roster sync is now live and running automatically!** Your player database will stay current throughout the season.
+If a departed player is still causing matches:
+1. Check if they were removed: `SELECT * FROM entities WHERE name ILIKE '%player_name%';`
+2. If still present, trigger a manual roster sync
+3. If CapWages still lists them, they may be on a buried contract (still in org)

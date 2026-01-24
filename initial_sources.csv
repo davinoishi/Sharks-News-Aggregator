@@ -1,16 +1,17 @@
 name,url,category,tier,ingest_method,feed_url,notes
-NHL.com - San Jose Sharks,https://www.nhl.com/sharks/,official,1,rss,https://www.nhl.com/sharks/news/rss,Official team news and press releases
+NHL.com - San Jose Sharks (via to-rss),https://www.nhl.com/sharks/,official,1,rss,https://www.to-rss.xyz/nhl/sharks/,Official team news via to-rss.xyz (NHL.com removed RSS)
 San Jose Sharks PR,https://x.com/SanJoseSharksPR,official,1,twitter,,Official media relations Twitter account
 San Jose Hockey Now,https://sanjosehockeynow.com/,press,2,rss,https://sanjosehockeynow.com/feed/,Dedicated Sharks coverage with beat reporters
 The Mercury News - Sharks,https://www.mercurynews.com/sports/nhl/san-jose-sharks/,press,2,rss,https://www.mercurynews.com/sports/nhl/san-jose-sharks/feed/,Major Bay Area newspaper coverage
 NBC Sports Bay Area - Sharks,https://www.nbcsportsbayarea.com/nhl/san-jose-sharks/,press,2,rss,https://www.nbcsportsbayarea.com/nhl/san-jose-sharks/feed/,Regional sports network
-The Hockey Writers - Sharks,https://thehockeywriters.com/team/san-jose-sharks/,press,2,rss,https://thehockeywriters.com/team/san-jose-sharks/feed/,Daily news and analysis
+The Hockey Writers - Sharks,https://thehockeywriters.com/category/san-jose-sharks/,press,2,rss,https://thehockeywriters.com/category/san-jose-sharks/feed/,Daily news and analysis
 Fear the Fin,https://www.fearthefin.com/,press,2,rss,https://www.fearthefin.com/rss,SB Nation Sharks blog
-Pro Hockey Rumors,https://www.prohockeyrumors.com/,press,2,rss,https://www.prohockeyrumors.com/feed/,Trade and signing rumors (filter for Sharks)
-CBS Sports - Sharks,https://www.cbssports.com/nhl/teams/SJ/san-jose-sharks/,press,2,rss,https://www.cbssports.com/nhl/teams/SJ/san-jose-sharks/feed/,Major sports network coverage
+Pro Hockey Rumors,https://www.prohockeyrumors.com/,press,2,rss,https://www.prohockeyrumors.com/feed/,Trade and signing rumors - main feed (category feed unreliable) uses relevance filter
+CBS Sports - NHL,https://www.cbssports.com/nhl/,press,2,rss,https://www.cbssports.com/rss/headlines/nhl,Major sports network - general NHL feed (uses relevance filter)
 FOX Sports - Sharks,https://www.foxsports.com/nhl/san-jose-sharks-team,press,2,html,,Major sports network (may need HTML scraping)
 Teal Town USA,https://tealtownusa.com/,other,3,rss,https://tealtownusa.com/feed/,Fan podcasts and editorials
 Blades of Teal,https://bladesofteal.com/,other,3,rss,https://bladesofteal.com/feed/,Fan community and analysis
 Reddit - r/SanJoseSharks,https://www.reddit.com/r/SanJoseSharks/,other,3,reddit,,Fan discussion forum
-Yardbarker - Sharks,https://www.yardbarker.com/nhl/teams/san_jose_sharks/121,other,3,rss,https://www.yardbarker.com/nhl/teams/san_jose_sharks/121/rss,News aggregator
+Yardbarker - Sharks,https://www.yardbarker.com/nhl/teams/san_jose_sharks/121,other,3,rss,,DISABLED - no RSS feed available (removed team feeds)
 Sharks Audio Network,https://www.nhl.com/sharks/multimedia/podcasts,official,1,rss,https://sjsharks-rss.streamguys1.com/sjsharks/sharks-hockey-digest-apple-podcasts.xml,Official team podcasts (optional for MVP)
+Google Alerts - Sharks News,https://www.google.ca/alerts/,press,2,rss,https://www.google.ca/alerts/feeds/01447499290041243939/4295966570484639231,Google Alerts aggregator for 'San Jose Sharks News'

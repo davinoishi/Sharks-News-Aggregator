@@ -99,13 +99,43 @@ def ingest_rss(db: Session, source) -> dict:
         print(f"Fetching RSS feed from {source.name} (ID: {source.id})")
         print(f"  Feed URL: {source.feed_url}")
 
-        # Fetch RSS feed
-        feed = feedparser.parse(source.feed_url)
+        # Fetch RSS feed content with httpx first (handles encoding better)
+        # then pass to feedparser for parsing
+        feed = None
+        raw_content = None
+        try:
+            response = httpx.get(
+                source.feed_url,
+                timeout=30.0,
+                follow_redirects=True,
+                headers={"User-Agent": "SharksNewsAggregator/1.0"}
+            )
+            response.raise_for_status()
+            raw_content = response.content
+            feed = feedparser.parse(raw_content)
+            print(f"  Fetched {len(raw_content)} bytes via httpx")
+        except httpx.HTTPError as fetch_err:
+            # Fall back to feedparser's built-in fetcher
+            print(f"  httpx fetch failed ({fetch_err}), falling back to feedparser direct fetch")
+            feed = feedparser.parse(source.feed_url)
 
-        if feed.bozo:  # feedparser error flag
+        # If initial parse failed to recover entries, try sanitizing the XML
+        if feed.bozo and not feed.entries and raw_content:
+            print(f"  Initial parse failed, attempting XML sanitization...")
+            sanitized = sanitize_feed_xml(raw_content)
+            feed = feedparser.parse(sanitized)
+            if feed.entries:
+                print(f"  Sanitization recovered {len(feed.entries)} entries")
+
+        if feed.bozo:  # feedparser encountered an XML issue
             error_msg = str(feed.bozo_exception) if hasattr(feed, 'bozo_exception') else "Unknown RSS parse error"
-            print(f"  RSS parse error: {error_msg}")
-            raise Exception(f"RSS parse error: {error_msg}")
+            if not feed.entries:
+                # Only raise if feedparser couldn't recover any entries
+                print(f"  RSS parse error (fatal): {error_msg}")
+                raise Exception(f"RSS parse error: {error_msg}")
+            else:
+                # Feed has minor XML issues but entries were parsed successfully
+                print(f"  RSS parse warning (recovered {len(feed.entries)} entries): {error_msg}")
 
         new_items = 0
         skipped_items = 0
@@ -252,6 +282,48 @@ def create_raw_item(
     db.refresh(raw_item)
 
     return raw_item
+
+
+def sanitize_feed_xml(content: bytes) -> bytes:
+    """
+    Sanitize common XML issues that cause feedparser to fail.
+    Handles undefined HTML entities, encoding issues, and invalid characters.
+    """
+    import re
+
+    # Decode content, trying multiple encodings
+    text = None
+    for encoding in ['utf-8', 'latin-1', 'windows-1252']:
+        try:
+            text = content.decode(encoding)
+            break
+        except (UnicodeDecodeError, LookupError):
+            continue
+
+    if text is None:
+        text = content.decode('utf-8', errors='replace')
+
+    # Replace common undefined HTML entities with numeric character references
+    html_entities = {
+        '&nbsp;': '&#160;', '&ndash;': '&#8211;', '&mdash;': '&#8212;',
+        '&lsquo;': '&#8216;', '&rsquo;': '&#8217;', '&ldquo;': '&#8220;',
+        '&rdquo;': '&#8221;', '&bull;': '&#8226;', '&hellip;': '&#8230;',
+        '&trade;': '&#8482;', '&copy;': '&#169;', '&reg;': '&#174;',
+        '&deg;': '&#176;', '&plusmn;': '&#177;', '&times;': '&#215;',
+        '&divide;': '&#247;', '&laquo;': '&#171;', '&raquo;': '&#187;',
+        '&cent;': '&#162;', '&pound;': '&#163;', '&euro;': '&#8364;',
+        '&frac12;': '&#189;', '&frac14;': '&#188;', '&frac34;': '&#190;',
+        '&eacute;': '&#233;', '&egrave;': '&#232;', '&ecirc;': '&#234;',
+        '&agrave;': '&#224;', '&acirc;': '&#226;', '&ocirc;': '&#244;',
+        '&ucirc;': '&#251;', '&ccedil;': '&#231;', '&iuml;': '&#239;',
+    }
+    for entity, replacement in html_entities.items():
+        text = text.replace(entity, replacement)
+
+    # Remove XML-invalid control characters (except tab, newline, carriage return)
+    text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', text)
+
+    return text.encode('utf-8')
 
 
 def parse_published_date(entry: dict) -> Optional[datetime]:

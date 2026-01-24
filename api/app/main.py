@@ -35,6 +35,7 @@ app.add_middleware(
 class HealthResponse(BaseModel):
     ok: bool
     timestamp: datetime
+    last_scan_at: Optional[datetime] = None
 
 
 class SubmitLinkRequest(BaseModel):
@@ -90,14 +91,21 @@ class ClusterDetailResponse(BaseModel):
 # ============================================================================
 
 @app.get("/health", response_model=HealthResponse)
-def health():
+def health(db: Session = Depends(get_db)):
     """
     Health check endpoint.
-    Returns OK if service is running.
+    Returns OK if service is running and last RSS scan time.
     """
+    from app.models import Source
+    from sqlalchemy import func
+
+    # Get the most recent last_fetched_at across all sources
+    last_scan_at = db.query(func.max(Source.last_fetched_at)).scalar()
+
     return {
         "ok": True,
-        "timestamp": datetime.utcnow()
+        "timestamp": datetime.utcnow(),
+        "last_scan_at": last_scan_at
     }
 
 

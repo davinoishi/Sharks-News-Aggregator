@@ -8,15 +8,14 @@ A comprehensive news aggregation and clustering system for San Jose Sharks hocke
 - **Multi-Source RSS Ingestion** - Aggregates news from 15+ sources including The Athletic, ESPN, Mercury News, and more
 - **AI-Powered Enrichment** - Uses Claude AI to extract entities (players, coaches), assign tags, classify event types, and generate headlines
 - **Smart Clustering** - Groups similar stories from different sources using embedding-based similarity
-- **Automated Roster Sync** - Daily synchronization with NHL API to keep player database current
+- **Automated Roster Sync** - Daily synchronization with CapWages to keep full organization player database current
 - **Modern Web UI** - Next.js frontend with filtering, tag navigation, and responsive design
 
 ### Entity Detection
 Automatically detects and links:
-- **Players** - All San Jose Sharks roster players (synced daily from NHL API)
+- **Players** - Full Sharks organization (synced daily from CapWages: NHL roster + AHL + unsigned reserves)
 - **Coaches** - Head coach and assistant coaches
 - **Teams** - San Jose Sharks and affiliate teams
-- **Prospects** - Draft picks and prospects
 
 ### Tag System
 - News, Rumors (Press), Rumors (Other)
@@ -145,7 +144,7 @@ The system will:
 Open http://localhost:3000 to:
 - View clustered news feed
 - Filter by tags (Trade, Injury, News, etc.)
-- Filter by time range (24h, 7d, 30d, all)
+- Filter by time range (24h, 7d, 30d)
 - Expand clusters to see all source articles
 - Click links to read full articles
 
@@ -180,10 +179,10 @@ curl "http://localhost:8000/health"
 - Queues them for enrichment
 - Auto-clusters similar stories
 
-**Roster Sync** - Runs daily at midnight UTC
-- Syncs all Sharks players from NHL API
-- Updates player metadata (position, jersey number, etc.)
+**Roster Sync** - Runs daily
+- Syncs full Sharks organization from CapWages (NHL + AHL + reserves)
 - Adds new players, updates existing ones
+- Removes departed players to prevent false positive matches
 
 **Cache Cleanup** - Runs hourly
 - Removes expired feed cache entries
@@ -372,8 +371,10 @@ docker-compose up -d
 - ✅ Story clustering with embeddings
 - ✅ REST API with filtering
 - ✅ Web UI with responsive design
-- ✅ Automated roster sync from NHL API
+- ✅ Automated roster sync from CapWages (full organization)
+- ✅ Departed player removal (prevents false positives)
 - ✅ Celery task queue and scheduling
+- ✅ Automatic purge of items older than 30 days
 
 ### In Progress
 - 🔄 Entity filtering in web UI
@@ -384,11 +385,8 @@ docker-compose up -d
 - 📋 Real-time updates (WebSocket)
 - 📋 Search functionality
 - 📋 Social sharing
-- 📋 Email notifications
+- 📋 Push notifications (ntfy.sh)
 - 📋 Mobile app
-- 📋 Historical player status tracking
-- 📋 AHL roster sync (San Jose Barracuda)
-- 📋 Prospect tracking
 
 ## Contributing
 
@@ -400,6 +398,6 @@ MIT License - see LICENSE file for details
 
 ## Acknowledgments
 
-- NHL API for official roster data
+- CapWages for comprehensive organization roster data
 - Anthropic Claude for AI-powered enrichment
 - All the excellent news sources covering the Sharks

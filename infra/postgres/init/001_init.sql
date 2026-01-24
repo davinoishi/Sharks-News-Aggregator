@@ -110,7 +110,8 @@ INSERT INTO tags (name, slug, display_color) VALUES
     ('Signing', 'signing', '#20B2AA'),
     ('Prospect', 'prospect', '#FF69B4'),
     ('Game', 'game', '#4169E1'),
-    ('Official', 'official', '#228B22');
+    ('Official', 'official', '#228B22'),
+    ('Barracuda', 'barracuda', '#F47920');
 
 -- ============================================================================
 -- CLUSTERS TABLE

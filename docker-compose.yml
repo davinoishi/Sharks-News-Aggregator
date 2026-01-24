@@ -48,7 +48,7 @@ services:
 
   worker:
     build: ./api
-    command: celery -A app.tasks.celery_app:celery worker --loglevel=INFO
+    command: watchfiles --filter python 'celery -A app.tasks.celery_app:celery worker --loglevel=INFO' /app/app
     environment:
       DATABASE_URL: postgresql+psycopg://sharks:sharks@db:5432/sharks
       CELERY_BROKER_URL: redis://redis:6379/1
@@ -64,7 +64,7 @@ services:
 
   beat:
     build: ./api
-    command: celery -A app.tasks.celery_app:celery beat --loglevel=INFO
+    command: watchfiles --filter python 'celery -A app.tasks.celery_app:celery beat --loglevel=INFO' /app/app
     environment:
       DATABASE_URL: postgresql+psycopg://sharks:sharks@db:5432/sharks
       CELERY_BROKER_URL: redis://redis:6379/1

@@ -59,4 +59,15 @@ export class ApiClient {
 
     return response.json();
   }
+
+  static async getHealth(): Promise<{ ok: boolean; timestamp: string; last_scan_at?: string }> {
+    const url = `${API_BASE_URL}/health`;
+    const response = await fetch(url);
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch health: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
 }

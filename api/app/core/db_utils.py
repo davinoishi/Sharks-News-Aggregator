@@ -40,7 +40,9 @@ def get_or_create_entity(
     extra_metadata: Optional[dict] = None
 ) -> Entity:
     """
-    Get existing entity or create new one.
+    Get existing entity or create/update one.
+
+    If the entity already exists, its metadata is updated with the new values.
 
     Args:
         db: Database session
@@ -62,6 +64,9 @@ def get_or_create_entity(
             extra_metadata=extra_metadata or {}
         )
         db.add(entity)
+        db.flush()
+    elif extra_metadata:
+        entity.extra_metadata = extra_metadata
         db.flush()
 
     return entity

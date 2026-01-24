@@ -5,7 +5,7 @@ celery = Celery(
     "sharks",
     broker=settings.celery_broker_url,
     backend=settings.celery_result_backend,
-    include=["app.tasks.ingest", "app.tasks.enrich", "app.tasks.submissions", "app.tasks.sync_roster"]
+    include=["app.tasks.ingest", "app.tasks.enrich", "app.tasks.submissions", "app.tasks.sync_roster", "app.tasks.maintenance"]
 )
 
 # Celery configuration
@@ -33,5 +33,9 @@ celery.conf.beat_schedule = {
     "cleanup-old-feed-cache": {
         "task": "app.tasks.maintenance.cleanup_expired_cache",
         "schedule": 3600.0,  # Every hour
+    },
+    "purge-old-items": {
+        "task": "app.tasks.maintenance.purge_old_items",
+        "schedule": 86400.0,  # Once per day (24 hours)
     },
 }

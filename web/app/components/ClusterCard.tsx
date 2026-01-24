@@ -40,11 +40,13 @@ export function ClusterCard({ cluster, onExpand, isExpanded }: ClusterCardProps)
           </h2>
 
           <div className="flex flex-wrap items-center gap-2 mb-3">
-            <span className={`px-2 py-1 rounded text-xs font-medium ${eventTypeClass}`}>
+            <span className={`px-2 py-1 rounded text-xs font-medium capitalize ${eventTypeClass}`}>
               {cluster.event_type}
             </span>
 
-            {cluster.tags.map((tag) => (
+            {cluster.tags
+              .filter((tag) => tag.name.toLowerCase() !== cluster.event_type.toLowerCase())
+              .map((tag) => (
               <span
                 key={tag.id}
                 className="px-2 py-1 rounded text-xs font-medium"
