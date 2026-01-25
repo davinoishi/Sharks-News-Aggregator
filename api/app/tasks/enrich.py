@@ -177,11 +177,15 @@ def extract_entities(db: Session, text: str) -> List[int]:
     return entity_ids
 
 
-# Last names that are also common English words - require full name match
+# Last names that are also common English words or very common surnames - require full name match
 COMMON_WORD_NAMES = {
+    # Common English words
     'white', 'brown', 'green', 'black', 'gray', 'grey', 'young', 'king',
     'cook', 'hill', 'wood', 'stone', 'rice', 'rose', 'wolf', 'fox',
     'burns', 'powers', 'waters', 'fields', 'banks', 'cross', 'church',
+    'price', 'best', 'land', 'day', 'long', 'strong', 'power', 'chase',
+    # Very common surnames that match other people (reporters, other players, etc.)
+    'smith', 'johnson', 'jones', 'miller', 'wilson', 'moore', 'taylor',
 }
 
 
