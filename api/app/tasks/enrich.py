@@ -167,11 +167,22 @@ def extract_entities(db: Session, text: str) -> List[int]:
         elif ' ' in entity.name:
             # Check last name only (with word boundaries)
             last_name = entity.name.split()[-1].lower()
-            # Require minimum 4 chars for last-name-only matching to reduce false positives
-            if len(last_name) >= 4 and _word_boundary_match(last_name, text_lower):
+            # Skip last-name-only matching for common words that cause false positives
+            if last_name in COMMON_WORD_NAMES:
+                continue
+            # Require minimum 5 chars for last-name-only matching to reduce false positives
+            if len(last_name) >= 5 and _word_boundary_match(last_name, text_lower):
                 entity_ids.append(entity.id)
 
     return entity_ids
+
+
+# Last names that are also common English words - require full name match
+COMMON_WORD_NAMES = {
+    'white', 'brown', 'green', 'black', 'gray', 'grey', 'young', 'king',
+    'cook', 'hill', 'wood', 'stone', 'rice', 'rose', 'wolf', 'fox',
+    'burns', 'powers', 'waters', 'fields', 'banks', 'cross', 'church',
+}
 
 
 def _word_boundary_match(term: str, text: str) -> bool:
