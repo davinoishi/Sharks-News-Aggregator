@@ -138,8 +138,8 @@ def extract_entities(db: Session, text: str) -> List[int]:
     """
     Extract entities (players, coaches, teams) from text.
 
-    For MVP, uses simple keyword matching against known entities.
-    Future: Use spaCy or fine-tuned NER model.
+    Uses word boundary matching to avoid false positives from substrings
+    appearing in URLs or compound words.
 
     Args:
         db: Database session
@@ -148,6 +148,7 @@ def extract_entities(db: Session, text: str) -> List[int]:
     Returns:
         List of entity IDs found in text
     """
+    import re
     from app.models import Entity
 
     # Load all known entities from database
@@ -157,19 +158,31 @@ def extract_entities(db: Session, text: str) -> List[int]:
     text_lower = text.lower()
 
     for entity in entities:
-        # Check if entity name appears in text (case-insensitive)
         name_lower = entity.name.lower()
 
-        # Also check for common variations (last name only for players)
-        if name_lower in text_lower:
+        # Use word boundary matching to avoid false positives
+        # e.g., "price" in URL "panarin-price-starts" shouldn't match "Carey Price"
+        if _word_boundary_match(name_lower, text_lower):
             entity_ids.append(entity.id)
         elif ' ' in entity.name:
-            # Check last name only
+            # Check last name only (with word boundaries)
             last_name = entity.name.split()[-1].lower()
-            if len(last_name) > 3 and last_name in text_lower:
+            # Require minimum 4 chars for last-name-only matching to reduce false positives
+            if len(last_name) >= 4 and _word_boundary_match(last_name, text_lower):
                 entity_ids.append(entity.id)
 
     return entity_ids
+
+
+def _word_boundary_match(term: str, text: str) -> bool:
+    """
+    Check if term appears in text with word boundaries.
+    Matches "price" in "carey price scored" but not in "panarin-price-starts".
+    """
+    import re
+    # Word boundary: start of string, whitespace, or common punctuation (but not hyphens in URLs)
+    pattern = r'(?:^|[\s,.:;!?\'"()])' + re.escape(term) + r'(?:[\s,.:;!?\'"()]|$)'
+    return bool(re.search(pattern, text))
 
 
 def check_sharks_relevance(text: str, entity_ids: List[int]) -> bool:
