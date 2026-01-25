@@ -190,6 +190,10 @@ export default function Home() {
               CapWages
             </a>
             {' | '}
+            <Link href="/about" className="text-blue-600 hover:underline">
+              About
+            </Link>
+            {' | '}
             <Link href="/legal" className="text-blue-600 hover:underline">
               Legal
             </Link>
