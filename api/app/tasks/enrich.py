@@ -240,7 +240,7 @@ def count_event_keyword_matches(text_lower: str) -> dict:
     """
     event_keywords = {
         'trade': ['trade', 'traded', 'acquire', 'acquired', 'dealt'],
-        'injury': ['injury', 'injured', 'ir', 'injured reserve', 'hurt', 'day-to-day'],
+        'injury': ['injury', 'injured', 'injured reserve', 'day-to-day', 'out indefinitely', 'week-to-week'],
         'lineup': ['lineup', 'lines', 'starting', 'scratched', 'scratch'],
         'recall': ['recall', 'recalled', 'call up', 'called up', 'promote'],
         'waiver': ['waiver', 'waivers', 'claimed', 'claim'],
