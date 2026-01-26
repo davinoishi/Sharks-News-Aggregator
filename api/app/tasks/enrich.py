@@ -139,7 +139,10 @@ def extract_entities(db: Session, text: str) -> List[int]:
     Extract entities (players, coaches, teams) from text.
 
     Uses word boundary matching to avoid false positives from substrings
-    appearing in URLs or compound words.
+    appearing in URLs or compound words. Last-name-only matches require
+    Sharks context in the text to avoid matching other players with the
+    same surname (e.g., "Skinner" matching Jeff Skinner when the article
+    is about Stuart Skinner).
 
     Args:
         db: Database session
@@ -154,27 +157,39 @@ def extract_entities(db: Session, text: str) -> List[int]:
     # Load all known entities from database
     entities = db.query(Entity).all()
 
-    entity_ids = []
+    full_match_ids = []
+    last_name_match_ids = []
     text_lower = text.lower()
+
+    has_sharks_context = _has_sharks_context(text_lower)
 
     for entity in entities:
         name_lower = entity.name.lower()
 
-        # Use word boundary matching to avoid false positives
-        # e.g., "price" in URL "panarin-price-starts" shouldn't match "Carey Price"
+        # Full name match (high confidence) - always accepted
         if _word_boundary_match(name_lower, text_lower):
-            entity_ids.append(entity.id)
+            full_match_ids.append(entity.id)
         elif ' ' in entity.name:
-            # Check last name only (with word boundaries)
+            # Last-name-only match (lower confidence)
             last_name = entity.name.split()[-1].lower()
-            # Skip last-name-only matching for common words that cause false positives
             if last_name in COMMON_WORD_NAMES:
                 continue
-            # Require minimum 5 chars for last-name-only matching to reduce false positives
             if len(last_name) >= 5 and _word_boundary_match(last_name, text_lower):
-                entity_ids.append(entity.id)
+                last_name_match_ids.append(entity.id)
 
-    return entity_ids
+    # Only include last-name-only matches if the text mentions the Sharks
+    # This prevents "Skinner" in a WHL recap from matching Jeff Skinner
+    if has_sharks_context:
+        return full_match_ids + last_name_match_ids
+    return full_match_ids
+
+
+def _has_sharks_context(text_lower: str) -> bool:
+    """Check if text contains Sharks-related keywords."""
+    sharks_keywords = [
+        'sharks', 'sj sharks', 'san jose', 'barracuda', 'sap center',
+    ]
+    return any(kw in text_lower for kw in sharks_keywords)
 
 
 # Last names that are also common English words or very common surnames - require full name match
