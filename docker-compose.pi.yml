@@ -41,7 +41,7 @@ services:
       DATABASE_URL: postgresql+psycopg://sharks:sharks@db:5432/sharks
       CELERY_BROKER_URL: redis://redis:6379/1
       CELERY_RESULT_BACKEND: redis://redis:6379/2
-      ALLOWED_ORIGINS: http://localhost:3001,http://pi5-ai2:3001,http://pi5-ai2.local:3001
+      ALLOWED_ORIGINS: http://localhost:3001,http://pi5-ai2:3001,http://pi5-ai2.local:3001,https://x2mq74oetjlz.nobgp.com,https://tz2k2lxwodrv.nobgp.com
     ports:
       - "8001:8000"
     depends_on:
@@ -82,7 +82,7 @@ services:
   web:
     build: ./web
     environment:
-      NEXT_PUBLIC_API_BASE_URL: http://localhost:8001
+      NEXT_PUBLIC_API_BASE_URL: https://tz2k2lxwodrv.nobgp.com
     ports:
       - "3001:3000"
     depends_on:
