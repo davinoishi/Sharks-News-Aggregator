@@ -1,0 +1,93 @@
+version: "3.9"
+
+# Pi5-ai2 specific configuration
+# - Web on port 3001 (3000 used by Open WebUI)
+# - API on port 8001 (8000 used by Hailo-Ollama)
+# - Production mode (no hot-reload volumes)
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: sharks
+      POSTGRES_USER: sharks
+      POSTGRES_PASSWORD: sharks
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sharks"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  api:
+    build: ./api
+    environment:
+      DATABASE_URL: postgresql+psycopg://sharks:sharks@db:5432/sharks
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      ALLOWED_ORIGINS: http://localhost:3001,http://pi5-ai2:3001,http://pi5-ai2.local:3001
+    ports:
+      - "8001:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker:
+    build: ./api
+    command: celery -A app.tasks.celery_app:celery worker --loglevel=INFO
+    environment:
+      DATABASE_URL: postgresql+psycopg://sharks:sharks@db:5432/sharks
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  beat:
+    build: ./api
+    command: celery -A app.tasks.celery_app:celery beat --loglevel=INFO
+    environment:
+      DATABASE_URL: postgresql+psycopg://sharks:sharks@db:5432/sharks
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  web:
+    build: ./web
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8001
+    ports:
+      - "3001:3000"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  db_data:
