@@ -165,6 +165,7 @@ def format_cluster_for_feed(db: Session, cluster: Cluster) -> dict:
         "first_seen_at": cluster.first_seen_at.isoformat() if cluster.first_seen_at else None,
         "last_seen_at": cluster.last_seen_at.isoformat() if cluster.last_seen_at else None,
         "source_count": cluster.source_count,
+        "click_count": cluster.click_count or 0,
         "tags": tags,
         "entities": entities,
     }

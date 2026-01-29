@@ -2,9 +2,9 @@
  * API client for Sharks News Aggregator backend
  */
 
-import { FeedResponse, ClusterDetailResponse } from './types';
+import { FeedResponse, ClusterDetailResponse, SiteStats } from './types';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
 
 export class ApiClient {
   static async getFeed(params?: {
@@ -69,5 +69,38 @@ export class ApiClient {
     }
 
     return response.json();
+  }
+
+  static async getStats(): Promise<SiteStats> {
+    const url = `${API_BASE_URL}/stats`;
+    const response = await fetch(url);
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch stats: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  static async recordPageview(): Promise<void> {
+    try {
+      await fetch(`${API_BASE_URL}/metrics/pageview`, {
+        method: 'POST',
+      });
+    } catch (err) {
+      // Silently fail - metrics are non-critical
+      console.error('Failed to record pageview:', err);
+    }
+  }
+
+  static async recordClusterClick(clusterId: number): Promise<void> {
+    try {
+      await fetch(`${API_BASE_URL}/cluster/${clusterId}/click`, {
+        method: 'POST',
+      });
+    } catch (err) {
+      // Silently fail - metrics are non-critical
+      console.error('Failed to record click:', err);
+    }
   }
 }

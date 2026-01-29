@@ -63,6 +63,7 @@ class Cluster(Base):
     tokens = Column(ARRAY(Text), default=[])
     entities_agg = Column(ARRAY(Integer), default=[])
     source_count = Column(Integer, default=0)
+    click_count = Column(Integer, default=0)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
 

@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { ApiClient } from './api-client';
-import { Cluster } from './types';
+import { Cluster, SiteStats } from './types';
 import { ClusterCard } from './components/ClusterCard';
 import { FilterBar } from './components/FilterBar';
 
@@ -15,11 +15,27 @@ export default function Home() {
   const [expandedClusterId, setExpandedClusterId] = useState<number | null>(null);
   const [filters, setFilters] = useState<{ tags?: string; since?: string }>({ since: '24h' });
   const [lastScanAt, setLastScanAt] = useState<string | null>(null);
+  const [siteStats, setSiteStats] = useState<SiteStats | null>(null);
+
+  // Record page view once on initial load
+  useEffect(() => {
+    ApiClient.recordPageview();
+    loadStats();
+  }, []);
 
   useEffect(() => {
     loadFeed();
     loadHealth();
   }, [filters]);
+
+  const loadStats = async () => {
+    try {
+      const stats = await ApiClient.getStats();
+      setSiteStats(stats);
+    } catch (err) {
+      console.error('Error loading stats:', err);
+    }
+  };
 
   const loadHealth = async () => {
     try {
@@ -171,6 +187,11 @@ export default function Home() {
 
         {/* Footer */}
         <div className="mt-12 pt-8 border-t border-gray-200 text-center text-sm text-gray-500">
+          {siteStats && (
+            <p className="mb-3 text-xs text-gray-400">
+              {siteStats.page_views.toLocaleString()} visits · {siteStats.total_stories.toLocaleString()} stories tracked · {siteStats.total_sources} sources
+            </p>
+          )}
           <p className="mb-2">
             <a
               href="https://puckpedia.com/team/san-jose-sharks"

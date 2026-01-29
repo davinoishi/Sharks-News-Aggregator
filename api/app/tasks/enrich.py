@@ -559,6 +559,15 @@ def create_cluster(db: Session, variant, tokens: List[str], entities: List[int],
     db.add(cluster)
     db.flush()
 
+    # Increment lifetime stories counter
+    from app.models import SiteMetrics
+    stories_metric = db.query(SiteMetrics).filter(SiteMetrics.key == "total_stories").first()
+    if stories_metric:
+        stories_metric.value += 1
+    else:
+        stories_metric = SiteMetrics(key="total_stories", value=1)
+        db.add(stories_metric)
+
     # Add entity associations to cluster
     add_cluster_entity_associations(db, cluster, entities)
 

@@ -125,6 +125,7 @@ CREATE TABLE clusters (
     tokens TEXT[],  -- normalized tokens for clustering
     entities_agg INTEGER[],  -- aggregated entity IDs
     source_count INTEGER DEFAULT 0,
+    click_count INTEGER DEFAULT 0,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -271,6 +272,21 @@ CREATE TABLE healthcheck (
     ok BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- ============================================================================
+-- SITE METRICS TABLE
+-- ============================================================================
+CREATE TABLE site_metrics (
+    id SERIAL PRIMARY KEY,
+    key VARCHAR(100) NOT NULL UNIQUE,
+    value BIGINT DEFAULT 0 NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_site_metrics_key ON site_metrics(key);
+
+-- Initialize default metrics
+INSERT INTO site_metrics (key, value) VALUES ('page_views', 0);
 
 -- ============================================================================
 -- UPDATE TRIGGERS

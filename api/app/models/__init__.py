@@ -13,6 +13,7 @@ from app.models.cluster_entity import ClusterEntity
 from app.models.submission import Submission, SubmissionStatus
 from app.models.candidate_source import CandidateSource
 from app.models.feed_cache import FeedCache
+from app.models.site_metrics import SiteMetrics
 
 __all__ = [
     "Source",
@@ -35,4 +36,5 @@ __all__ = [
     "SubmissionStatus",
     "CandidateSource",
     "FeedCache",
+    "SiteMetrics",
 ]

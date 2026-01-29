@@ -33,9 +33,16 @@ export interface Cluster {
   first_seen_at: string;
   last_seen_at: string;
   source_count: number;
+  click_count: number;
   tags: Tag[];
   entities: Entity[];
   variants?: StoryVariant[];
+}
+
+export interface SiteStats {
+  page_views: number;
+  total_stories: number;
+  total_sources: number;
 }
 
 export interface FeedResponse {
