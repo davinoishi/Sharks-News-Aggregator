@@ -264,6 +264,14 @@ def create_raw_item(
             RawItem.ingest_hash == ingest_hash
         ).first()
 
+    # Title-based dedup for same source (catches Google Alerts surfacing
+    # the same article from different regional domains)
+    if not existing and raw_title:
+        existing = db.query(RawItem).filter(
+            RawItem.source_id == source_id,
+            RawItem.raw_title == raw_title
+        ).first()
+
     if existing:
         return None  # Duplicate, skip
 
@@ -357,11 +365,19 @@ def strip_html(text: Optional[str]) -> Optional[str]:
 def normalize_url(url: str) -> str:
     """
     Normalize URL for deduplication.
-    Removes tracking parameters, fragments, etc.
+    Removes tracking parameters, fragments, and unwraps Google redirect URLs.
     """
-    from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+    from urllib.parse import urlparse, parse_qs, urlencode, urlunparse, unquote
 
     parsed = urlparse(url)
+
+    # Unwrap Google redirect URLs (used by Google Alerts)
+    # e.g. https://www.google.com/url?...&url=https%3A%2F%2Factual-site.com%2Farticle...
+    if parsed.netloc in ('www.google.com', 'google.com') and parsed.path == '/url':
+        query_params = parse_qs(parsed.query)
+        if 'url' in query_params:
+            # Re-normalize the unwrapped URL
+            return normalize_url(query_params['url'][0])
 
     # Remove common tracking parameters
     tracking_params = {'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'ref', 'fbclid'}

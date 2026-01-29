@@ -44,7 +44,7 @@ def enrich_raw_item(self, raw_item_id: int):
         # Step 2.5: Check relevance unless source is dedicated to Sharks news
         source_metadata = source.extra_metadata or {}
         if not source_metadata.get('skip_relevance_check'):
-            if not check_sharks_relevance(text, entity_ids):
+            if not check_sharks_relevance(db, raw_item.raw_title or '', entity_ids):
                 print(f"  ⊘ Skipped (not Sharks-relevant): {raw_item.raw_title[:50]}...")
                 return {
                     "status": "skipped",
@@ -215,23 +215,28 @@ def _word_boundary_match(term: str, text: str) -> bool:
     return bool(re.search(pattern, text))
 
 
-def check_sharks_relevance(text: str, entity_ids: List[int]) -> bool:
+def check_sharks_relevance(db: Session, title: str, entity_ids: List[int]) -> bool:
     """
     Check if content is relevant to the San Jose Sharks.
 
-    Used for filtering general NHL sources (like insider Twitter feeds)
-    to only include Sharks-related content.
+    Uses the article TITLE only for keyword matching (not description),
+    because aggregator sources like Google Alerts inject unrelated
+    context snippets into descriptions.
+
+    Only player/coach/staff entities count for relevance — team entities
+    are too broad (e.g. "San Jose Sharks" appearing in site navigation).
 
     Args:
-        text: Text content to check
+        db: Database session
+        title: Article title to check for Sharks keywords
         entity_ids: List of entity IDs found in text
 
     Returns:
         True if content is Sharks-relevant, False otherwise
     """
-    text_lower = text.lower()
+    text_lower = title.lower()
 
-    # Direct team mentions
+    # Direct team mentions in title
     sharks_keywords = [
         'sharks',
         'sj sharks',
@@ -242,8 +247,11 @@ def check_sharks_relevance(text: str, entity_ids: List[int]) -> bool:
     if any(keyword in text_lower for keyword in sharks_keywords):
         return True
 
-    # If entities were found, content mentions known Sharks players/staff
-    if entity_ids:
+    # Only count non-team entities (players, coaches, staff) for relevance.
+    # Team entities like "San Jose Sharks" can appear in site navigation
+    # or sidebar text that Google Alerts injects into descriptions.
+    non_team_ids = filter_team_entities(db, entity_ids)
+    if non_team_ids:
         return True
 
     return False
