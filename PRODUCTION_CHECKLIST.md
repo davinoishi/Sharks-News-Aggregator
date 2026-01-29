@@ -1,69 +1,108 @@
 # Production Deployment Checklist
 
-A checklist of tasks to complete before deploying the Sharks News Aggregator to production.
+A checklist of tasks for deploying the Sharks News Aggregator to production.
+
+**Current Status:** ✅ Deployed and running on Raspberry Pi 5 (pi5-ai2)
+
+**Live URLs:**
+- Web: https://x2mq74oetjlz.nobgp.com
+- API: https://tz2k2lxwodrv.nobgp.com
+
+---
 
 ## Security
 
-- [ ] **Disable API documentation** — Set `docs_url=None, redoc_url=None` in FastAPI app
-- [ ] **Disable or protect public APIs** — Review which endpoints should be accessible
-  - `/health` — Keep (needed for monitoring)
-  - `/feed` — Keep (main functionality)
-  - `/cluster/{id}` — Keep (main functionality)
-  - `/submit/link` — Disable or add CAPTCHA
-  - `/admin/*` — Keep disabled (already returns 501)
-- [ ] **Update CORS origins** — Set `ALLOWED_ORIGINS` to production domain
-- [ ] **Add rate limiting** — Consider adding limits to `/feed` and `/cluster/{id}` endpoints
-- [ ] **Review CSP headers** — Add Content-Security-Policy via noBGP proxy or Next.js middleware
+- [x] **Update CORS origins** — Set `ALLOWED_ORIGINS=*` for public API access
+- [x] **Rate limiting** — 10 submissions per IP per hour on `/submit/link`
+- [ ] **Disable API documentation** — Set `docs_url=None, redoc_url=None` in FastAPI app (optional)
+- [ ] **Protect admin endpoints** — Currently return 501 (not implemented)
+- [ ] **Review CSP headers** — Add Content-Security-Policy if needed
 
 ## Environment Configuration
 
-- [ ] **Create production .env file** with:
-  - [ ] Strong database password (not `sharks`)
-  - [ ] Production `ALLOWED_ORIGINS`
-  - [ ] Production `NEXT_PUBLIC_API_BASE_URL`
-- [ ] **Remove debug settings** — Ensure no debug flags are enabled
-- [ ] **Set appropriate log levels** — Reduce verbosity for production
+- [x] **Production docker-compose** — Using `docker-compose.pi.yml` with ports 3001/8001
+- [x] **CORS configuration** — `ALLOWED_ORIGINS=*`
+- [x] **Dynamic API URL detection** — Frontend auto-detects local vs. noBGP access
+- [ ] **Change default database password** — Currently using default `sharks` password
+- [ ] **Set appropriate log levels** — Reduce verbosity if needed
 
 ## Infrastructure
 
-- [ ] **Set up noBGP proxy** for both web and API services
-  - [ ] Configure HTTPS
-  - [ ] Set `auth_required` if needed
-  - [ ] Configure custom domain (optional)
+- [x] **noBGP proxy configured** — Both web and API services accessible via HTTPS
+  - Web: https://x2mq74oetjlz.nobgp.com
+  - API: https://tz2k2lxwodrv.nobgp.com
+  - `auth_required=false` for public access
+- [x] **Docker containers running** — All 6 services operational
+- [x] **Auto-restart enabled** — `restart: unless-stopped` on all containers
+- [x] **Database persistence** — PostgreSQL data persisted via Docker volumes
 - [ ] **Database backups** — Set up automated PostgreSQL backups
-- [ ] **Monitoring** — Set up health check monitoring (e.g., uptime monitor hitting `/health`)
-- [ ] **Log aggregation** — Consider centralizing logs from all containers
+- [ ] **Monitoring** — Set up health check monitoring (uptime monitor on `/health`)
+- [ ] **Log aggregation** — Consider centralizing logs
 
 ## Performance
 
-- [ ] **Database indexes** — Verify indexes exist for common query patterns
-- [ ] **Connection pooling** — Review SQLAlchemy pool settings for production load
-- [ ] **Redis persistence** — Decide if Redis data should persist across restarts
+- [x] **Database indexes** — Indexes exist for common query patterns
+- [x] **Connection pooling** — SQLAlchemy default pool settings
+- [ ] **Redis persistence** — Currently ephemeral (acceptable for task queue)
 
 ## Data & Content
 
-- [ ] **Review RSS sources** — Confirm all sources in `initial_sources.csv` are appropriate
-- [ ] **Seed production database** — Run entity seeding scripts
-- [ ] **Test ingestion pipeline** — Verify RSS ingestion works with production sources
+- [x] **RSS sources configured** — 24 approved sources active
+- [x] **Entity database populated** — 77+ players synced from CapWages
+- [x] **Automated roster sync** — Daily sync keeps organization current
+- [x] **RSS ingestion working** — Every 10 minutes via Celery Beat
+- [x] **Old item purge** — Daily cleanup of items older than 30 days
 
-## DNS & Domain (if using custom domain)
+## Testing
 
-- [ ] **Register domain** or configure subdomain
-- [ ] **Set up DNS records** pointing to noBGP proxy
-- [ ] **Update all URL references** in code and config
+- [x] **Feed browsing** — Working at both localhost and noBGP URLs
+- [x] **Tag filtering** — Working correctly
+- [x] **Cluster expansion** — Shows all source variants
+- [x] **Mobile responsive** — UI works on mobile devices
+- [x] **API endpoints** — All endpoints functional
 
-## Pre-Launch Testing
+---
 
-- [ ] **Test all user flows** — Feed browsing, filtering, cluster expansion
-- [ ] **Test on mobile** — Verify responsive design works
-- [ ] **Load test** — Verify system handles expected traffic
-- [ ] **Review feed quality** — Check for false positives/negatives in article filtering
+## Current Database State
 
-## Post-Launch
+```
+Sources:           24 approved
+Active Clusters:   182+
+Story Variants:    200+
+Tags:              12
+Entities:          77+ (synced daily from CapWages)
+```
 
-- [ ] **Monitor error rates** — Watch for unexpected errors in logs
-- [ ] **Monitor feed quality** — Periodically check for irrelevant articles
-- [ ] **Set up alerts** — Notify on service downtime or high error rates
+## Admin Operations (on Pi)
+
+```bash
+# SSH to pi5-ai2, then:
+cd /opt/Sharks-News-Aggregator
+
+# View logs
+docker compose -f docker-compose.pi.yml logs -f worker
+
+# Restart all services
+docker compose -f docker-compose.pi.yml restart
+
+# Trigger manual RSS ingestion
+docker compose -f docker-compose.pi.yml exec api python -c "
+from app.tasks.ingest import ingest_all_sources
+ingest_all_sources.delay()
+"
+
+# Trigger manual roster sync
+docker compose -f docker-compose.pi.yml exec api python -c "
+from app.tasks.sync_roster import sync_sharks_roster
+sync_sharks_roster.delay()
+"
+
+# Check cluster count
+docker compose -f docker-compose.pi.yml exec db psql -U sharks -c "SELECT COUNT(*) FROM clusters WHERE status = 'active';"
+
+# Check source count
+docker compose -f docker-compose.pi.yml exec db psql -U sharks -c "SELECT COUNT(*) FROM sources WHERE status = 'approved';"
+```
 
 ---
 
@@ -71,8 +110,9 @@ A checklist of tasks to complete before deploying the Sharks News Aggregator to 
 
 These are not blockers for production but noted for future work:
 
-- [ ] **Social media posting** — BlueSky, X, Threads integration
-- [ ] **Push notifications** — ntfy.sh integration
-- [ ] **LLM-based filtering** — For improved article relevance detection
-- [ ] **User authentication** — If adding personalization features
+- [ ] **LLM-based relevance filtering** — Improved article filtering
 - [ ] **Search functionality** — Full-text search across articles
+- [ ] **Push notifications** — ntfy.sh integration
+- [ ] **Social media posting** — BlueSky, X, Threads integration
+- [ ] **User authentication** — If adding personalization features
+- [ ] **Custom domain** — Configure custom domain via noBGP

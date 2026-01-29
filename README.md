@@ -2,14 +2,20 @@
 
 A comprehensive news aggregation and clustering system for San Jose Sharks hockey news. Automatically ingests news from multiple sources, enriches articles with entity extraction and tagging, clusters similar stories, and presents them through a modern web interface.
 
+## Live Demo
+
+- **Web App**: https://x2mq74oetjlz.nobgp.com
+- **API**: https://tz2k2lxwodrv.nobgp.com
+
 ## Features
 
 ### Core Functionality
-- **Multi-Source RSS Ingestion** - Aggregates news from 15+ sources including San Jose Hockey Now, Mercury News, NBC Sports, and more
+- **Multi-Source RSS Ingestion** - Aggregates news from 24+ sources including San Jose Hockey Now, Mercury News, NBC Sports, NHL.com, and more
 - **Enrichment Pipeline** - Extracts entities (players, coaches), assigns tags, and classifies event types using keyword matching and NLP
 - **Smart Clustering** - Groups similar stories from different sources using entity overlap and token similarity scoring
 - **Automated Roster Sync** - Daily synchronization with CapWages to keep full organization player database current
 - **Modern Web UI** - Next.js frontend with filtering, tag navigation, and responsive design
+- **Dynamic API Detection** - Frontend automatically detects local vs. remote access and uses appropriate API URL
 
 ### Entity Detection
 Automatically detects and links:
@@ -33,17 +39,17 @@ Automatically detects and links:
 
 ```
 ┌─────────────────┐
-│   Next.js Web   │  ← User Interface (localhost:3000)
+│   Next.js Web   │  ← User Interface
 └────────┬────────┘
          │
          ↓ HTTP
 ┌─────────────────┐
-│   FastAPI API   │  ← REST API (localhost:8000)
+│   FastAPI API   │  ← REST API
 └────────┬────────┘
          │
          ↓
 ┌─────────────────┐
-│   PostgreSQL    │  ← Data Storage (localhost:5432)
+│   PostgreSQL    │  ← Data Storage
 └─────────────────┘
 
 Background Workers:
@@ -78,6 +84,42 @@ Background Workers:
 **Infrastructure:**
 - Docker & Docker Compose
 - Celery Beat (Scheduler)
+- noBGP (Public proxy)
+
+## Deployment
+
+### Production (Raspberry Pi 5)
+
+The application runs on a Raspberry Pi 5 (pi5-ai2) with public access via noBGP proxy.
+
+**Access URLs:**
+- Web: https://x2mq74oetjlz.nobgp.com (or `localhost:3001` on Pi)
+- API: https://tz2k2lxwodrv.nobgp.com (or `localhost:8001` on Pi)
+
+**Deploy to Pi:**
+```bash
+# SSH to Pi and clone repo
+git clone https://github.com/davinoishi/Sharks-News-Aggregator.git /opt/Sharks-News-Aggregator
+cd /opt/Sharks-News-Aggregator
+
+# Start services (uses Pi-specific config with ports 3001/8001)
+docker compose -f docker-compose.pi.yml up -d
+```
+
+### Local Development
+
+```bash
+# Clone the repository
+git clone https://github.com/davinoishi/Sharks-News-Aggregator.git
+cd sharks-news-aggregator
+
+# Start all services (uses default ports 3000/8000)
+docker-compose up -d
+
+# Access the application
+# Frontend: http://localhost:3000
+# API Docs: http://localhost:8000/docs
+```
 
 ## Quick Start
 
@@ -88,28 +130,23 @@ Background Workers:
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/sharks-news-aggregator.git
+git clone https://github.com/davinoishi/Sharks-News-Aggregator.git
 cd sharks-news-aggregator
 ```
 
-2. Create `.env` file:
-```bash
-cp .env.example .env
-```
-
-3. Start all services:
+2. Start all services:
 ```bash
 docker-compose up -d
 ```
 
-4. Wait for services to initialize (~30 seconds)
+3. Wait for services to initialize (~30 seconds)
 
-5. Seed initial data (coaches, teams):
+4. Seed initial data (coaches, teams):
 ```bash
 docker-compose exec api python -m app.scripts.seed_entities
 ```
 
-6. Access the application:
+5. Access the application:
 - **Frontend:** http://localhost:3000
 - **API Docs:** http://localhost:8000/docs
 - **API:** http://localhost:8000
@@ -135,7 +172,7 @@ The system will:
 
 ### Web Interface
 
-Open http://localhost:3000 to:
+Open http://localhost:3000 (or the noBGP proxy URL) to:
 - View clustered news feed
 - Filter by tags (Trade, Injury, Game, etc.)
 - Filter by time range (24h, 7d, 30d)
@@ -156,9 +193,9 @@ curl "http://localhost:8000/cluster/{cluster_id}"
 
 **Submit New Link:**
 ```bash
-curl -X POST "http://localhost:8000/submit" \
+curl -X POST "http://localhost:8000/submit/link" \
   -H "Content-Type: application/json" \
-  -d '{"url": "https://example.com/sharks-news", "source_name": "Example News"}'
+  -d '{"url": "https://example.com/sharks-news"}'
 ```
 
 **Health Check:**
@@ -168,8 +205,8 @@ curl "http://localhost:8000/health"
 
 ### Automated Tasks
 
-**RSS Ingestion** - Runs every 15 minutes (configurable)
-- Fetches new articles from all sources
+**RSS Ingestion** - Runs every 10 minutes (configurable)
+- Fetches new articles from all 24 sources
 - Queues them for enrichment
 - Auto-clusters similar stories
 
@@ -181,40 +218,6 @@ curl "http://localhost:8000/health"
 **Cache Cleanup** - Runs hourly
 - Removes expired feed cache entries
 - Keeps database clean
-
-### Manual Operations
-
-**Trigger RSS Ingestion:**
-```bash
-docker-compose exec api python -c "
-from app.tasks.ingest import ingest_all_sources
-ingest_all_sources.delay()
-"
-```
-
-**Trigger Roster Sync:**
-```bash
-docker-compose exec api python -c "
-from app.tasks.sync_roster import sync_sharks_roster
-sync_sharks_roster.delay()
-"
-```
-
-**View Worker Logs:**
-```bash
-docker-compose logs -f worker
-```
-
-**Check Database:**
-```bash
-# List all entities
-docker-compose exec db psql -U sharks -d sharks -c \
-  "SELECT COUNT(*), entity_type FROM entities GROUP BY entity_type;"
-
-# View recent clusters
-docker-compose exec db psql -U sharks -d sharks -c \
-  "SELECT id, headline, event_type, source_count FROM clusters ORDER BY last_seen_at DESC LIMIT 10;"
-```
 
 ## Configuration
 
@@ -232,13 +235,26 @@ DATABASE_URL=postgresql+psycopg://sharks:sharks@db:5432/sharks
 # Redis
 CELERY_BROKER_URL=redis://redis:6379/1
 
-# Frontend
+# Frontend (optional - auto-detected at runtime)
 NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
 ```
 
 ### RSS Sources
 
-Sources are managed in the database `sources` table. See `initial_sources.csv` for the seed data format.
+24 approved sources including:
+- San Jose Hockey Now
+- The Mercury News - Sharks
+- NBC Sports Bay Area - Sharks
+- NHL.com - Sharks Official
+- Fear the Fin
+- Blades of Teal
+- Teal Town USA
+- Pro Hockey Rumors
+- Yahoo Sports - Sharks
+- SF Gate - Sharks
+- And more...
+
+Sources are managed in the database `sources` table.
 
 ## Project Structure
 
@@ -258,11 +274,11 @@ sharks-news-aggregator/
 │   ├── app/
 │   │   ├── components/       # React components
 │   │   ├── types.ts          # TypeScript types
-│   │   └── api-client.ts     # API wrapper
+│   │   └── api-client.ts     # API wrapper with dynamic URL detection
 │   ├── Dockerfile
 │   └── package.json
-├── docker-compose.yml        # Docker orchestration
-├── .env.example              # Environment template
+├── docker-compose.yml        # Docker orchestration (development)
+├── docker-compose.pi.yml     # Docker orchestration (Pi production)
 └── README.md                 # This file
 ```
 
@@ -272,30 +288,12 @@ sharks-news-aggregator/
 - **[FRONTEND_IMPLEMENTATION.md](FRONTEND_IMPLEMENTATION.md)** - Frontend features and usage
 - **[ROSTER_SYNC.md](ROSTER_SYNC.md)** - Automated roster sync documentation
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** - System design and data flow
+- **[SETUP_GUIDE.md](SETUP_GUIDE.md)** - Detailed setup walkthrough
+- **[PRODUCTION_CHECKLIST.md](PRODUCTION_CHECKLIST.md)** - Production deployment checklist
 
 ## Development
 
-### Running Tests
-
-```bash
-# Backend tests
-docker-compose exec api pytest
-
-# Frontend tests
-docker-compose exec web npm test
-```
-
-### Database Migrations
-
-```bash
-# Generate migration
-docker-compose exec api alembic revision --autogenerate -m "description"
-
-# Apply migrations
-docker-compose exec api alembic upgrade head
-```
-
-### Logs
+### Viewing Logs
 
 ```bash
 # All services
@@ -338,12 +336,6 @@ docker-compose logs web
 docker-compose restart web
 ```
 
-**Database connection issues:**
-```bash
-docker-compose logs db
-docker-compose restart db
-```
-
 **Clear all data and restart:**
 ```bash
 docker-compose down -v
@@ -353,31 +345,24 @@ docker-compose up -d
 ## Roadmap
 
 ### Completed
-- ✅ RSS ingestion from multiple sources
-- ✅ Enrichment pipeline (entity extraction, tagging, event classification)
-- ✅ Story clustering with entity overlap and token similarity
-- ✅ REST API with filtering
-- ✅ Web UI with responsive design
-- ✅ Automated roster sync from CapWages (full organization)
-- ✅ Departed player removal (prevents false positives)
-- ✅ Celery task queue and scheduling
-- ✅ Automatic purge of items older than 30 days
-
-### In Progress
-- 🔄 Entity filtering in web UI
-- 🔄 Link submission form
+- RSS ingestion from multiple sources (24 sources)
+- Enrichment pipeline (entity extraction, tagging, event classification)
+- Story clustering with entity overlap and token similarity
+- REST API with filtering
+- Web UI with responsive design
+- Automated roster sync from CapWages (full organization)
+- Celery task queue and scheduling
+- Automatic purge of items older than 30 days
+- Production deployment on Raspberry Pi 5
+- Public access via noBGP proxy
+- Dynamic API URL detection for local/remote access
 
 ### Planned
-- 📋 User authentication and preferences
-- 📋 Real-time updates (WebSocket)
-- 📋 Search functionality
-- 📋 Social sharing
-- 📋 Push notifications (ntfy.sh)
-- 📋 Mobile app
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
+- LLM-based relevance checking
+- User authentication and preferences
+- Search functionality
+- Push notifications (ntfy.sh)
+- Social media integration
 
 ## License
 
@@ -387,3 +372,4 @@ MIT License - see LICENSE file for details
 
 - CapWages for comprehensive organization roster data
 - All the excellent news sources covering the Sharks
+- noBGP for simple public proxy hosting

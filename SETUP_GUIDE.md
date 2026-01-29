@@ -7,7 +7,43 @@ Complete guide to get the application running from scratch.
 - Docker & Docker Compose
 - Git
 
-## Step-by-Step Setup
+## Deployment Options
+
+| Environment | Config File | Web Port | API Port | Use Case |
+|-------------|-------------|----------|----------|----------|
+| Development | `docker-compose.yml` | 3000 | 8000 | Local development |
+| Production (Pi) | `docker-compose.pi.yml` | 3001 | 8001 | Raspberry Pi 5 deployment |
+
+## Production Deployment (Raspberry Pi 5)
+
+The recommended deployment is on a Raspberry Pi 5 with public access via noBGP proxy.
+
+**Live URLs:**
+- Web: https://x2mq74oetjlz.nobgp.com
+- API: https://tz2k2lxwodrv.nobgp.com
+
+### Pi Deployment Steps
+
+```bash
+# SSH to Pi and clone repo
+git clone https://github.com/davinoishi/Sharks-News-Aggregator.git /opt/Sharks-News-Aggregator
+cd /opt/Sharks-News-Aggregator
+
+# Start services (Pi-specific config with ports 3001/8001)
+docker compose -f docker-compose.pi.yml up -d
+```
+
+This starts 6 containers:
+- PostgreSQL database (port 5432)
+- Redis (port 6379)
+- FastAPI API (exposed on port 8001)
+- Celery worker
+- Celery beat scheduler
+- Next.js frontend (exposed on port 3001)
+
+Wait ~60 seconds for all services to initialize on Pi.
+
+## Local Development Setup
 
 ### 1. Start the Services
 
@@ -40,7 +76,7 @@ docker-compose logs api
 
 ### 3. Import Initial Sources from CSV
 
-The `initial_sources.csv` file contains 15 pre-configured news sources.
+The `initial_sources.csv` file contains pre-configured news sources (24 sources in production).
 
 **Dry run first (preview what will be imported):**
 
@@ -70,28 +106,28 @@ Row 3: ✓ Imported 'San Jose Sharks PR' (ID: 2)
 
 This populates the database with known players, coaches, and teams for entity extraction.
 
-**Dry run first:**
-
-```bash
-docker-compose exec api python -m app.scripts.seed_entities --dry-run
-```
-
-**Actually seed the entities:**
+**Option A: Manual seeding (one-time)**
 
 ```bash
 docker-compose exec api python -m app.scripts.seed_entities
 ```
 
-You should see output like:
+**Option B: Trigger roster sync from CapWages (recommended)**
 
-```
-Adding 26 players...
-  ✓ Macklin Celebrini (ID: 1, slug: macklin-celebrini)
-  ✓ Will Smith (ID: 2, slug: will-smith)
-  ...
+The system includes automated daily roster sync from CapWages that keeps the full organization (NHL + AHL + reserves) up to date.
 
-✓ Entities successfully seeded!
+```bash
+# Trigger manual roster sync
+docker-compose exec api python -c "
+from app.tasks.sync_roster import sync_sharks_roster
+sync_sharks_roster.delay()
+"
 ```
+
+This syncs 77+ players from the full Sharks organization including:
+- NHL active roster
+- AHL (Barracuda) players
+- Unsigned draft picks and reserves
 
 ### 5. Verify Database Setup
 
@@ -326,15 +362,41 @@ Now that the infrastructure is set up:
 
 ## Production Considerations
 
-Before deploying to production:
+The application is currently deployed on Raspberry Pi 5 (pi5-ai2) with:
 
-1. Change default passwords in `.env`
+**Completed:**
+- ✅ Public HTTPS access via noBGP proxy
+- ✅ CORS configured for all access patterns (`ALLOWED_ORIGINS=*`)
+- ✅ Rate limiting on submission endpoint (10/hour per IP)
+- ✅ Auto-restart on container failure
+- ✅ Database persisted via Docker volumes
+- ✅ Dynamic API URL detection (works locally and via noBGP)
+
+**Recommended for enhanced security:**
+1. Change default database passwords in `.env`
 2. Set up proper authentication for admin endpoints
-3. Configure CORS `ALLOWED_ORIGINS` properly
-4. Set up monitoring/alerting (Sentry, DataDog, etc.)
-5. Configure proper logging
-6. Set up automated backups for PostgreSQL
-7. Use production-grade Redis with persistence
-8. Add rate limiting on submission endpoint
-9. Set up SSL/TLS certificates
-10. Configure CDN for static assets
+3. Set up automated database backups
+4. Configure monitoring/alerting (uptime checks on `/health`)
+5. Review and harden CSP headers
+
+## Pi-Specific Operations
+
+```bash
+# SSH to pi5-ai2, then:
+cd /opt/Sharks-News-Aggregator
+
+# View logs
+docker compose -f docker-compose.pi.yml logs -f worker
+
+# Restart services
+docker compose -f docker-compose.pi.yml restart
+
+# Trigger manual ingestion
+docker compose -f docker-compose.pi.yml exec api python -c "
+from app.tasks.ingest import ingest_all_sources
+ingest_all_sources.delay()
+"
+
+# Check database
+docker compose -f docker-compose.pi.yml exec db psql -U sharks -c "SELECT COUNT(*) FROM clusters WHERE status = 'active';"
+```

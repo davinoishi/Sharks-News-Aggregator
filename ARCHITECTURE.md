@@ -2,6 +2,15 @@
 
 This document provides a high-level overview of the Sharks News Aggregator tech stack, architecture, and how the system works.
 
+## Production Deployment
+
+The application runs on a **Raspberry Pi 5** (pi5-ai2) with public access via noBGP proxy.
+
+| Service | Public URL | Local URL (on Pi) |
+|---------|------------|-------------------|
+| Web App | https://x2mq74oetjlz.nobgp.com | http://localhost:3001 |
+| API | https://tz2k2lxwodrv.nobgp.com | http://localhost:8001 |
+
 ## Tech Stack Overview
 
 | Layer | Technology | Purpose |
@@ -12,13 +21,16 @@ This document provides a high-level overview of the Sharks News Aggregator tech 
 | Scheduler | Celery Beat | Periodic task scheduling |
 | Message Broker | Redis | Task queue message broker |
 | Database | PostgreSQL 16 | Primary data store |
-| Containerization | Docker Compose | Local development orchestration |
+| Containerization | Docker Compose | Container orchestration |
+| Public Proxy | noBGP | HTTPS access to Pi-hosted services |
 
 ---
 
 ## Docker Containers
 
-The application runs as 6 Docker containers orchestrated by `docker-compose.yml`:
+The application runs as 6 Docker containers orchestrated by Docker Compose:
+- Development: `docker-compose.yml` (ports 3000/8000)
+- Production (Pi): `docker-compose.pi.yml` (ports 3001/8001)
 
 ### 1. `db` (PostgreSQL)
 - **Image:** `postgres:16`
@@ -41,7 +53,7 @@ The application runs as 6 Docker containers orchestrated by `docker-compose.yml`
   - DB 2: Celery result backend (task results)
 
 ### 3. `api` (FastAPI)
-- **Port:** 8000
+- **Port:** 8000 (dev) / 8001 (Pi production)
 - **Purpose:** REST API server handling HTTP requests
 - **Entry Point:** `uvicorn app.main:app`
 - **Key Endpoints:**
@@ -64,14 +76,17 @@ The application runs as 6 Docker containers orchestrated by `docker-compose.yml`
 - **Purpose:** Schedules periodic tasks
 - **Command:** `celery -A app.tasks.celery_app:celery beat`
 - **Scheduled Tasks:**
-  - `ingest_all_sources` - Every 10 minutes (configurable)
-  - `sync_sharks_roster` - Daily roster sync from CapWages (full organization)
-  - `cleanup_expired_cache` - Hourly cache cleanup
-  - `purge_old_items` - Daily cleanup of items older than 30 days
+  | Task | Frequency | Description |
+  |------|-----------|-------------|
+  | `ingest_all_sources` | Every 10 minutes | Fetch RSS from all 24 sources |
+  | `sync_sharks_roster` | Daily | Sync roster from CapWages (77+ players) |
+  | `cleanup_expired_cache` | Hourly | Remove expired cache entries |
+  | `purge_old_items` | Daily | Remove items older than 30 days |
 
 ### 6. `web` (Next.js)
-- **Port:** 3000
+- **Port:** 3000 (dev) / 3001 (Pi production)
 - **Purpose:** Frontend web application
+- **Dynamic API Detection:** Automatically detects local vs. noBGP access
 - **Key Pages:**
   - `/` - Main feed page with filters
   - `/legal` - Terms and privacy policy
@@ -154,8 +169,8 @@ The application runs as 6 Docker containers orchestrated by `docker-compose.yml`
 ### 1. RSS Ingestion (`api/app/tasks/ingest.py`)
 
 **Function:** `ingest_all_sources()`
-- Triggered every 15 minutes by Celery Beat
-- Queries all approved sources from database
+- Triggered every 10 minutes by Celery Beat
+- Queries all 24 approved sources from database
 - Spawns parallel `ingest_source()` tasks
 
 **Function:** `ingest_rss()`
@@ -270,15 +285,16 @@ Stories are grouped when they cover the same event from multiple sources:
 |----------|---------|-------------|
 | `DATABASE_URL` | - | PostgreSQL connection string |
 | `CELERY_BROKER_URL` | - | Redis broker URL |
-| `INGEST_INTERVAL_MINUTES` | 15 | RSS fetch frequency |
-| `ALLOWED_ORIGINS` | localhost:3000 | CORS allowed origins |
+| `INGEST_INTERVAL_MINUTES` | 10 | RSS fetch frequency |
+| `ALLOWED_ORIGINS` | * (production) | CORS allowed origins |
+| `NEXT_PUBLIC_API_BASE_URL` | (auto-detected) | API URL for frontend |
 
 ### Configurable Thresholds (`api/app/core/config.py`)
 ```python
 cluster_similarity_threshold = 0.62
 entity_overlap_threshold = 0.50
 token_similarity_threshold = 0.40
-ingest_interval_minutes = 15
+ingest_interval_minutes = 10
 submission_rate_limit_per_ip = 10
 ```
 
@@ -316,24 +332,28 @@ sharks-news-aggregator/
 │       └── api-client.ts     # API client
 ├── infra/
 │   └── postgres/init/        # DB initialization SQL
-├── docker-compose.yml        # Container orchestration
-└── initial_sources.csv       # Seed data for sources
+├── docker-compose.yml        # Container orchestration (development)
+├── docker-compose.pi.yml     # Container orchestration (Pi production)
+└── initial_sources.csv       # Seed data for sources (24 sources)
 ```
 
 ---
 
 ## External Integrations
 
-1. **RSS Feeds** - Primary content source (feedparser library)
+1. **RSS Feeds** - Primary content source (24 sources via feedparser library)
 2. **CapWages** - Daily roster sync for entity database (full organization: NHL + AHL + reserves)
 3. **rss.app** - Twitter feed conversion (Friedman, LeBrun)
+4. **noBGP** - HTTPS proxy for public access to Pi-hosted services
 
 ---
 
 ## Security Considerations
 
 - Rate limiting on submissions (10/hour per IP)
-- CORS configured for frontend origin only
+- CORS configured for all origins (public API)
 - No user authentication (read-only public API)
-- No cookies or tracking
+- No cookies or tracking (privacy-respecting metrics only)
 - Relevance filtering prevents content injection from general feeds
+- HTTPS via noBGP proxy for production access
+- Auto-restart on container failure

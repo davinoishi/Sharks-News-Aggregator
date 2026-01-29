@@ -1,235 +1,205 @@
 # Current Status - Sharks News Aggregator
 
-**Last Updated:** 2026-01-21 14:53 PT
+**Last Updated:** 2026-01-29
 
-## ✅ Fully Functional
+## Production Deployment
 
-### Infrastructure (100% Complete)
+The Sharks News Aggregator is now live and running on a Raspberry Pi 5 (pi5-ai2).
 
-All Docker services running and healthy:
+### Access URLs
 
-- ✅ **PostgreSQL 16** - Database with complete schema
-- ✅ **Redis 7** - Cache and message broker
-- ✅ **FastAPI API** (port 8000) - REST API serving requests
-- ✅ **Celery Worker** - Task processor running
-- ✅ **Celery Beat** - Scheduler triggering tasks every 10 minutes
-- ✅ **Next.js Frontend** (port 3000) - Web UI serving
+| Service | Public URL | Local URL (on Pi) |
+|---------|------------|-------------------|
+| Web App | https://x2mq74oetjlz.nobgp.com | http://localhost:3001 |
+| API | https://tz2k2lxwodrv.nobgp.com | http://localhost:8001 |
 
-### Database (100% Complete)
+### Infrastructure
 
-- ✅ **Schema Created** - All 13 tables with proper indexes
-- ✅ **Enums Configured** - All PostgreSQL enums working
-- ✅ **15 Sources Imported** - RSS feeds, APIs, and websites configured
-- ✅ **34 Entities Seeded** - Players, coaches, teams
-- ✅ **12 Tags Pre-populated** - News, Rumors, Trade, Injury, etc.
+All 6 Docker services running on pi5-ai2:
+
+- **PostgreSQL 16** - Database with 182 active clusters, 24 sources
+- **Redis 7** - Cache and message broker
+- **FastAPI API** (port 8001) - REST API serving requests
+- **Celery Worker** - Task processor running
+- **Celery Beat** - Scheduler triggering tasks every 10 minutes
+- **Next.js Frontend** (port 3001) - Web UI with dynamic API URL detection
+
+### Current Database State
+
+```
+Sources:           24 approved
+Active Clusters:   182
+Story Variants:    200+
+Tags:              12
+Entities:          77+ (synced daily from CapWages)
+```
+
+## Fully Functional Features
 
 ### RSS Ingestion (100% Complete)
 
-- ✅ **RSS Feed Fetching** - Fetches from all 15 approved sources
-- ✅ **Feedparser Integration** - Parses RSS entries successfully
-- ✅ **Idempotency** - URL deduplication prevents duplicate ingestion
-- ✅ **Error Handling** - Graceful handling of malformed RSS feeds
-- ✅ **Automatic Scheduling** - Runs every 10 minutes via Celery Beat
-- ✅ **185 Raw Items Ingested** - Successfully fetched from RSS feeds
+- RSS Feed Fetching - Fetches from all 24 approved sources
+- Feedparser Integration - Parses RSS entries successfully
+- Idempotency - URL deduplication prevents duplicate ingestion
+- Error Handling - Graceful handling of malformed RSS feeds
+- Automatic Scheduling - Runs every 10 minutes via Celery Beat
 
 ### Roster Sync (100% Complete)
 
-- ✅ **Automated Daily Sync** - Syncs full Sharks organization from CapWages every 24 hours
-- ✅ **CapWages Source** - Full organization coverage (https://capwages.com/teams/san_jose_sharks)
-- ✅ **77 Players Synced** - Active roster (28) + AHL/prospects (23) + reserve list (26)
-- ✅ **Departed Player Removal** - Automatically removes players who leave the organization
-- ✅ **Idempotent Updates** - Safe to run multiple times, no duplicates
-- ✅ **Celery Beat Scheduled** - Runs automatically daily
-- ✅ **Manual Trigger Available** - Can force sync on demand
+- Automated Daily Sync - Syncs full Sharks organization from CapWages
+- 77+ Players Synced - Active roster + AHL/prospects + reserve list
+- Departed Player Removal - Automatically removes players who leave
+- Idempotent Updates - Safe to run multiple times
 
 ### Enrichment & Clustering (100% Complete)
 
-- ✅ **Entity Extraction** - Identifies players, coaches, teams in text
-- ✅ **Token Normalization** - NLTK-based text processing
-- ✅ **Event Classification** - Detects trade, injury, lineup, etc.
-- ✅ **Clustering Algorithm** - Matches variants to clusters using:
-  - 55% entity overlap score
-  - 35% token similarity (Jaccard)
-  - 10% event type compatibility
-- ✅ **Tag Classification** - Auto-tags with News, Rumors Press, Trade, etc.
-- ✅ **Story Variants Created** - Successfully enriching raw items
-- ✅ **Clusters Formed** - Grouping similar variants together
+- Entity Extraction - Identifies players, coaches, teams in text
+- Token Normalization - NLTK-based text processing
+- Event Classification - Detects trade, injury, lineup, etc.
+- Clustering Algorithm - Matches variants using entity overlap + token similarity
+- Tag Classification - Auto-tags with Trade, Rumors, Injury, etc.
 
 ### API Endpoints (100% Complete)
 
-- ✅ **GET /health** - Health check endpoint ✓
-- ✅ **GET /feed** - Returns clustered news feed with filtering
-  - Supports tags, entities, since, limit, cursor parameters
-  - Returns formatted cluster data with tags and entities
-- ✅ **GET /cluster/{id}** - Returns cluster detail with all variants
-- ✅ **POST /submit/link** - Accepts user submissions with rate limiting
-- ✅ **API Documentation** at `/docs` - Swagger UI working
+- `GET /health` - Health check with last scan time
+- `GET /feed` - Returns clustered news feed with filtering
+- `GET /cluster/{id}` - Returns cluster detail with all variants
+- `POST /submit/link` - Accepts user submissions with rate limiting
+- `GET /stats` - Site-wide statistics
+- `POST /metrics/pageview` - Anonymous page view tracking
+- `POST /cluster/{id}/click` - Track cluster link clicks
 
-### Submission Processing (100% Complete)
+### Frontend (100% Complete)
 
-- ✅ **URL Validation** - Normalizes and validates submitted URLs
-- ✅ **Metadata Fetching** - Uses trafilatura to extract article content
-- ✅ **Duplicate Detection** - Checks for existing variants
-- ✅ **Candidate Source Creation** - Proposes new sources from submissions
-- ✅ **RSS Discovery** - Attempts to find RSS feeds for new domains
-- ✅ **Rate Limiting** - 10 submissions per IP per hour
+- Responsive web UI with tag filtering
+- Time range filters (24h, 7d, 30d)
+- Cluster expansion to view all sources
+- Trending indicator for popular stories
+- Dynamic API URL detection (works locally and via noBGP)
+- Privacy-respecting metrics display
 
-## 📊 Current Database State
+### Production Deployment (100% Complete)
 
-```
-Sources:           15 ✓
-Raw Items:         185 ✓
-Story Variants:    2+ (growing as enrichment processes backlog)
-Active Clusters:   1+ (growing as variants are clustered)
-Tags:              12 ✓
-Entities:          34 ✓
-Submissions:       0
-Candidate Sources: 0
-```
+- Deployed on Raspberry Pi 5 (pi5-ai2)
+- Public access via noBGP proxy (HTTPS)
+- CORS configured for all access patterns
+- Auto-restart on container failure
+- Database persisted via Docker volumes
 
-## 🎯 What's Working End-to-End
+## RSS Sources (24 Total)
 
-### Complete Pipeline Flow:
+### Official Sources
+- NHL.com - Sharks Official
+- NHL.com - San Jose Sharks (via to-rss)
 
-1. **Celery Beat** triggers `ingest_all_sources` every 10 minutes
-2. **Worker** spawns individual `ingest_source` tasks for each approved source
-3. **RSS Ingestion** fetches feed, parses entries, creates RawItems
-4. **Enrichment** processes each RawItem:
-   - Extracts entities (players, coaches, teams)
-   - Normalizes tokens using NLTK
-   - Classifies event type (trade, injury, game, etc.)
-   - Creates StoryVariant
-5. **Clustering** matches variant to existing cluster or creates new one:
-   - Calculates similarity scores
-   - Applies entity overlap and token similarity thresholds
-   - Links variant to cluster
-6. **API Endpoints** serve clustered data:
-   - `/feed` returns paginated list of clusters
-   - `/cluster/{id}` returns detailed cluster with all source links
+### Local Media
+- San Jose Hockey Now
+- The Mercury News - Sharks
+- NBC Sports Bay Area - Sharks
+- SF Gate - Sharks
 
-### Example API Response
+### National Media
+- CBS Sports - Sharks
+- Yahoo Sports - Sharks
 
-```bash
-curl http://localhost:8000/feed
-```
+### Fan Blogs & Analysis
+- Fear the Fin
+- Blades of Teal
+- Teal Town USA
+- Puck Prose - Sharks
+- The Hockey Writers - Sharks
 
-Returns:
-```json
-{
-  "clusters": [
-    {
-      "id": 2,
-      "headline": "Sharks acquire Kiefer Sherwood from the Canucks",
-      "event_type": "trade",
-      "source_count": 1,
-      "tags": [{"name": "Trade", "slug": "trade"}],
-      "entities": [{"name": "San Jose Sharks", "type": "team"}]
-    }
-  ]
-}
-```
+### Rumors & Trade News
+- Pro Hockey Rumors
+- NHL Trade Rumors
+- NHL Rumors - Sharks
 
-## 🔧 How to Use
+### Twitter/Social (via rss.app)
+- Elliotte Friedman
+- Pierre LeBrun
 
-### Manual Ingestion Trigger
+### Other
+- Google Alerts - Sharks News
+- Sharks Audio Network (podcast)
+- Sharks Podcast (Simplecast)
 
-```bash
-docker-compose exec api python -c "
-from app.tasks.ingest import ingest_all_sources
-ingest_all_sources.delay()
-"
-```
+## How to Use
 
-### Check Database Status
+### View the Feed
 
-```bash
-docker-compose exec api python -m app.scripts.db_manage status
-```
+Visit https://x2mq74oetjlz.nobgp.com to browse the news feed.
 
-### Watch Worker Logs
-
-```bash
-docker-compose logs -f worker
-```
-
-### Test API Endpoints
+### API Access
 
 ```bash
 # Health check
-curl http://localhost:8000/health
+curl https://tz2k2lxwodrv.nobgp.com/health
 
 # Get feed
-curl http://localhost:8000/feed
+curl https://tz2k2lxwodrv.nobgp.com/feed
 
 # Get cluster detail
-curl http://localhost:8000/cluster/2
-
-# Submit link
-curl -X POST http://localhost:8000/submit/link \
-  -H "Content-Type: application/json" \
-  -d '{"url": "https://example.com/article"}'
+curl https://tz2k2lxwodrv.nobgp.com/cluster/239
 ```
 
-## ⚠️ Known Issues
+### Admin Operations (on Pi)
+
+```bash
+# SSH to pi5-ai2, then:
+cd /opt/Sharks-News-Aggregator
+
+# View logs
+docker compose -f docker-compose.pi.yml logs -f worker
+
+# Restart services
+docker compose -f docker-compose.pi.yml restart
+
+# Trigger manual ingestion
+docker compose -f docker-compose.pi.yml exec api python -c "
+from app.tasks.ingest import ingest_all_sources
+ingest_all_sources.delay()
+"
+
+# Check database
+docker compose -f docker-compose.pi.yml exec db psql -U sharks -c "SELECT COUNT(*) FROM clusters WHERE status = 'active';"
+```
+
+## Known Limitations
 
 ### RSS Parsing Errors
 
-Some RSS feeds have malformed XML and fail to parse:
-- NHL.com (invalid token)
-- CBS Sports (not well-formed)
-- Fear the Fin (XML declaration error)
-- The Hockey Writers (undefined entity)
+Some RSS feeds occasionally have malformed XML and fail to parse. The system handles these gracefully and continues with other sources.
 
-These feeds return errors but don't crash the worker. The system continues with other sources.
+### Entity Extraction
 
-### Entity Extraction Limitations
+Current implementation uses keyword matching. May miss entities referenced by nicknames or abbreviations.
 
-Current implementation uses simple keyword matching:
-- May miss entities referenced by nicknames or abbreviations
-- No context-aware NER
-- Future: Use spaCy or fine-tuned NER model
+## Future Enhancements
 
-## 🚀 Next Steps (Future Enhancements)
+### Planned
 
-### M2: Improvements
+- [ ] LLM-based relevance checking for better article filtering
+- [ ] Search functionality across articles
+- [ ] Push notifications via ntfy.sh
+- [ ] Social media integration (BlueSky, X)
+- [ ] User preferences and saved filters
 
-- [ ] **Rumor Detection** - Improve accuracy of rumor classification
-- [ ] **Canonical Headline Generation** - Auto-generate better headlines
-- [ ] **Better Entity Extraction** - Use spaCy or custom NER
-- [ ] **Twitter/Reddit Integration** - Implement social media ingestion
-- [ ] **HTML Scraping** - For sources without RSS feeds
+### Under Consideration
 
-### M3: User Experience
+- [ ] Mobile app
+- [ ] Email digest
+- [ ] Custom RSS feed output
+- [ ] Admin dashboard for source management
 
-- [x] **Frontend Implementation** - Build Next.js UI ✓ COMPLETE
-- [ ] **Admin Dashboard** - Review candidate sources
-- [ ] **User Authentication** - For submissions and preferences
+## Documentation
 
-### M4: Production
+- **[README.md](README.md)** - Quick start guide
+- **[SETUP_GUIDE.md](SETUP_GUIDE.md)** - Detailed setup walkthrough
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** - System design and data flow
+- **[PRODUCTION_CHECKLIST.md](PRODUCTION_CHECKLIST.md)** - Deployment checklist
+- **[ROSTER_SYNC.md](ROSTER_SYNC.md)** - Automated roster sync documentation
+- **[FRONTEND_IMPLEMENTATION.md](FRONTEND_IMPLEMENTATION.md)** - Frontend features
 
-- [ ] **Redis Caching** - Cache feed queries
-- [ ] **Performance Optimization** - Database query optimization
-- [ ] **Monitoring & Alerts** - Prometheus/Grafana setup
-- [ ] **Anti-spam Hardening** - Enhanced rate limiting
+## Summary
 
-## 📖 Documentation
-
-- ✅ `README.md` - Quick start guide
-- ✅ `SETUP_GUIDE.md` - Detailed setup walkthrough
-- ✅ `IMPORT_INSTRUCTIONS.md` - CSV import guide
-- ✅ `FRONTEND_IMPLEMENTATION.md` - Frontend UI guide
-- ✅ `ROSTER_SYNC.md` - Automated roster sync documentation
-- ✅ `MODELS_DOCUMENTATION.md` - SQLAlchemy models reference
-- ✅ `CURRENT_STATUS.md` - This file
-
-## 🎉 Summary
-
-**The core ingestion, enrichment, and clustering pipeline is now fully functional!**
-
-- RSS feeds are being ingested automatically every 10 minutes
-- Raw items are enriched into story variants with entity extraction and event classification
-- Variants are clustered using the similarity algorithm from the PRD
-- API endpoints serve clustered data with proper formatting
-- The system is ready for frontend integration and further enhancements
-
-All M1 milestones have been completed successfully. The foundation is solid and ready for M2 feature development.
+The Sharks News Aggregator is fully deployed and operational. The system automatically ingests news from 24 sources every 10 minutes, clusters similar stories, and presents them through a clean web interface accessible from anywhere via noBGP proxy.
