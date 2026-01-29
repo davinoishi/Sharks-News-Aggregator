@@ -1,9 +1,11 @@
 from fastapi import FastAPI, Depends, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
+from sqlalchemy import func, desc
 from typing import Optional, List
 from datetime import datetime, timedelta
 from pydantic import BaseModel, HttpUrl
+import ipaddress
 
 from app.core.config import settings
 from app.core.database import get_db
@@ -441,6 +443,276 @@ def reject_candidate_source(
     # TODO: Implement rejection logic
 
     raise HTTPException(status_code=501, detail="Not implemented yet")
+
+
+# ============================================================================
+# Admin Validation Endpoints (IP-protected)
+# ============================================================================
+
+def check_admin_access(request: Request):
+    """
+    Verify admin access via IP whitelist or API key.
+
+    Raises HTTPException if access denied.
+    """
+    client_ip = request.client.host
+
+    # Check API key header first (for external access)
+    api_key = request.headers.get("X-Admin-API-Key")
+    if settings.admin_api_key and api_key == settings.admin_api_key:
+        return True
+
+    # Check IP whitelist
+    allowed_networks = settings.admin_allowed_ips.split(",")
+    client_ip_obj = ipaddress.ip_address(client_ip)
+
+    for network_str in allowed_networks:
+        network_str = network_str.strip()
+        if not network_str:
+            continue
+        try:
+            # Handle both single IPs and CIDR notation
+            if "/" in network_str:
+                network = ipaddress.ip_network(network_str, strict=False)
+                if client_ip_obj in network:
+                    return True
+            else:
+                if client_ip == network_str:
+                    return True
+        except ValueError:
+            continue
+
+    raise HTTPException(
+        status_code=403,
+        detail=f"Admin access denied for IP {client_ip}"
+    )
+
+
+class ValidationLogItem(BaseModel):
+    id: int
+    raw_item_id: int
+    raw_item_title: Optional[str] = None
+    raw_item_url: Optional[str] = None
+    method: str
+    result: str
+    llm_response: Optional[str] = None
+    llm_model: Optional[str] = None
+    keyword_matched: Optional[bool] = None
+    entities_found: List[int] = []
+    reason: Optional[str] = None
+    latency_ms: Optional[int] = None
+    error_message: Optional[str] = None
+    created_at: datetime
+
+
+class ValidationStatsResponse(BaseModel):
+    total: int
+    approved: int
+    rejected: int
+    errors: int
+    by_method: dict
+    avg_latency_ms: Optional[float] = None
+    error_rate: float
+
+
+class OllamaHealthResponse(BaseModel):
+    healthy: bool
+    base_url: str
+    model: str
+    enabled: bool
+
+
+@app.get("/admin/validations")
+def list_validations(
+    request: Request,
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    method: Optional[str] = Query(None, description="Filter by method: llm, keyword, skip"),
+    result: Optional[str] = Query(None, description="Filter by result: approved, rejected, error"),
+    db: Session = Depends(get_db)
+):
+    """
+    List all validation logs with optional filters.
+
+    Protected by IP whitelist or API key.
+    """
+    check_admin_access(request)
+
+    from app.models import ValidationLog, ValidationMethod, ValidationResult, RawItem
+
+    query = db.query(ValidationLog).join(RawItem, ValidationLog.raw_item_id == RawItem.id)
+
+    if method:
+        try:
+            method_enum = ValidationMethod(method)
+            query = query.filter(ValidationLog.method == method_enum)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid method: {method}")
+
+    if result:
+        try:
+            result_enum = ValidationResult(result)
+            query = query.filter(ValidationLog.result == result_enum)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid result: {result}")
+
+    total = query.count()
+
+    logs = query.order_by(desc(ValidationLog.created_at)).offset(offset).limit(limit).all()
+
+    items = []
+    for log in logs:
+        raw_item = db.query(RawItem).filter(RawItem.id == log.raw_item_id).first()
+        items.append({
+            "id": log.id,
+            "raw_item_id": log.raw_item_id,
+            "raw_item_title": raw_item.raw_title[:100] if raw_item and raw_item.raw_title else None,
+            "raw_item_url": raw_item.canonical_url if raw_item else None,
+            "method": log.method.value,
+            "result": log.result.value,
+            "llm_response": log.llm_response,
+            "llm_model": log.llm_model,
+            "keyword_matched": log.keyword_matched,
+            "entities_found": log.entities_found or [],
+            "reason": log.reason,
+            "latency_ms": log.latency_ms,
+            "error_message": log.error_message,
+            "created_at": log.created_at
+        })
+
+    return {
+        "items": items,
+        "total": total,
+        "limit": limit,
+        "offset": offset
+    }
+
+
+@app.get("/admin/validations/stats", response_model=ValidationStatsResponse)
+def get_validation_stats(
+    request: Request,
+    since: Optional[str] = Query(None, description="Time filter: 24h, 7d, 30d"),
+    db: Session = Depends(get_db)
+):
+    """
+    Get aggregated validation statistics.
+
+    Protected by IP whitelist or API key.
+    """
+    check_admin_access(request)
+
+    from app.models import ValidationLog, ValidationMethod, ValidationResult
+
+    since_datetime = parse_since_parameter(since) if since else None
+
+    query = db.query(ValidationLog)
+    if since_datetime:
+        query = query.filter(ValidationLog.created_at >= since_datetime)
+
+    total = query.count()
+
+    approved = query.filter(ValidationLog.result == ValidationResult.APPROVED).count()
+    rejected = query.filter(ValidationLog.result == ValidationResult.REJECTED).count()
+    errors = query.filter(ValidationLog.result == ValidationResult.ERROR).count()
+
+    by_method = {
+        "llm": query.filter(ValidationLog.method == ValidationMethod.LLM).count(),
+        "keyword": query.filter(ValidationLog.method == ValidationMethod.KEYWORD).count(),
+        "skip": query.filter(ValidationLog.method == ValidationMethod.SKIP).count()
+    }
+
+    # Average latency for LLM checks
+    avg_latency = db.query(func.avg(ValidationLog.latency_ms)).filter(
+        ValidationLog.method == ValidationMethod.LLM,
+        ValidationLog.latency_ms.isnot(None)
+    )
+    if since_datetime:
+        avg_latency = avg_latency.filter(ValidationLog.created_at >= since_datetime)
+    avg_latency_result = avg_latency.scalar()
+
+    error_rate = (errors / total * 100) if total > 0 else 0.0
+
+    return {
+        "total": total,
+        "approved": approved,
+        "rejected": rejected,
+        "errors": errors,
+        "by_method": by_method,
+        "avg_latency_ms": round(avg_latency_result, 2) if avg_latency_result else None,
+        "error_rate": round(error_rate, 2)
+    }
+
+
+@app.get("/admin/validations/rejected")
+def list_rejected_validations(
+    request: Request,
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db)
+):
+    """
+    List articles that were rejected by validation.
+
+    Useful for reviewing potential false negatives.
+    Protected by IP whitelist or API key.
+    """
+    check_admin_access(request)
+
+    from app.models import ValidationLog, ValidationResult, RawItem
+
+    query = db.query(ValidationLog).join(
+        RawItem, ValidationLog.raw_item_id == RawItem.id
+    ).filter(
+        ValidationLog.result == ValidationResult.REJECTED
+    )
+
+    total = query.count()
+
+    logs = query.order_by(desc(ValidationLog.created_at)).offset(offset).limit(limit).all()
+
+    items = []
+    for log in logs:
+        raw_item = db.query(RawItem).filter(RawItem.id == log.raw_item_id).first()
+        items.append({
+            "id": log.id,
+            "raw_item_id": log.raw_item_id,
+            "raw_item_title": raw_item.raw_title if raw_item else None,
+            "raw_item_url": raw_item.canonical_url if raw_item else None,
+            "raw_item_description": raw_item.raw_description[:300] if raw_item and raw_item.raw_description else None,
+            "method": log.method.value,
+            "llm_response": log.llm_response,
+            "keyword_matched": log.keyword_matched,
+            "reason": log.reason,
+            "created_at": log.created_at
+        })
+
+    return {
+        "items": items,
+        "total": total,
+        "limit": limit,
+        "offset": offset
+    }
+
+
+@app.get("/admin/ollama/health", response_model=OllamaHealthResponse)
+def check_ollama_health(request: Request):
+    """
+    Check Ollama service health status.
+
+    Protected by IP whitelist or API key.
+    """
+    check_admin_access(request)
+
+    from app.services.ollama import health_check
+
+    is_healthy = health_check()
+
+    return {
+        "healthy": is_healthy,
+        "base_url": settings.ollama_base_url,
+        "model": settings.ollama_model,
+        "enabled": settings.llm_relevance_enabled
+    }
 
 
 # ============================================================================

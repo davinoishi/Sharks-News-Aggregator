@@ -2,13 +2,15 @@
 Enrichment worker tasks for processing raw items into story variants.
 Handles entity extraction, tagging, clustering, and headline generation.
 """
-from typing import List, Set, Tuple
+from typing import List, Set, Tuple, Optional
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 
 from app.tasks.celery_app import celery
 from app.core.database import SessionLocal
 from app.core.config import settings
+from app.models.validation_log import ValidationLog, ValidationMethod, ValidationResult
+from app.services.ollama import check_relevance as llm_check_relevance
 
 
 @celery.task(name="app.tasks.enrich.enrich_raw_item", bind=True)
@@ -44,13 +46,31 @@ def enrich_raw_item(self, raw_item_id: int):
         # Step 2.5: Check relevance unless source is dedicated to Sharks news
         source_metadata = source.extra_metadata or {}
         if not source_metadata.get('skip_relevance_check'):
-            if not check_sharks_relevance(db, raw_item.raw_title or '', entity_ids):
+            validation_result = validate_sharks_relevance(
+                db=db,
+                raw_item_id=raw_item_id,
+                title=raw_item.raw_title or '',
+                description=raw_item.raw_description or '',
+                entity_ids=entity_ids
+            )
+
+            if not validation_result:
                 print(f"  ⊘ Skipped (not Sharks-relevant): {raw_item.raw_title[:50]}...")
                 return {
                     "status": "skipped",
                     "reason": "not_sharks_relevant",
                     "raw_item_id": raw_item_id
                 }
+        else:
+            # Log that we skipped validation for dedicated sources
+            log_validation(
+                db=db,
+                raw_item_id=raw_item_id,
+                method=ValidationMethod.SKIP,
+                result=ValidationResult.APPROVED,
+                reason="Source has skip_relevance_check flag",
+                entity_ids=entity_ids
+            )
 
         # Step 3: Classify event type
         event_type_str = classify_event_type(text, entity_ids)
@@ -217,7 +237,7 @@ def _word_boundary_match(term: str, text: str) -> bool:
 
 def check_sharks_relevance(db: Session, title: str, entity_ids: List[int]) -> bool:
     """
-    Check if content is relevant to the San Jose Sharks.
+    Check if content is relevant to the San Jose Sharks using keyword matching.
 
     Uses the article TITLE only for keyword matching (not description),
     because aggregator sources like Google Alerts inject unrelated
@@ -255,6 +275,137 @@ def check_sharks_relevance(db: Session, title: str, entity_ids: List[int]) -> bo
         return True
 
     return False
+
+
+def validate_sharks_relevance(
+    db: Session,
+    raw_item_id: int,
+    title: str,
+    description: str,
+    entity_ids: List[int]
+) -> bool:
+    """
+    Validate article relevance using LLM with keyword fallback.
+
+    Flow:
+    1. If LLM enabled: Check via LLM
+    2. If LLM fails/timeout: Fall back to keyword check
+    3. Log all decisions to validation_logs table
+
+    Args:
+        db: Database session
+        raw_item_id: ID of raw_item being validated
+        title: Article title
+        description: Article description
+        entity_ids: Entity IDs found in text
+
+    Returns:
+        True if article is relevant, False otherwise
+    """
+    # Always check keyword result for comparison logging
+    keyword_matched = check_sharks_relevance(db, title, entity_ids)
+
+    # If LLM is disabled, use keyword check only
+    if not settings.llm_relevance_enabled:
+        log_validation(
+            db=db,
+            raw_item_id=raw_item_id,
+            method=ValidationMethod.KEYWORD,
+            result=ValidationResult.APPROVED if keyword_matched else ValidationResult.REJECTED,
+            reason="LLM disabled, using keyword check",
+            keyword_matched=keyword_matched,
+            entity_ids=entity_ids
+        )
+        return keyword_matched
+
+    # Try LLM validation
+    try:
+        llm_result = llm_check_relevance(title, description)
+
+        if llm_result.error:
+            # LLM had an error, fall back to keyword check
+            log_validation(
+                db=db,
+                raw_item_id=raw_item_id,
+                method=ValidationMethod.KEYWORD,
+                result=ValidationResult.APPROVED if keyword_matched else ValidationResult.REJECTED,
+                llm_response=llm_result.response,
+                llm_model=settings.ollama_model,
+                keyword_matched=keyword_matched,
+                entity_ids=entity_ids,
+                latency_ms=llm_result.latency_ms,
+                error_message=llm_result.error,
+                reason=f"LLM error, fell back to keyword: {llm_result.error[:100]}"
+            )
+            return keyword_matched
+
+        # LLM succeeded
+        is_relevant = llm_result.is_relevant
+        log_validation(
+            db=db,
+            raw_item_id=raw_item_id,
+            method=ValidationMethod.LLM,
+            result=ValidationResult.APPROVED if is_relevant else ValidationResult.REJECTED,
+            llm_response=llm_result.response,
+            llm_model=settings.ollama_model,
+            keyword_matched=keyword_matched,
+            entity_ids=entity_ids,
+            latency_ms=llm_result.latency_ms,
+            reason=f"LLM: {llm_result.response}" + (
+                f" (keyword would have {'matched' if keyword_matched else 'rejected'})"
+                if is_relevant != keyword_matched else ""
+            )
+        )
+        return is_relevant
+
+    except Exception as e:
+        # Unexpected error, fall back to keyword check
+        log_validation(
+            db=db,
+            raw_item_id=raw_item_id,
+            method=ValidationMethod.KEYWORD,
+            result=ValidationResult.APPROVED if keyword_matched else ValidationResult.REJECTED,
+            keyword_matched=keyword_matched,
+            entity_ids=entity_ids,
+            error_message=str(e)[:200],
+            reason=f"Exception during LLM check, fell back to keyword: {str(e)[:100]}"
+        )
+        return keyword_matched
+
+
+def log_validation(
+    db: Session,
+    raw_item_id: int,
+    method: ValidationMethod,
+    result: ValidationResult,
+    reason: Optional[str] = None,
+    llm_response: Optional[str] = None,
+    llm_model: Optional[str] = None,
+    keyword_matched: Optional[bool] = None,
+    entity_ids: Optional[List[int]] = None,
+    latency_ms: Optional[int] = None,
+    error_message: Optional[str] = None
+):
+    """
+    Log a validation decision to the database.
+
+    Always commits the log entry, even if the article will be rejected.
+    This provides an audit trail for admin review.
+    """
+    validation_log = ValidationLog(
+        raw_item_id=raw_item_id,
+        method=method,
+        result=result,
+        llm_response=llm_response,
+        llm_model=llm_model,
+        keyword_matched=keyword_matched,
+        entities_found=entity_ids or [],
+        reason=reason,
+        latency_ms=latency_ms,
+        error_message=error_message
+    )
+    db.add(validation_log)
+    db.commit()
 
 
 def classify_event_type(text: str, entities: List[int]) -> str:

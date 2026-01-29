@@ -25,6 +25,16 @@ class Settings(BaseSettings):
     # Rate limiting
     submission_rate_limit_per_ip: int = 10  # per hour
 
+    # Ollama LLM settings (Hailo-Ollama on Pi5-AI2)
+    ollama_base_url: str = "http://localhost:8000"
+    ollama_model: str = "qwen2.5-instruct:1.5b"
+    ollama_timeout_seconds: int = 30
+    llm_relevance_enabled: bool = True
+
+    # Admin settings
+    admin_allowed_ips: str = "127.0.0.1,192.168.0.0/24,10.0.0.0/8"
+    admin_api_key: str = ""  # Optional for external access
+
     class Config:
         env_file = ".env"
         case_sensitive = False

@@ -14,6 +14,7 @@ from app.models.submission import Submission, SubmissionStatus
 from app.models.candidate_source import CandidateSource
 from app.models.feed_cache import FeedCache
 from app.models.site_metrics import SiteMetrics
+from app.models.validation_log import ValidationLog, ValidationMethod, ValidationResult
 
 __all__ = [
     "Source",
@@ -37,4 +38,7 @@ __all__ = [
     "CandidateSource",
     "FeedCache",
     "SiteMetrics",
+    "ValidationLog",
+    "ValidationMethod",
+    "ValidationResult",
 ]
