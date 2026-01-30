@@ -10,6 +10,7 @@ export async function GET(request: NextRequest) {
       headers: {
         'Accept': 'application/json',
       },
+      cache: 'no-store',  // Disable caching to ensure fresh data on each request
     });
 
     if (!response.ok) {
