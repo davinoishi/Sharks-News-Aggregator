@@ -5,7 +5,6 @@ A comprehensive news aggregation and clustering system for San Jose Sharks hocke
 ## Live Demo
 
 - **Web App**: https://x2mq74oetjlz.nobgp.com
-- **API**: https://tz2k2lxwodrv.nobgp.com
 
 ## Features
 
@@ -15,7 +14,7 @@ A comprehensive news aggregation and clustering system for San Jose Sharks hocke
 - **Smart Clustering** - Groups similar stories from different sources using entity overlap and token similarity scoring
 - **Automated Roster Sync** - Daily synchronization with CapWages to keep full organization player database current
 - **Modern Web UI** - Next.js frontend with filtering, tag navigation, and responsive design
-- **Dynamic API Detection** - Frontend automatically detects local vs. remote access and uses appropriate API URL
+- **Server-Side API Proxy** - Next.js API routes proxy all backend requests, eliminating CORS and exposing only the frontend URL
 
 ### Entity Detection
 Automatically detects and links:
@@ -92,9 +91,8 @@ Background Workers:
 
 The application runs on a Raspberry Pi 5 (pi5-ai2) with public access via noBGP proxy.
 
-**Access URLs:**
+**Access URL:**
 - Web: https://x2mq74oetjlz.nobgp.com (or `localhost:3001` on Pi)
-- API: https://tz2k2lxwodrv.nobgp.com (or `localhost:8001` on Pi)
 
 **Deploy to Pi:**
 ```bash
@@ -119,6 +117,20 @@ docker-compose up -d
 # Access the application
 # Frontend: http://localhost:3000
 # API Docs: http://localhost:8000/docs
+```
+
+### Publishing with noBGP
+
+This project uses [noBGP](https://docs.nobgp.com/) to publish the web app to a public URL without exposing your local IP address or opening any ports in your router/firewall. The noBGP agent runs on your machine and creates a secure tunnel to the noBGP network.
+
+**AI-Assisted Deployment:** With the noBGP agent installed and the noBGP MCP server connected to Claude (or your LLM of choice), you can deploy this entire project through natural language commands. The LLM can pull the repo, start Docker containers, and publish services - all without you needing to SSH into the machine.
+
+```bash
+# Install noBGP agent on your endpoint
+# See https://docs.nobgp.com/ for installation
+
+# Publish a local service (example)
+nobgp service publish --port 3001 --title "Sharks News"
 ```
 
 ## Quick Start
@@ -235,8 +247,8 @@ DATABASE_URL=postgresql+psycopg://sharks:sharks@db:5432/sharks
 # Redis
 CELERY_BROKER_URL=redis://redis:6379/1
 
-# Frontend (optional - auto-detected at runtime)
-NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+# Frontend (server-side API proxy)
+INTERNAL_API_URL=http://api:8000
 ```
 
 ### RSS Sources
@@ -355,10 +367,10 @@ docker-compose up -d
 - Automatic purge of items older than 30 days
 - Production deployment on Raspberry Pi 5
 - Public access via noBGP proxy
-- Dynamic API URL detection for local/remote access
+- Server-side API proxy (no exposed backend URL)
+- LLM-based relevance checking (evaluation mode with Ollama)
 
 ### Planned
-- LLM-based relevance checking
 - User authentication and preferences
 - Search functionality
 - Push notifications (ntfy.sh)
