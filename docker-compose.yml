@@ -83,7 +83,8 @@ services:
   web:
     build: ./web
     environment:
-      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+      # Internal API URL for server-side proxying (Docker service name)
+      INTERNAL_API_URL: http://api:8000
     ports:
       - "3000:3000"
     depends_on:

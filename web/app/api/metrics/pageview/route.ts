@@ -1,0 +1,31 @@
+import { NextResponse } from 'next/server';
+import { INTERNAL_API_URL } from '../../config';
+
+export async function POST() {
+  const url = `${INTERNAL_API_URL}/metrics/pageview`;
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      return NextResponse.json(
+        { error: `Backend returned ${response.status}` },
+        { status: response.status }
+      );
+    }
+
+    const data = await response.json();
+    return NextResponse.json(data);
+  } catch (error) {
+    console.error('Error proxying to backend /metrics/pageview:', error);
+    return NextResponse.json(
+      { error: 'Failed to record pageview' },
+      { status: 502 }
+    );
+  }
+}

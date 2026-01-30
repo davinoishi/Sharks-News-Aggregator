@@ -1,28 +1,15 @@
 /**
- * API client for Sharks News Aggregator backend
+ * API client for Sharks News Aggregator.
+ *
+ * All requests go through Next.js API routes which proxy to the backend.
+ * This means the browser never needs to talk directly to the backend API,
+ * and the backend can remain internal (no public URL needed).
  */
 
 import { FeedResponse, ClusterDetailResponse, SiteStats } from './types';
 
-// Determine API URL based on where the page is accessed from
-const getApiBaseUrl = () => {
-  if (typeof window === 'undefined') {
-    // Server-side: use env var or default
-    return process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
-  }
-
-  const hostname = window.location.hostname;
-
-  // If accessed via noBGP proxy, use the noBGP API proxy
-  if (hostname.endsWith('.nobgp.com')) {
-    return 'https://tz2k2lxwodrv.nobgp.com';
-  }
-
-  // Local access: use local API (assumes API runs on port 8001)
-  return `http://${hostname}:8001`;
-};
-
-const API_BASE_URL = getApiBaseUrl();
+// All API calls go to our own Next.js API routes (same origin)
+const API_BASE_URL = '/api';
 
 export class ApiClient {
   static async getFeed(params?: {
