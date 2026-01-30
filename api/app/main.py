@@ -715,6 +715,84 @@ def check_ollama_health(request: Request):
     }
 
 
+@app.get("/admin/validations/llm-report")
+def get_llm_evaluation_report(
+    request: Request,
+    since: Optional[str] = Query(None, description="Time filter: 24h, 7d, 30d"),
+    db: Session = Depends(get_db)
+):
+    """
+    LLM Evaluation Report - Compare LLM decisions with keyword decisions.
+
+    Shows agreement/disagreement between LLM and keyword checks.
+    Useful for tuning the LLM or identifying false positives/negatives.
+
+    Protected by IP whitelist or API key.
+    """
+    check_admin_access(request)
+
+    from app.models import ValidationLog, ValidationMethod, ValidationResult, RawItem
+
+    since_datetime = parse_since_parameter(since) if since else None
+
+    query = db.query(ValidationLog)
+    if since_datetime:
+        query = query.filter(ValidationLog.created_at >= since_datetime)
+
+    # Get all validation logs that have both LLM response and keyword result
+    logs = query.filter(
+        ValidationLog.llm_response.isnot(None),
+        ValidationLog.keyword_matched.isnot(None)
+    ).order_by(desc(ValidationLog.created_at)).all()
+
+    # Analyze agreement
+    total_compared = 0
+    agreements = 0
+    disagreements = []
+
+    for log in logs:
+        total_compared += 1
+        llm_approved = log.llm_response and log.llm_response.upper().startswith("YES")
+        keyword_approved = log.keyword_matched
+
+        if llm_approved == keyword_approved:
+            agreements += 1
+        else:
+            raw_item = db.query(RawItem).filter(RawItem.id == log.raw_item_id).first()
+            disagreements.append({
+                "id": log.id,
+                "raw_item_id": log.raw_item_id,
+                "title": raw_item.raw_title[:100] if raw_item and raw_item.raw_title else None,
+                "url": raw_item.canonical_url if raw_item else None,
+                "llm_said": "YES" if llm_approved else "NO",
+                "keyword_said": "YES" if keyword_approved else "NO",
+                "llm_response": log.llm_response,
+                "decision_method": log.method.value,
+                "final_result": log.result.value,
+                "created_at": log.created_at
+            })
+
+    agreement_rate = (agreements / total_compared * 100) if total_compared > 0 else 0
+
+    # Categorize disagreements
+    llm_yes_keyword_no = [d for d in disagreements if d["llm_said"] == "YES"]
+    llm_no_keyword_yes = [d for d in disagreements if d["llm_said"] == "NO"]
+
+    return {
+        "summary": {
+            "total_compared": total_compared,
+            "agreements": agreements,
+            "disagreements": len(disagreements),
+            "agreement_rate": round(agreement_rate, 1),
+            "llm_more_permissive": len(llm_yes_keyword_no),
+            "llm_more_strict": len(llm_no_keyword_yes),
+            "evaluation_mode": settings.llm_evaluation_mode
+        },
+        "llm_approved_keyword_rejected": llm_yes_keyword_no[:20],
+        "llm_rejected_keyword_approved": llm_no_keyword_yes[:20]
+    }
+
+
 # ============================================================================
 # Utility Functions
 # ============================================================================

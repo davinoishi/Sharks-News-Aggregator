@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     ollama_model: str = "qwen2.5-instruct:1.5b"
     ollama_timeout_seconds: int = 30
     llm_relevance_enabled: bool = True
+    # Shadow mode: keyword decides, LLM evaluates for comparison report
+    llm_evaluation_mode: bool = False
 
     # Admin settings
     admin_allowed_ips: str = "127.0.0.1,192.168.0.0/24,10.0.0.0/8"

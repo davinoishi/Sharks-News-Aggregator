@@ -285,12 +285,12 @@ def validate_sharks_relevance(
     entity_ids: List[int]
 ) -> bool:
     """
-    Validate article relevance using LLM with keyword fallback.
+    Validate article relevance using keyword matching, with optional LLM evaluation.
 
-    Flow:
-    1. If LLM enabled: Check via LLM
-    2. If LLM fails/timeout: Fall back to keyword check
-    3. Log all decisions to validation_logs table
+    Modes:
+    1. LLM disabled: Keyword only
+    2. LLM evaluation mode: Keyword decides, LLM evaluates for comparison report
+    3. LLM enabled (not evaluation): LLM decides with keyword fallback
 
     Args:
         db: Database session
@@ -302,10 +302,10 @@ def validate_sharks_relevance(
     Returns:
         True if article is relevant, False otherwise
     """
-    # Always check keyword result for comparison logging
+    # Always check keyword result
     keyword_matched = check_sharks_relevance(db, title, entity_ids)
 
-    # If LLM is disabled, use keyword check only
+    # If LLM is completely disabled, use keyword only
     if not settings.llm_relevance_enabled:
         log_validation(
             db=db,
@@ -318,7 +318,52 @@ def validate_sharks_relevance(
         )
         return keyword_matched
 
-    # Try LLM validation
+    # LLM Evaluation Mode: Keyword decides, LLM evaluates for reporting
+    if settings.llm_evaluation_mode:
+        # Run LLM in background for evaluation only
+        try:
+            llm_result = llm_check_relevance(title, description)
+
+            if llm_result.error:
+                # Log evaluation with error
+                agreement = "N/A (LLM error)"
+            else:
+                llm_relevant = llm_result.is_relevant
+                if llm_relevant == keyword_matched:
+                    agreement = "AGREE"
+                elif keyword_matched and not llm_relevant:
+                    agreement = "DISAGREE: keyword=YES, LLM=NO"
+                else:
+                    agreement = "DISAGREE: keyword=NO, LLM=YES"
+
+            log_validation(
+                db=db,
+                raw_item_id=raw_item_id,
+                method=ValidationMethod.KEYWORD,  # Keyword is the decision maker
+                result=ValidationResult.APPROVED if keyword_matched else ValidationResult.REJECTED,
+                llm_response=llm_result.response if not llm_result.error else None,
+                llm_model=settings.ollama_model,
+                keyword_matched=keyword_matched,
+                entity_ids=entity_ids,
+                latency_ms=llm_result.latency_ms,
+                error_message=llm_result.error if llm_result.error else None,
+                reason=f"[EVAL MODE] {agreement} | Decision: keyword"
+            )
+        except Exception as e:
+            log_validation(
+                db=db,
+                raw_item_id=raw_item_id,
+                method=ValidationMethod.KEYWORD,
+                result=ValidationResult.APPROVED if keyword_matched else ValidationResult.REJECTED,
+                keyword_matched=keyword_matched,
+                entity_ids=entity_ids,
+                error_message=str(e)[:200],
+                reason=f"[EVAL MODE] LLM exception | Decision: keyword"
+            )
+
+        return keyword_matched  # Keyword always decides in eval mode
+
+    # LLM Decision Mode: LLM decides with keyword fallback
     try:
         llm_result = llm_check_relevance(title, description)
 

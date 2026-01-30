@@ -47,6 +47,8 @@ services:
       OLLAMA_MODEL: qwen2.5-instruct:1.5b
       OLLAMA_TIMEOUT_SECONDS: "30"
       LLM_RELEVANCE_ENABLED: "true"
+      # Shadow mode: keyword decides, LLM evaluates for comparison
+      LLM_EVALUATION_MODE: "true"
       # Admin settings (include Docker bridge network)
       ADMIN_ALLOWED_IPS: "127.0.0.1,192.168.0.0/24,10.0.0.0/8,172.16.0.0/12"
     ports:
@@ -70,6 +72,8 @@ services:
       OLLAMA_MODEL: qwen2.5-instruct:1.5b
       OLLAMA_TIMEOUT_SECONDS: "30"
       LLM_RELEVANCE_ENABLED: "true"
+      # Shadow mode: keyword decides, LLM evaluates for comparison
+      LLM_EVALUATION_MODE: "true"
     depends_on:
       db:
         condition: service_healthy
