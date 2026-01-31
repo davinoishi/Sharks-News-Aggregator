@@ -455,32 +455,49 @@ def check_admin_access(request: Request):
 
     Raises HTTPException if access denied.
     """
-    client_ip = request.client.host
-
     # Check API key header first (for external access)
     api_key = request.headers.get("X-Admin-API-Key")
     if settings.admin_api_key and api_key == settings.admin_api_key:
         return True
 
-    # Check IP whitelist
-    allowed_networks = settings.admin_allowed_ips.split(",")
-    client_ip_obj = ipaddress.ip_address(client_ip)
+    # Get client IP
+    client_ip = request.client.host
 
+    # Try to parse and validate client IP
+    try:
+        client_ip_obj = ipaddress.ip_address(client_ip)
+    except ValueError:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Admin access denied for invalid IP {client_ip}"
+        )
+
+    # Always allow loopback addresses (localhost)
+    if client_ip_obj.is_loopback:
+        return True
+
+    # Check if IP is in allowed networks list
+    allowed_networks = settings.admin_allowed_ips.split(",")
     for network_str in allowed_networks:
         network_str = network_str.strip()
         if not network_str:
             continue
         try:
-            # Handle both single IPs and CIDR notation
             if "/" in network_str:
                 network = ipaddress.ip_network(network_str, strict=False)
                 if client_ip_obj in network:
                     return True
             else:
-                if client_ip == network_str:
+                allowed_ip = ipaddress.ip_address(network_str)
+                if client_ip_obj == allowed_ip:
                     return True
         except ValueError:
             continue
+
+    # Also allow any private network IP (Docker, local proxies like noBGP agent)
+    # These are inherently trusted as they're local connections
+    if client_ip_obj.is_private:
+        return True
 
     raise HTTPException(
         status_code=403,
