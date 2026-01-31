@@ -51,6 +51,12 @@ services:
       LLM_EVALUATION_MODE: "true"
       # Admin settings (include Docker bridge network)
       ADMIN_ALLOWED_IPS: "127.0.0.1,192.168.0.0/24,10.0.0.0/8,172.16.0.0/12"
+      # BlueSky posting settings
+      BLUESKY_ENABLED: "true"
+      BLUESKY_HANDLE: "sjsharks-news.bsky.social"
+      BLUESKY_APP_PASSWORD: ""  # Set this to your app password
+      BLUESKY_MIN_SOURCES: "1"
+      BLUESKY_POST_INTERVAL_MINUTES: "15"
     ports:
       - "8001:8000"
     depends_on:
@@ -74,6 +80,12 @@ services:
       LLM_RELEVANCE_ENABLED: "true"
       # Shadow mode: keyword decides, LLM evaluates for comparison
       LLM_EVALUATION_MODE: "true"
+      # BlueSky posting settings
+      BLUESKY_ENABLED: "true"
+      BLUESKY_HANDLE: "sjsharks-news.bsky.social"
+      BLUESKY_APP_PASSWORD: ""  # Set this to your app password
+      BLUESKY_MIN_SOURCES: "1"
+      BLUESKY_POST_INTERVAL_MINUTES: "15"
     depends_on:
       db:
         condition: service_healthy

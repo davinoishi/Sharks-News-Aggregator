@@ -811,6 +811,184 @@ def get_llm_evaluation_report(
 
 
 # ============================================================================
+# Admin BlueSky Endpoints (IP-protected)
+# ============================================================================
+
+class BlueSkyHealthResponse(BaseModel):
+    healthy: bool
+    enabled: bool
+    handle: str
+
+
+class BlueSkyPostItem(BaseModel):
+    id: int
+    cluster_id: int
+    cluster_headline: Optional[str] = None
+    status: str
+    post_uri: Optional[str] = None
+    post_text: Optional[str] = None
+    error_message: Optional[str] = None
+    retry_count: int
+    posted_at: Optional[datetime] = None
+    created_at: datetime
+
+
+class BlueSkyStatsResponse(BaseModel):
+    total_posts: int
+    posted: int
+    failed: int
+    pending: int
+    skipped: int
+    last_posted_at: Optional[datetime] = None
+
+
+@app.get("/admin/bluesky/health", response_model=BlueSkyHealthResponse)
+def check_bluesky_health(request: Request):
+    """
+    Check BlueSky service health status.
+
+    Protected by IP whitelist or API key.
+    """
+    check_admin_access(request)
+
+    from app.services.bluesky import health_check
+
+    is_healthy = health_check()
+
+    return {
+        "healthy": is_healthy,
+        "enabled": settings.bluesky_enabled,
+        "handle": settings.bluesky_handle or "(not configured)"
+    }
+
+
+@app.get("/admin/bluesky/stats", response_model=BlueSkyStatsResponse)
+def get_bluesky_stats(
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """
+    Get BlueSky posting statistics.
+
+    Protected by IP whitelist or API key.
+    """
+    check_admin_access(request)
+
+    from app.models.bluesky_post import BlueSkyPost, PostStatus
+
+    total = db.query(BlueSkyPost).count()
+    posted = db.query(BlueSkyPost).filter(BlueSkyPost.status == PostStatus.POSTED).count()
+    failed = db.query(BlueSkyPost).filter(BlueSkyPost.status == PostStatus.FAILED).count()
+    pending = db.query(BlueSkyPost).filter(BlueSkyPost.status == PostStatus.PENDING).count()
+    skipped = db.query(BlueSkyPost).filter(BlueSkyPost.status == PostStatus.SKIPPED).count()
+
+    # Get last posted time
+    last_post = db.query(BlueSkyPost).filter(
+        BlueSkyPost.status == PostStatus.POSTED
+    ).order_by(desc(BlueSkyPost.posted_at)).first()
+
+    return {
+        "total_posts": total,
+        "posted": posted,
+        "failed": failed,
+        "pending": pending,
+        "skipped": skipped,
+        "last_posted_at": last_post.posted_at if last_post else None
+    }
+
+
+@app.get("/admin/bluesky/posts")
+def list_bluesky_posts(
+    request: Request,
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    status: Optional[str] = Query(None, description="Filter by status: pending, posted, failed, skipped"),
+    db: Session = Depends(get_db)
+):
+    """
+    List BlueSky post records.
+
+    Protected by IP whitelist or API key.
+    """
+    check_admin_access(request)
+
+    from app.models import Cluster
+    from app.models.bluesky_post import BlueSkyPost, PostStatus
+
+    query = db.query(BlueSkyPost)
+
+    if status:
+        try:
+            status_enum = PostStatus(status)
+            query = query.filter(BlueSkyPost.status == status_enum)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid status: {status}")
+
+    total = query.count()
+
+    posts = query.order_by(desc(BlueSkyPost.created_at)).offset(offset).limit(limit).all()
+
+    items = []
+    for post in posts:
+        cluster = db.query(Cluster).filter(Cluster.id == post.cluster_id).first()
+        items.append({
+            "id": post.id,
+            "cluster_id": post.cluster_id,
+            "cluster_headline": cluster.headline[:100] if cluster else None,
+            "status": post.status.value,
+            "post_uri": post.post_uri,
+            "post_text": post.post_text,
+            "error_message": post.error_message,
+            "retry_count": post.retry_count,
+            "posted_at": post.posted_at,
+            "created_at": post.created_at
+        })
+
+    return {
+        "items": items,
+        "total": total,
+        "limit": limit,
+        "offset": offset
+    }
+
+
+@app.post("/admin/bluesky/post/{cluster_id}")
+def trigger_bluesky_post(
+    cluster_id: int,
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """
+    Manually trigger a BlueSky post for a specific cluster.
+
+    Protected by IP whitelist or API key.
+    """
+    check_admin_access(request)
+
+    from app.models import Cluster, ClusterStatus
+
+    # Verify cluster exists
+    cluster = db.query(Cluster).filter(
+        Cluster.id == cluster_id,
+        Cluster.status == ClusterStatus.ACTIVE
+    ).first()
+
+    if not cluster:
+        raise HTTPException(status_code=404, detail="Cluster not found")
+
+    # Trigger the task
+    from app.tasks.bluesky import post_cluster
+    result = post_cluster.delay(cluster_id)
+
+    return {
+        "status": "queued",
+        "task_id": result.id,
+        "cluster_id": cluster_id,
+        "headline": cluster.headline
+    }
+
+
+# ============================================================================
 # Utility Functions
 # ============================================================================
 

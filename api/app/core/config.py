@@ -37,6 +37,13 @@ class Settings(BaseSettings):
     admin_allowed_ips: str = "127.0.0.1,192.168.0.0/24,10.0.0.0/8"
     admin_api_key: str = ""  # Optional for external access
 
+    # BlueSky posting settings
+    bluesky_enabled: bool = False
+    bluesky_handle: str = ""
+    bluesky_app_password: str = ""
+    bluesky_min_sources: int = 1
+    bluesky_post_interval_minutes: int = 15
+
     class Config:
         env_file = ".env"
         case_sensitive = False

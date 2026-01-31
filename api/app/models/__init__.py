@@ -15,6 +15,7 @@ from app.models.candidate_source import CandidateSource
 from app.models.feed_cache import FeedCache
 from app.models.site_metrics import SiteMetrics
 from app.models.validation_log import ValidationLog, ValidationMethod, ValidationResult
+from app.models.bluesky_post import BlueSkyPost, PostStatus
 
 __all__ = [
     "Source",
@@ -41,4 +42,6 @@ __all__ = [
     "ValidationLog",
     "ValidationMethod",
     "ValidationResult",
+    "BlueSkyPost",
+    "PostStatus",
 ]

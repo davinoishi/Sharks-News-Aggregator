@@ -5,7 +5,7 @@ celery = Celery(
     "sharks",
     broker=settings.celery_broker_url,
     backend=settings.celery_result_backend,
-    include=["app.tasks.ingest", "app.tasks.enrich", "app.tasks.submissions", "app.tasks.sync_roster", "app.tasks.maintenance"]
+    include=["app.tasks.ingest", "app.tasks.enrich", "app.tasks.submissions", "app.tasks.sync_roster", "app.tasks.maintenance", "app.tasks.bluesky"]
 )
 
 # Celery configuration
@@ -37,5 +37,13 @@ celery.conf.beat_schedule = {
     "purge-old-items": {
         "task": "app.tasks.maintenance.purge_old_items",
         "schedule": 86400.0,  # Once per day (24 hours)
+    },
+    "bluesky-post-new-clusters": {
+        "task": "app.tasks.bluesky.post_new_clusters",
+        "schedule": settings.bluesky_post_interval_minutes * 60.0,  # Default 15 minutes
+    },
+    "bluesky-retry-failed-posts": {
+        "task": "app.tasks.bluesky.retry_failed_posts",
+        "schedule": 3600.0,  # Every hour
     },
 }
