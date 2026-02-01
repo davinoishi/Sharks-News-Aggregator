@@ -108,7 +108,7 @@ export default function Home() {
           <div className="flex items-center gap-4 mb-2">
             <Image
               src="/logo.png"
-              alt="San Jose Sharks Logo"
+              alt="Sharks News Logo"
               width={64}
               height={64}
               className="object-contain"

@@ -12,6 +12,7 @@ const TAG_OPTIONS = [
   { value: 'injury', label: 'Injury' },
   { value: 'lineup', label: 'Lineup' },
   { value: 'signing', label: 'Signing' },
+  { value: 'waiver', label: 'Waiver' },
   { value: 'game', label: 'Game' },
   { value: 'barracuda', label: 'Barracuda' },
 ];
