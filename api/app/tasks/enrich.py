@@ -545,6 +545,29 @@ def match_or_create_cluster(
     # We still store all entities on the variant, but use only player/coach/staff for matching
     clustering_entities = filter_team_entities(db, entities)
 
+    # Step 2.5: Check for near-identical titles (syndicated content detection)
+    # This catches wire service articles republished by multiple outlets
+    variant_title_normalized = normalize_title_for_matching(variant.title)
+    for cluster in candidates:
+        # Get a representative title from this cluster
+        cluster_title = cluster.headline
+        cluster_title_normalized = normalize_title_for_matching(cluster_title)
+
+        title_sim = title_similarity(variant_title_normalized, cluster_title_normalized)
+        if title_sim >= 0.85:  # 85% title similarity = likely same article
+            print(f"  → Title match ({title_sim:.2f}): clustering with #{cluster.id}")
+            # Auto-match to this cluster
+            update_cluster_metadata(db, cluster, variant, tokens, entities, source)
+            cluster_variant = ClusterVariant(
+                cluster_id=cluster.id,
+                variant_id=variant.id,
+                similarity_score=title_sim
+            )
+            db.add(cluster_variant)
+            variant.cluster_id = cluster.id
+            db.commit()
+            return cluster.id
+
     # Step 3: Score similarity against each candidate
     best_cluster = None
     best_score = 0.0
@@ -683,6 +706,55 @@ def event_compatibility_score(event_v: str, event_c: str) -> float:
         return 0.5
 
     return 0.0
+
+
+def normalize_title_for_matching(title: str) -> str:
+    """
+    Normalize a title for similarity matching.
+
+    Strips common suffixes like publication names, removes punctuation,
+    and lowercases to detect syndicated content.
+
+    Examples:
+        "Farabee scores winner - Western Wheel" -> "farabee scores winner"
+        "Farabee scores winner | paNOW" -> "farabee scores winner"
+    """
+    import re
+
+    if not title:
+        return ""
+
+    # Lowercase
+    title = title.lower()
+
+    # Remove common separators and everything after them (publication names)
+    # Common patterns: " - Publication", " | Publication", " – Publication"
+    title = re.split(r'\s*[-–|]\s*(?=[A-Z]|[a-z]+\.[a-z]+)', title)[0]
+
+    # Remove punctuation
+    title = re.sub(r'[^\w\s]', ' ', title)
+
+    # Normalize whitespace
+    title = ' '.join(title.split())
+
+    return title.strip()
+
+
+def title_similarity(title1: str, title2: str) -> float:
+    """
+    Calculate similarity between two normalized titles.
+
+    Uses SequenceMatcher for fuzzy string matching.
+
+    Returns:
+        Similarity score between 0.0 and 1.0
+    """
+    from difflib import SequenceMatcher
+
+    if not title1 or not title2:
+        return 0.0
+
+    return SequenceMatcher(None, title1, title2).ratio()
 
 
 def is_match(E: float, T: float, S: float, entities_v: List[int]) -> bool:
