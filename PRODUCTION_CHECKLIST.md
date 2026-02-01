@@ -14,9 +14,9 @@ A checklist of tasks for deploying the Sharks News Aggregator to production.
 
 - [x] **Update CORS origins** — Set `ALLOWED_ORIGINS=*` for public API access
 - [x] **Rate limiting** — 10 submissions per IP per hour on `/submit/link`
-- [ ] **Disable API documentation** — Set `docs_url=None, redoc_url=None` in FastAPI app (optional)
-- [ ] **Protect admin endpoints** — Currently return 501 (not implemented)
-- [ ] **Review CSP headers** — Add Content-Security-Policy if needed
+- [x] **Disable API documentation** — Set `docs_url=None, redoc_url=None` in FastAPI app (optional)
+- [x] **Protect admin endpoints** — Currently return 501 (not implemented)
+- [x] **Review CSP headers** — Add Content-Security-Policy if needed
 
 ## Environment Configuration
 
@@ -35,7 +35,7 @@ A checklist of tasks for deploying the Sharks News Aggregator to production.
 - [x] **Auto-restart enabled** — `restart: unless-stopped` on all containers
 - [x] **Database persistence** — PostgreSQL data persisted via Docker volumes
 - [ ] **Database backups** — Set up automated PostgreSQL backups
-- [ ] **Monitoring** — Set up health check monitoring (uptime monitor on `/health`)
+- [x] **Monitoring** — Set up health check monitoring (uptime monitor on `/health`)
 - [ ] **Log aggregation** — Consider centralizing logs
 
 ## Performance
