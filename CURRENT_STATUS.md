@@ -1,6 +1,6 @@
 # Current Status - Sharks News Aggregator
 
-**Last Updated:** 2026-01-29
+**Last Updated:** 2026-01-31
 
 ## Production Deployment
 
@@ -12,6 +12,7 @@ The Sharks News Aggregator is now live and running on a Raspberry Pi 5 (pi5-ai2)
 |---------|------------|-------------------|
 | Web App | https://x2mq74oetjlz.nobgp.com | http://localhost:3001 |
 | API | https://tz2k2lxwodrv.nobgp.com | http://localhost:8001 |
+| BlueSky | [@sjsharks-news.bsky.social](https://bsky.app/profile/sjsharks-news.bsky.social) | N/A |
 
 ### Infrastructure
 
@@ -77,6 +78,15 @@ Entities:          77+ (synced daily from CapWages)
 - Trending indicator for popular stories
 - Dynamic API URL detection (works locally and via noBGP)
 - Privacy-respecting metrics display
+
+### BlueSky Integration (100% Complete)
+
+- Automatic posting of news clusters to [@sjsharks-news.bsky.social](https://bsky.app/profile/sjsharks-news.bsky.social)
+- Runs every 15 minutes via Celery Beat
+- Posts include headline, event type, source count, and hashtags (#SJSharks #Sharks)
+- Rate-limited (5-minute cooldown between posts)
+- Failed post retry mechanism (up to 3 attempts)
+- Tracks all posts in `bluesky_posts` database table
 
 ### Production Deployment (100% Complete)
 
@@ -176,12 +186,15 @@ Current implementation uses keyword matching. May miss entities referenced by ni
 
 ## Future Enhancements
 
+### Completed
+
+- [x] LLM-based relevance checking (evaluation mode with Ollama)
+- [x] Social media integration (BlueSky automatic posting)
+
 ### Planned
 
-- [ ] LLM-based relevance checking for better article filtering
 - [ ] Search functionality across articles
 - [ ] Push notifications via ntfy.sh
-- [ ] Social media integration (BlueSky, X)
 - [ ] User preferences and saved filters
 
 ### Under Consideration
@@ -202,4 +215,4 @@ Current implementation uses keyword matching. May miss entities referenced by ni
 
 ## Summary
 
-The Sharks News Aggregator is fully deployed and operational. The system automatically ingests news from 24 sources every 10 minutes, clusters similar stories, and presents them through a clean web interface accessible from anywhere via noBGP proxy.
+The Sharks News Aggregator is fully deployed and operational. The system automatically ingests news from 24 sources every 10 minutes, clusters similar stories, and presents them through a clean web interface accessible from anywhere via noBGP proxy. New stories are automatically posted to BlueSky at [@sjsharks-news.bsky.social](https://bsky.app/profile/sjsharks-news.bsky.social).

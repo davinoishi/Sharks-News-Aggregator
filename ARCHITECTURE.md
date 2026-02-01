@@ -10,6 +10,7 @@ The application runs on a **Raspberry Pi 5** (pi5-ai2) with public access via no
 |---------|------------|-------------------|
 | Web App | https://x2mq74oetjlz.nobgp.com | http://localhost:3001 |
 | API | https://tz2k2lxwodrv.nobgp.com | http://localhost:8001 |
+| BlueSky | https://bsky.app/profile/sjsharks-news.bsky.social | N/A |
 
 ## Tech Stack Overview
 
@@ -43,6 +44,7 @@ The application runs as 6 Docker containers orchestrated by Docker Compose:
   - `clusters` - Grouped stories (same event, multiple sources)
   - `entities` - Players (synced daily from CapWages), coaches, teams
   - `tags` - Content classification (Trade, Injury, Rumors, etc.)
+  - `bluesky_posts` - BlueSky post tracking (posted, failed, skipped)
 
 ### 2. `redis` (Redis)
 - **Image:** `redis:7`
@@ -71,6 +73,8 @@ The application runs as 6 Docker containers orchestrated by Docker Compose:
   - `process_submission` - Handle user-submitted links
   - `sync_sharks_roster` - Sync player entities from CapWages
   - `purge_old_items` - Remove clusters/items older than 30 days
+  - `post_new_clusters` - Post new clusters to BlueSky
+  - `retry_failed_posts` - Retry failed BlueSky posts
 
 ### 5. `beat` (Celery Beat)
 - **Purpose:** Schedules periodic tasks
@@ -79,6 +83,8 @@ The application runs as 6 Docker containers orchestrated by Docker Compose:
   | Task | Frequency | Description |
   |------|-----------|-------------|
   | `ingest_all_sources` | Every 10 minutes | Fetch RSS from all 24 sources |
+  | `post_new_clusters` | Every 15 minutes | Post new clusters to BlueSky |
+  | `retry_failed_posts` | Hourly | Retry failed BlueSky posts |
   | `sync_sharks_roster` | Daily | Sync roster from CapWages (77+ players) |
   | `cleanup_expired_cache` | Hourly | Remove expired cache entries |
   | `purge_old_items` | Daily | Remove items older than 30 days |

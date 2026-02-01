@@ -7,6 +7,7 @@ A checklist of tasks for deploying the Sharks News Aggregator to production.
 **Live URLs:**
 - Web: https://x2mq74oetjlz.nobgp.com
 - API: https://tz2k2lxwodrv.nobgp.com
+- BlueSky: https://bsky.app/profile/sjsharks-news.bsky.social
 
 ---
 
@@ -23,7 +24,7 @@ A checklist of tasks for deploying the Sharks News Aggregator to production.
 - [x] **Production docker-compose** — Using `docker-compose.pi.yml` with ports 3001/8001
 - [x] **CORS configuration** — `ALLOWED_ORIGINS=*`
 - [x] **Dynamic API URL detection** — Frontend auto-detects local vs. noBGP access
-- [ ] **Change default database password** — Currently using default `sharks` password
+- [x] **Change default database password** — Credentials now loaded from `.env` file (not in git)
 - [ ] **Set appropriate log levels** — Reduce verbosity if needed
 
 ## Infrastructure
@@ -52,6 +53,14 @@ A checklist of tasks for deploying the Sharks News Aggregator to production.
 - [x] **Automated roster sync** — Daily sync keeps organization current
 - [x] **RSS ingestion working** — Every 10 minutes via Celery Beat
 - [x] **Old item purge** — Daily cleanup of items older than 30 days
+
+## Social Media Integration
+
+- [x] **BlueSky integration** — Automatic posting to [@sjsharks-news.bsky.social](https://bsky.app/profile/sjsharks-news.bsky.social)
+- [x] **BlueSky scheduling** — Posts new clusters every 15 minutes
+- [x] **BlueSky rate limiting** — 5-minute cooldown between posts
+- [x] **BlueSky retry mechanism** — Failed posts retried hourly (up to 3 times)
+- [x] **BlueSky credentials** — App password stored in `.env` file (not in git)
 
 ## Testing
 
@@ -97,6 +106,12 @@ from app.tasks.sync_roster import sync_sharks_roster
 sync_sharks_roster.delay()
 "
 
+# Trigger manual BlueSky posting
+docker compose -f docker-compose.pi.yml exec api python -c "
+from app.tasks.bluesky import post_new_clusters
+post_new_clusters.delay()
+"
+
 # Check cluster count
 docker compose -f docker-compose.pi.yml exec db psql -U sharks -c "SELECT COUNT(*) FROM clusters WHERE status = 'active';"
 
@@ -106,13 +121,16 @@ docker compose -f docker-compose.pi.yml exec db psql -U sharks -c "SELECT COUNT(
 
 ---
 
+## Completed Enhancements
+
+- [x] **LLM-based relevance filtering** — Evaluation mode with Ollama on Hailo accelerator
+- [x] **Social media posting** — BlueSky integration complete
+
 ## Future Enhancements (Post-Launch)
 
 These are not blockers for production but noted for future work:
 
-- [ ] **LLM-based relevance filtering** — Improved article filtering
 - [ ] **Search functionality** — Full-text search across articles
 - [ ] **Push notifications** — ntfy.sh integration
-- [ ] **Social media posting** — BlueSky, X, Threads integration
 - [ ] **User authentication** — If adding personalization features
 - [ ] **Custom domain** — Configure custom domain via noBGP

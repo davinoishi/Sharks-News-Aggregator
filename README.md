@@ -5,6 +5,7 @@ A comprehensive news aggregation and clustering system for San Jose Sharks hocke
 ## Live Demo
 
 - **Web App**: https://x2mq74oetjlz.nobgp.com
+- **BlueSky**: [@sjsharks-news.bsky.social](https://bsky.app/profile/sjsharks-news.bsky.social)
 
 ## Features
 
@@ -13,6 +14,7 @@ A comprehensive news aggregation and clustering system for San Jose Sharks hocke
 - **Enrichment Pipeline** - Extracts entities (players, coaches), assigns tags, and classifies event types using keyword matching and NLP
 - **Smart Clustering** - Groups similar stories from different sources using entity overlap and token similarity scoring
 - **Automated Roster Sync** - Daily synchronization with CapWages to keep full organization player database current
+- **BlueSky Integration** - Automatic posting of news clusters to [@sjsharks-news.bsky.social](https://bsky.app/profile/sjsharks-news.bsky.social)
 - **Modern Web UI** - Next.js frontend with filtering, tag navigation, and responsive design
 - **Server-Side API Proxy** - Next.js API routes proxy all backend requests, eliminating CORS and exposing only the frontend URL
 
@@ -222,6 +224,12 @@ curl "http://localhost:8000/health"
 - Queues them for enrichment
 - Auto-clusters similar stories
 
+**BlueSky Posting** - Runs every 15 minutes
+- Posts new story clusters to [@sjsharks-news.bsky.social](https://bsky.app/profile/sjsharks-news.bsky.social)
+- Includes headline, event type, source count, and hashtags
+- Rate-limited to avoid spam (5-minute cooldown between posts)
+- Retries failed posts hourly (up to 3 attempts)
+
 **Roster Sync** - Runs daily
 - Syncs full Sharks organization from CapWages (NHL + AHL + reserves)
 - Adds new players, updates existing ones
@@ -241,14 +249,21 @@ Key settings in `.env`:
 # Ingestion
 INGEST_INTERVAL_MINUTES=10
 
-# Database
-DATABASE_URL=postgresql+psycopg://sharks:sharks@db:5432/sharks
+# Database (set via .env file - use strong passwords!)
+DATABASE_URL=postgresql+psycopg://user:password@db:5432/sharks
 
 # Redis
 CELERY_BROKER_URL=redis://redis:6379/1
 
 # Frontend (server-side API proxy)
 INTERNAL_API_URL=http://api:8000
+
+# BlueSky Integration
+BLUESKY_ENABLED=true
+BLUESKY_HANDLE=sjsharks-news.bsky.social
+BLUESKY_APP_PASSWORD=your_app_password  # Get from bsky.app > Settings > App Passwords
+BLUESKY_MIN_SOURCES=1
+BLUESKY_POST_INTERVAL_MINUTES=15
 ```
 
 ### RSS Sources
@@ -369,12 +384,12 @@ docker-compose up -d
 - Public access via noBGP proxy
 - Server-side API proxy (no exposed backend URL)
 - LLM-based relevance checking (evaluation mode with Ollama)
+- BlueSky social media integration (automatic posting)
 
 ### Planned
 - User authentication and preferences
 - Search functionality
 - Push notifications (ntfy.sh)
-- Social media integration
 
 ## License
 
