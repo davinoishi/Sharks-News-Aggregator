@@ -125,7 +125,16 @@ export default function Home() {
             </div>
           </div>
           <p className="text-gray-600 ml-20">
-            One story per event. All the Sharks news, none of the duplicates.
+            Built by a Sharks fan for Sharks fans. Consolidates Sharks news into one place. It is missing news from popular X(Twitter) feeds because the X API costs $ to access. This feed is also published to{' '}
+            <a
+              href="https://bsky.app/profile/sjsharks-news.bsky.social"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 hover:underline"
+            >
+              BlueSky
+            </a>
+            .
           </p>
         </div>
 
