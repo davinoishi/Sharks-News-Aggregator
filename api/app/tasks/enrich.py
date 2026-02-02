@@ -13,6 +13,68 @@ from app.models.validation_log import ValidationLog, ValidationMethod, Validatio
 from app.services.ollama import check_relevance as llm_check_relevance
 
 
+# NHL opponent teams mapping (excluding Sharks)
+# Maps team names and common variations to 3-letter abbreviations
+NHL_OPPONENT_TEAMS = {
+    'ducks': 'ANA', 'anaheim': 'ANA',
+    'coyotes': 'UTA', 'utah': 'UTA',
+    'bruins': 'BOS', 'boston': 'BOS',
+    'sabres': 'BUF', 'buffalo': 'BUF',
+    'flames': 'CGY', 'calgary': 'CGY',
+    'hurricanes': 'CAR', 'carolina': 'CAR',
+    'blackhawks': 'CHI', 'chicago': 'CHI',
+    'avalanche': 'COL', 'colorado': 'COL',
+    'blue jackets': 'CBJ', 'columbus': 'CBJ',
+    'stars': 'DAL', 'dallas': 'DAL',
+    'red wings': 'DET', 'detroit': 'DET',
+    'oilers': 'EDM', 'edmonton': 'EDM',
+    'panthers': 'FLA', 'florida': 'FLA',
+    'kings': 'LAK', 'los angeles': 'LAK',
+    'wild': 'MIN', 'minnesota': 'MIN',
+    'canadiens': 'MTL', 'montreal': 'MTL', 'habs': 'MTL',
+    'predators': 'NSH', 'nashville': 'NSH',
+    'devils': 'NJD', 'new jersey': 'NJD',
+    'islanders': 'NYI',
+    'rangers': 'NYR',
+    'senators': 'OTT', 'ottawa': 'OTT',
+    'flyers': 'PHI', 'philadelphia': 'PHI',
+    'penguins': 'PIT', 'pittsburgh': 'PIT',
+    'kraken': 'SEA', 'seattle': 'SEA',
+    'blues': 'STL', 'st louis': 'STL', 'st. louis': 'STL',
+    'lightning': 'TBL', 'tampa bay': 'TBL', 'tampa': 'TBL',
+    'maple leafs': 'TOR', 'toronto': 'TOR', 'leafs': 'TOR',
+    'canucks': 'VAN', 'vancouver': 'VAN',
+    'golden knights': 'VGK', 'vegas': 'VGK',
+    'capitals': 'WSH', 'washington': 'WSH',
+    'jets': 'WPG', 'winnipeg': 'WPG',
+}
+
+
+def extract_game_identifier(text: str, published_at: datetime) -> Optional[str]:
+    """
+    Extract game identifier (opponent-date) from game-related content.
+
+    Scans text for opponent team mentions and combines with the article's
+    published date to create a unique game identifier for clustering.
+
+    Args:
+        text: Article title and description combined
+        published_at: Article publication timestamp
+
+    Returns:
+        Game identifier string like "LAK-2026-01-15" or None if no opponent found
+    """
+    text_lower = text.lower()
+
+    # Find opponent team in text
+    for keyword, team_code in NHL_OPPONENT_TEAMS.items():
+        if keyword in text_lower:
+            date_str = published_at.strftime('%Y-%m-%d')
+            return f"{team_code}-{date_str}"
+
+    return None
+
+
 @celery.task(name="app.tasks.enrich.enrich_raw_item", bind=True)
 def enrich_raw_item(self, raw_item_id: int):
     """
@@ -343,6 +405,8 @@ def validate_sharks_relevance(
                 result=ValidationResult.APPROVED if keyword_matched else ValidationResult.REJECTED,
                 llm_response=llm_result.response if not llm_result.error else None,
                 llm_model=settings.ollama_model,
+                llm_confidence=llm_result.confidence,
+                llm_reason=llm_result.reason,
                 keyword_matched=keyword_matched,
                 entity_ids=entity_ids,
                 latency_ms=llm_result.latency_ms,
@@ -376,6 +440,8 @@ def validate_sharks_relevance(
                 result=ValidationResult.APPROVED if keyword_matched else ValidationResult.REJECTED,
                 llm_response=llm_result.response,
                 llm_model=settings.ollama_model,
+                llm_confidence=llm_result.confidence,
+                llm_reason=llm_result.reason,
                 keyword_matched=keyword_matched,
                 entity_ids=entity_ids,
                 latency_ms=llm_result.latency_ms,
@@ -393,10 +459,12 @@ def validate_sharks_relevance(
             result=ValidationResult.APPROVED if is_relevant else ValidationResult.REJECTED,
             llm_response=llm_result.response,
             llm_model=settings.ollama_model,
+            llm_confidence=llm_result.confidence,
+            llm_reason=llm_result.reason,
             keyword_matched=keyword_matched,
             entity_ids=entity_ids,
             latency_ms=llm_result.latency_ms,
-            reason=f"LLM: {llm_result.response}" + (
+            reason=f"LLM: {llm_result.response[:50] if llm_result.response else 'N/A'}" + (
                 f" (keyword would have {'matched' if keyword_matched else 'rejected'})"
                 if is_relevant != keyword_matched else ""
             )
@@ -426,6 +494,8 @@ def log_validation(
     reason: Optional[str] = None,
     llm_response: Optional[str] = None,
     llm_model: Optional[str] = None,
+    llm_confidence: Optional[str] = None,
+    llm_reason: Optional[str] = None,
     keyword_matched: Optional[bool] = None,
     entity_ids: Optional[List[int]] = None,
     latency_ms: Optional[int] = None,
@@ -443,6 +513,8 @@ def log_validation(
         result=result,
         llm_response=llm_response,
         llm_model=llm_model,
+        llm_confidence=llm_confidence,
+        llm_reason=llm_reason,
         keyword_matched=keyword_matched,
         entities_found=entity_ids or [],
         reason=reason,
@@ -545,6 +617,34 @@ def match_or_create_cluster(
     # We still store all entities on the variant, but use only player/coach/staff for matching
     clustering_entities = filter_team_entities(db, entities)
 
+    # Step 2.3: Game-centric clustering for game events
+    # Extract game identifier and check for existing cluster with same game
+    game_identifier = None
+    if event_type == 'game':
+        text = f"{variant.title or ''}"
+        game_identifier = extract_game_identifier(text, variant.published_at or datetime.utcnow())
+
+        if game_identifier:
+            # Look for existing cluster with this game identifier
+            game_cluster = db.query(Cluster).filter(
+                Cluster.status == ClusterStatus.ACTIVE,
+                Cluster.game_identifier == game_identifier,
+                Cluster.first_seen_at >= cutoff_time
+            ).first()
+
+            if game_cluster:
+                print(f"  → Game match ({game_identifier}): clustering with #{game_cluster.id}")
+                update_cluster_metadata(db, game_cluster, variant, tokens, entities, source)
+                cluster_variant = ClusterVariant(
+                    cluster_id=game_cluster.id,
+                    variant_id=variant.id,
+                    similarity_score=1.0  # Perfect match by game ID
+                )
+                db.add(cluster_variant)
+                variant.cluster_id = game_cluster.id
+                db.commit()
+                return game_cluster.id
+
     # Step 2.5: Check for near-identical titles (syndicated content detection)
     # This catches wire service articles republished by multiple outlets
     variant_title_normalized = normalize_title_for_matching(variant.title)
@@ -594,7 +694,7 @@ def match_or_create_cluster(
 
     # Step 4: Create cluster if no match found
     if best_cluster is None:
-        cluster = create_cluster(db, variant, tokens, entities, event_type, source)
+        cluster = create_cluster(db, variant, tokens, entities, event_type, source, game_identifier)
     else:
         cluster = best_cluster
         # Update cluster metadata
@@ -796,7 +896,15 @@ def get_time_window_for_event(event_type: str) -> timedelta:
         return timedelta(hours=72)
 
 
-def create_cluster(db: Session, variant, tokens: List[str], entities: List[int], event_type: str, source):
+def create_cluster(
+    db: Session,
+    variant,
+    tokens: List[str],
+    entities: List[int],
+    event_type: str,
+    source,
+    game_identifier: Optional[str] = None
+):
     """
     Create a new cluster for a variant.
 
@@ -806,6 +914,8 @@ def create_cluster(db: Session, variant, tokens: List[str], entities: List[int],
         tokens: Normalized tokens
         entities: Entity IDs
         event_type: Classified event type
+        source: Source object
+        game_identifier: Game identifier for game-centric clustering (e.g., "LAK-2026-01-15")
 
     Returns:
         Cluster object
@@ -822,6 +932,7 @@ def create_cluster(db: Session, variant, tokens: List[str], entities: List[int],
         source_count=1,
         tokens=tokens,
         entities_agg=entities,
+        game_identifier=game_identifier,
     )
 
     db.add(cluster)

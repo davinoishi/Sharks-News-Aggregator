@@ -37,6 +37,8 @@ class ValidationLog(Base):
         result: Validation result (approved, rejected, error)
         llm_response: Raw response from LLM (YES/NO/etc)
         llm_model: Model identifier used for LLM check
+        llm_confidence: LLM confidence level (HIGH, MEDIUM, LOW)
+        llm_reason: LLM chain-of-thought explanation
         keyword_matched: Whether keyword check would have matched
         entities_found: JSON list of entity IDs found in text
         reason: Human-readable explanation of decision
@@ -55,8 +57,10 @@ class ValidationLog(Base):
     )
     method = Column(Enum(ValidationMethod), nullable=False)
     result = Column(Enum(ValidationResult), nullable=False)
-    llm_response = Column(String(50), nullable=True)
+    llm_response = Column(String(100), nullable=True)
     llm_model = Column(String(100), nullable=True)
+    llm_confidence = Column(String(10), nullable=True)
+    llm_reason = Column(Text, nullable=True)
     keyword_matched = Column(Boolean, nullable=True)
     entities_found = Column(JSON, default=[])
     reason = Column(Text, nullable=True)

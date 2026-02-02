@@ -50,6 +50,7 @@ class Cluster(Base):
         tokens: Aggregated normalized tokens for clustering
         entities_agg: Aggregated entity IDs for clustering
         source_count: Number of variants in this cluster
+        game_identifier: Game identifier for game-centric clustering (e.g., "LAK-2026-01-15")
     """
     __tablename__ = "clusters"
 
@@ -64,6 +65,7 @@ class Cluster(Base):
     entities_agg = Column(ARRAY(Integer), default=[])
     source_count = Column(Integer, default=0)
     click_count = Column(Integer, default=0)
+    game_identifier = Column(String(20), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
 
