@@ -37,8 +37,6 @@ services:
       CELERY_BROKER_URL: redis://redis:6379/1
       CELERY_RESULT_BACKEND: redis://redis:6379/2
       ALLOWED_ORIGINS: http://localhost:3000
-    ports:
-      - "8000:8000"
     depends_on:
       db:
         condition: service_healthy
@@ -83,17 +81,15 @@ services:
   web:
     build: ./web
     environment:
-      # Internal API URL for server-side proxying (Docker service name)
       INTERNAL_API_URL: http://api:8000
     ports:
-      - "3000:3000"
+      - "3001:3000"
     depends_on:
       - api
     volumes:
-      - ./web:/app
-      - /app/node_modules
-      - /app/.next
+      - sharks_next_cache:/app/.next/cache
     restart: unless-stopped
 
 volumes:
   db_data:
+  sharks_next_cache:
