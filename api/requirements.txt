@@ -32,4 +32,4 @@ python-dotenv==1.0.0
 watchfiles==0.21.0
 
 # Social Media
-atproto==0.0.55
+atproto==0.0.65
