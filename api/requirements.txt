@@ -19,7 +19,7 @@ trafilatura==1.8.0
 lxml==5.1.0
 
 # NLP & Text Processing
-nltk==3.8.1
+nltk==3.9.4
 scikit-learn==1.4.0
 
 # Data Validation
