@@ -23,7 +23,7 @@ nltk==3.8.1
 scikit-learn==1.4.0
 
 # Data Validation
-pydantic>=2.7,<3
+pydantic>=2.13.4,<3
 pydantic-settings>=2.1.0
 
 # Utilities
