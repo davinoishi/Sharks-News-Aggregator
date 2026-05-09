@@ -15,7 +15,7 @@ celery==5.3.6
 httpx==0.26.0
 beautifulsoup4==4.12.3
 feedparser==6.0.11
-trafilatura==1.8.0
+trafilatura==2.0.0
 lxml==5.1.0
 
 # NLP & Text Processing
