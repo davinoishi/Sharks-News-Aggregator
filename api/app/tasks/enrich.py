@@ -378,6 +378,9 @@ def validate_sharks_relevance(
     # Always check keyword result
     keyword_matched = check_sharks_relevance(db, title, entity_ids)
 
+    # Resolve entity names for LLM context
+    entity_names = get_entity_names(db, entity_ids) if entity_ids else ""
+
     # If LLM is completely disabled, use keyword only
     if not settings.llm_relevance_enabled:
         log_validation(
@@ -395,7 +398,7 @@ def validate_sharks_relevance(
     if settings.llm_evaluation_mode:
         # Run LLM in background for evaluation only
         try:
-            llm_result = llm_check_relevance(title, description)
+            llm_result = llm_check_relevance(title, description, entity_names)
 
             if llm_result.error:
                 # Log evaluation with error
@@ -440,7 +443,7 @@ def validate_sharks_relevance(
 
     # LLM Decision Mode: LLM decides with keyword fallback
     try:
-        llm_result = llm_check_relevance(title, description)
+        llm_result = llm_check_relevance(title, description, entity_names)
 
         if llm_result.error:
             # LLM had an error, fall back to keyword check
