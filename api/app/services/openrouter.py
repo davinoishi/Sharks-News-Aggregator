@@ -20,12 +20,19 @@ RELEVANCE_PROMPT_SYSTEM = (
     "Respond with valid JSON only."
 )
 
-RELEVANCE_PROMPT_USER = """Determine if this article is PRIMARILY about the San Jose Sharks, their players, coaches, or organization.
+RELEVANCE_PROMPT_USER = """Determine if this article is relevant to San Jose Sharks fans.
 
-APPROVE: articles directly about Sharks team moves, player performance, coaching decisions, draft picks, AHL Barracuda.
-REJECT: general NHL roundups where Sharks are briefly mentioned, opponent-focused previews, unrelated teams.
+APPROVE if the article is about ANY of these:
+- The San Jose Sharks or San Jose Barracuda (AHL affiliate)
+- Any current or former Sharks/Barracuda player, prospect, or draft pick
+- Sharks coaches, staff, or front office
+- Games involving the Sharks or Barracuda
+- Trades, signings, or rumors involving Sharks-affiliated people
+- Articles where a Sharks-affiliated person is a main subject, even if the article is about another team or event (e.g., a Sharks player at an international tournament)
 
-Title: {title}
+REJECT only if the Sharks and their people have NO meaningful connection to the article.
+
+{entities_context}Title: {title}
 Description: {description}
 
 Respond as JSON: {{"relevant": true, "confidence": "HIGH", "reason": "one sentence"}}"""
@@ -192,9 +199,18 @@ class OpenRouterService:
         return None, f"Could not parse JSON from response: {content[:100]}"
 
     def check_relevance(
-        self, title: str, description: Optional[str] = None
+        self, title: str, description: Optional[str] = None,
+        entity_names: Optional[str] = None,
     ) -> RelevanceResult:
         start_time = time.time()
+
+        if entity_names:
+            entities_context = (
+                f"The following Sharks-affiliated people were detected in this article: {entity_names}\n\n"
+            )
+        else:
+            entities_context = ""
+
         messages = [
             {"role": "system", "content": RELEVANCE_PROMPT_SYSTEM},
             {
@@ -202,6 +218,7 @@ class OpenRouterService:
                 "content": RELEVANCE_PROMPT_USER.format(
                     title=title or "",
                     description=description or "(no description)",
+                    entities_context=entities_context,
                 ),
             },
         ]
@@ -297,8 +314,8 @@ def get_service() -> OpenRouterService:
     return _service
 
 
-def check_relevance(title: str, description: Optional[str] = None) -> RelevanceResult:
-    return get_service().check_relevance(title, description)
+def check_relevance(title: str, description: Optional[str] = None, entity_names: Optional[str] = None) -> RelevanceResult:
+    return get_service().check_relevance(title, description, entity_names)
 
 
 def classify_and_summarize(
