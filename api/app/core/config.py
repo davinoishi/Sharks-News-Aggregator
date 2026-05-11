@@ -25,13 +25,15 @@ class Settings(BaseSettings):
     # Rate limiting
     submission_rate_limit_per_ip: int = 10  # per hour
 
-    # Ollama LLM settings (Hailo-Ollama on Pi5-AI2)
-    ollama_base_url: str = "http://localhost:8000"
-    ollama_model: str = "qwen2.5-instruct:1.5b"
-    ollama_timeout_seconds: int = 30
+    # OpenRouter LLM settings (Gemma 4 via openrouter.ai)
+    openrouter_api_key: str = ""
+    openrouter_model: str = "google/gemma-4-27b-it:free"
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    openrouter_timeout_seconds: int = 45
     llm_relevance_enabled: bool = True
-    # Shadow mode: keyword decides, LLM evaluates for comparison report
     llm_evaluation_mode: bool = False
+    llm_tagging_enabled: bool = True
+    llm_clustering_enabled: bool = True
 
     # Admin settings
     admin_allowed_ips: str = "127.0.0.1,192.168.0.0/24,10.0.0.0/8"
