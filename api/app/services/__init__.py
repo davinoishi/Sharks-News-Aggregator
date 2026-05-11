@@ -1,10 +1,11 @@
 """
 Services for external integrations.
 """
-from app.services.ollama import OllamaService, check_relevance, health_check
+from app.services.openrouter import OpenRouterService, check_relevance, classify_and_summarize, health_check
 
 __all__ = [
-    "OllamaService",
+    "OpenRouterService",
     "check_relevance",
+    "classify_and_summarize",
     "health_check",
 ]

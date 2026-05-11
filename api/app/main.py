@@ -532,9 +532,8 @@ class ValidationStatsResponse(BaseModel):
     error_rate: float
 
 
-class OllamaHealthResponse(BaseModel):
+class LLMHealthResponse(BaseModel):
     healthy: bool
-    base_url: str
     model: str
     enabled: bool
 
@@ -711,23 +710,22 @@ def list_rejected_validations(
     }
 
 
-@app.get("/admin/ollama/health", response_model=OllamaHealthResponse)
-def check_ollama_health(request: Request):
+@app.get("/admin/llm/health", response_model=LLMHealthResponse)
+def check_llm_health(request: Request):
     """
-    Check Ollama service health status.
+    Check LLM service health status (OpenRouter).
 
     Protected by IP whitelist or API key.
     """
     check_admin_access(request)
 
-    from app.services.ollama import health_check
+    from app.services.openrouter import health_check
 
     is_healthy = health_check()
 
     return {
         "healthy": is_healthy,
-        "base_url": settings.ollama_base_url,
-        "model": settings.ollama_model,
+        "model": settings.openrouter_model,
         "enabled": settings.llm_relevance_enabled
     }
 

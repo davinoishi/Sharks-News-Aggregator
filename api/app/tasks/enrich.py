@@ -10,7 +10,10 @@ from app.tasks.celery_app import celery
 from app.core.database import SessionLocal
 from app.core.config import settings
 from app.models.validation_log import ValidationLog, ValidationMethod, ValidationResult
-from app.services.ollama import check_relevance as llm_check_relevance
+from app.services.openrouter import (
+    check_relevance as llm_check_relevance,
+    classify_and_summarize as llm_classify_and_summarize,
+)
 
 
 # NHL opponent teams mapping (excluding Sharks)
@@ -134,11 +137,18 @@ def enrich_raw_item(self, raw_item_id: int):
                 entity_ids=entity_ids
             )
 
-        # Step 3: Classify event type
-        event_type_str = classify_event_type(text, entity_ids)
+        # Step 3: Classify event type and tags (LLM with keyword fallback)
+        event_type_str, tag_names, llm_summary = classify_article(
+            db, text, entity_ids, raw_item.raw_title or "", raw_item.raw_description or "",
+            source, url=raw_item.canonical_url or ""
+        )
         event_type_enum = EventType[event_type_str.upper()] if event_type_str.upper() in EventType.__members__ else EventType.OTHER
 
         # Step 4: Create story_variant
+        extra_metadata = {}
+        if llm_summary:
+            extra_metadata["llm_summary"] = llm_summary
+
         variant = StoryVariant(
             raw_item_id=raw_item.id,
             source_id=raw_item.source_id,
@@ -148,6 +158,7 @@ def enrich_raw_item(self, raw_item_id: int):
             event_type=event_type_enum,
             tokens=tokens,
             entities=entity_ids,
+            extra_metadata=extra_metadata,
         )
 
         db.add(variant)
@@ -156,7 +167,7 @@ def enrich_raw_item(self, raw_item_id: int):
         db.commit()
 
         # Step 5: Match or create cluster (this also handles entity and tag associations)
-        cluster_id = match_or_create_cluster(db, variant, tokens, entity_ids, event_type_str, source)
+        cluster_id = match_or_create_cluster(db, variant, tokens, entity_ids, event_type_str, source, tag_names)
 
         print(f"  ✓ Created variant {variant.id}, matched to cluster {cluster_id}")
 
@@ -404,7 +415,7 @@ def validate_sharks_relevance(
                 method=ValidationMethod.KEYWORD,  # Keyword is the decision maker
                 result=ValidationResult.APPROVED if keyword_matched else ValidationResult.REJECTED,
                 llm_response=llm_result.response if not llm_result.error else None,
-                llm_model=settings.ollama_model,
+                llm_model=settings.openrouter_model,
                 llm_confidence=llm_result.confidence,
                 llm_reason=llm_result.reason,
                 keyword_matched=keyword_matched,
@@ -439,7 +450,7 @@ def validate_sharks_relevance(
                 method=ValidationMethod.KEYWORD,
                 result=ValidationResult.APPROVED if keyword_matched else ValidationResult.REJECTED,
                 llm_response=llm_result.response,
-                llm_model=settings.ollama_model,
+                llm_model=settings.openrouter_model,
                 llm_confidence=llm_result.confidence,
                 llm_reason=llm_result.reason,
                 keyword_matched=keyword_matched,
@@ -458,7 +469,7 @@ def validate_sharks_relevance(
             method=ValidationMethod.LLM,
             result=ValidationResult.APPROVED if is_relevant else ValidationResult.REJECTED,
             llm_response=llm_result.response,
-            llm_model=settings.ollama_model,
+            llm_model=settings.openrouter_model,
             llm_confidence=llm_result.confidence,
             llm_reason=llm_result.reason,
             keyword_matched=keyword_matched,
@@ -525,19 +536,12 @@ def log_validation(
     db.commit()
 
 
-def classify_event_type(text: str, entities: List[int]) -> str:
+def classify_event_type_keyword(text: str, entities: List[int]) -> str:
     """
-    Classify the primary event type based on text content.
+    Classify the primary event type based on keyword matching (fallback).
     Uses keyword count scoring - the category with the most keyword hits wins.
 
     Event types: trade, injury, lineup, recall, waiver, signing, prospect, game, opinion, other
-
-    Args:
-        text: Text to classify
-        entities: Extracted entity IDs
-
-    Returns:
-        Event type string
     """
     text_lower = text.lower()
 
@@ -579,13 +583,76 @@ def count_event_keyword_matches(text_lower: str) -> dict:
     return scores
 
 
+def get_entity_names(db: Session, entity_ids: List[int]) -> str:
+    """Get comma-separated entity names for LLM context."""
+    if not entity_ids:
+        return ""
+    from app.models import Entity
+    entities = db.query(Entity.name).filter(Entity.id.in_(entity_ids)).all()
+    return ", ".join(e.name for e in entities)
+
+
+def classify_article(
+    db: Session,
+    text: str,
+    entity_ids: List[int],
+    title: str,
+    description: str,
+    source,
+    url: str = "",
+) -> Tuple[str, List[str], Optional[str]]:
+    """
+    Classify event type, tags, and generate clustering summary.
+    Uses LLM via OpenRouter with keyword-based fallback.
+
+    Returns:
+        Tuple of (event_type, tag_names, llm_summary)
+    """
+    llm_summary = None
+    tag_names = []
+    event_type = "other"
+
+    if settings.llm_tagging_enabled:
+        try:
+            entity_names = get_entity_names(db, entity_ids)
+            result = llm_classify_and_summarize(
+                title[:500], description[:500], entity_names
+            )
+            if not result.error:
+                event_type = result.event_type
+                tag_names = result.tags
+                llm_summary = result.summary
+                print(f"  LLM classified: event={event_type}, tags={tag_names}, summary={llm_summary}")
+            else:
+                print(f"  LLM classification error: {result.error}, falling back to keywords")
+                event_type = classify_event_type_keyword(text, entity_ids)
+                tag_names = classify_tags_keyword(title, source)
+        except Exception as e:
+            print(f"  LLM classification exception: {e}, falling back to keywords")
+            event_type = classify_event_type_keyword(text, entity_ids)
+            tag_names = classify_tags_keyword(title, source)
+    else:
+        event_type = classify_event_type_keyword(text, entity_ids)
+        tag_names = classify_tags_keyword(title, source)
+
+    # Always apply source-based tags regardless of LLM
+    if source.category == 'official' and 'Official' not in tag_names:
+        tag_names.append('Official')
+    url_lower = (url or '').lower()
+    if ('barracuda' in title.lower() or 'sjbarracuda' in url_lower) and 'Barracuda' not in tag_names:
+        tag_names.append('Barracuda')
+
+    return event_type, tag_names, llm_summary
+
+
 def match_or_create_cluster(
     db: Session,
     variant,
     tokens: List[str],
     entities: List[int],
     event_type: str,
-    source
+    source,
+    tag_names: Optional[List[str]] = None,
 ) -> int:
     """
     Find existing cluster or create new one for variant.
@@ -634,7 +701,7 @@ def match_or_create_cluster(
 
             if game_cluster:
                 print(f"  → Game match ({game_identifier}): clustering with #{game_cluster.id}")
-                update_cluster_metadata(db, game_cluster, variant, tokens, entities, source)
+                update_cluster_metadata(db, game_cluster, variant, tokens, entities, source, tag_names)
                 cluster_variant = ClusterVariant(
                     cluster_id=game_cluster.id,
                     variant_id=variant.id,
@@ -657,7 +724,7 @@ def match_or_create_cluster(
         if title_sim >= 0.85:  # 85% title similarity = likely same article
             print(f"  → Title match ({title_sim:.2f}): clustering with #{cluster.id}")
             # Auto-match to this cluster
-            update_cluster_metadata(db, cluster, variant, tokens, entities, source)
+            update_cluster_metadata(db, cluster, variant, tokens, entities, source, tag_names)
             cluster_variant = ClusterVariant(
                 cluster_id=cluster.id,
                 variant_id=variant.id,
@@ -669,6 +736,10 @@ def match_or_create_cluster(
             return cluster.id
 
     # Step 3: Score similarity against each candidate
+    # Use LLM summary for enhanced semantic matching when available
+    llm_summary = (variant.extra_metadata or {}).get("llm_summary") if hasattr(variant, 'extra_metadata') else None
+    has_llm_signal = bool(llm_summary) and settings.llm_clustering_enabled
+
     best_cluster = None
     best_score = 0.0
 
@@ -684,7 +755,15 @@ def match_or_create_cluster(
         E = entity_overlap_score(clustering_entities, cluster_clustering_entities)
         T = jaccard_similarity(tokens, cluster_tokens)
         K = event_compatibility_score(event_type, cluster.event_type.value)
-        S = 0.55 * E + 0.35 * T + 0.10 * K
+
+        if has_llm_signal:
+            L = title_similarity(
+                normalize_title_for_matching(llm_summary),
+                normalize_title_for_matching(cluster.headline),
+            )
+            S = 0.45 * E + 0.25 * T + 0.10 * K + 0.20 * L
+        else:
+            S = 0.55 * E + 0.35 * T + 0.10 * K
 
         # Check if this is a match (use clustering_entities for the gate check)
         if is_match(E, T, S, clustering_entities):
@@ -694,11 +773,11 @@ def match_or_create_cluster(
 
     # Step 4: Create cluster if no match found
     if best_cluster is None:
-        cluster = create_cluster(db, variant, tokens, entities, event_type, source, game_identifier)
+        cluster = create_cluster(db, variant, tokens, entities, event_type, source, game_identifier, tag_names)
     else:
         cluster = best_cluster
         # Update cluster metadata
-        update_cluster_metadata(db, cluster, variant, tokens, entities, source)
+        update_cluster_metadata(db, cluster, variant, tokens, entities, source, tag_names)
 
     # Step 5: Link variant to cluster
     cluster_variant = ClusterVariant(
@@ -903,7 +982,8 @@ def create_cluster(
     entities: List[int],
     event_type: str,
     source,
-    game_identifier: Optional[str] = None
+    game_identifier: Optional[str] = None,
+    tag_names: Optional[List[str]] = None,
 ):
     """
     Create a new cluster for a variant.
@@ -951,13 +1031,14 @@ def create_cluster(
     add_cluster_entity_associations(db, cluster, entities)
 
     # Add tag associations to cluster
-    tag_names = classify_tags(variant, source)
+    if tag_names is None:
+        tag_names = classify_tags_keyword(variant.title, source)
     add_cluster_tag_associations(db, cluster, tag_names)
 
     return cluster
 
 
-def update_cluster_metadata(db: Session, cluster, variant, tokens: List[str], entities: List[int], source):
+def update_cluster_metadata(db: Session, cluster, variant, tokens: List[str], entities: List[int], source, tag_names: Optional[List[str]] = None):
     """
     Update cluster metadata when adding a new variant.
 
@@ -988,7 +1069,8 @@ def update_cluster_metadata(db: Session, cluster, variant, tokens: List[str], en
     add_cluster_entity_associations(db, cluster, entities)
 
     # Add new tag associations
-    tag_names = classify_tags(variant, source)
+    if tag_names is None:
+        tag_names = classify_tags_keyword(variant.title, source)
     add_cluster_tag_associations(db, cluster, tag_names)
 
 
@@ -1048,16 +1130,13 @@ def add_cluster_tag_associations(db: Session, cluster, tag_names: List[str]):
             db.add(cluster_tag)
 
 
-def classify_tags(variant, source) -> List[str]:
+def classify_tags_keyword(title: str, source) -> List[str]:
     """
-    Classify tags for a variant based on content and source.
+    Classify tags based on keyword matching (fallback).
     Assigns all matching event-based tags (not just the primary event type).
-
-    Tags: Rumors, Injury, Trade, Game, etc.
     """
     tags = []
 
-    # Event-based tags - assign ALL matching categories, not just the primary one
     event_tag_map = {
         'trade': 'Trade',
         'injury': 'Injury',
@@ -1069,27 +1148,16 @@ def classify_tags(variant, source) -> List[str]:
         'game': 'Game',
     }
 
-    text_lower = (variant.title or '').lower()
+    text_lower = (title or '').lower()
     matches = count_event_keyword_matches(text_lower)
     for event_key, tag_name in event_tag_map.items():
         if event_key in matches:
             tags.append(tag_name)
 
-    # Barracuda detection (AHL affiliate)
-    url_lower = (variant.url or '').lower()
-    if 'barracuda' in text_lower or 'sjbarracuda' in url_lower:
-        tags.append('Barracuda')
-
     # Rumor detection
     rumor_phrases = ['hearing', 'sources say', 'linked to', 'in talks', 'rumor', 'reportedly']
-
     has_rumor_language = any(phrase in text_lower for phrase in rumor_phrases)
-
     if has_rumor_language and source.category == 'press':
         tags.append('Rumors')
-
-    # Official tag
-    if source.category == 'official':
-        tags.append('Official')
 
     return tags
