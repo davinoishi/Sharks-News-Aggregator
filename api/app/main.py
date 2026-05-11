@@ -730,6 +730,17 @@ def check_llm_health(request: Request):
     }
 
 
+def _parse_llm_approved(llm_response: Optional[str]) -> bool:
+    if not llm_response:
+        return False
+    resp = llm_response.strip()
+    # JSON format from OpenRouter: {"relevant": true, ...}
+    if '"relevant"' in resp:
+        return '"relevant": true' in resp.lower() or '"relevant":true' in resp.lower()
+    # Legacy Ollama format: "YES ..." or "DECISION: YES"
+    return resp.upper().startswith("YES") or "DECISION: YES" in resp.upper()
+
+
 @app.get("/admin/validations/llm-report")
 def get_llm_evaluation_report(
     request: Request,
@@ -767,7 +778,7 @@ def get_llm_evaluation_report(
 
     for log in logs:
         total_compared += 1
-        llm_approved = log.llm_response and log.llm_response.upper().startswith("YES")
+        llm_approved = _parse_llm_approved(log.llm_response)
         keyword_approved = log.keyword_matched
 
         if llm_approved == keyword_approved:
