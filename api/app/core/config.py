@@ -27,7 +27,7 @@ class Settings(BaseSettings):
 
     # OpenRouter LLM settings (Gemma 4 via openrouter.ai)
     openrouter_api_key: str = ""
-    openrouter_model: str = "google/gemma-4-27b-it:free"
+    openrouter_model: str = "google/gemma-4-26b-a4b-it:free"
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     openrouter_timeout_seconds: int = 45
     llm_relevance_enabled: bool = True
