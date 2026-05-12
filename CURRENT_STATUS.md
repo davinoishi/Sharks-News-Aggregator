@@ -188,7 +188,7 @@ Current implementation uses keyword matching. May miss entities referenced by ni
 
 ### Completed
 
-- [x] LLM-based relevance checking (evaluation mode with Ollama)
+- [x] LLM-based relevance filtering, tagging, and clustering (Google Gemma 4 via OpenRouter)
 - [x] Social media integration (BlueSky automatic posting)
 
 ### Planned

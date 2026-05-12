@@ -121,7 +121,7 @@ docker compose -f docker-compose.pi.yml exec db psql -U sharks -c "SELECT COUNT(
 
 ## Completed Enhancements
 
-- [x] **LLM-based relevance filtering** — Evaluation mode with Ollama on Hailo accelerator
+- [x] **LLM-based relevance filtering, tagging, and clustering** — Google Gemma 4 via OpenRouter (replaced local Ollama/Hailo)
 - [x] **Social media posting** — BlueSky integration complete
 
 ## Future Enhancements (Post-Launch)
