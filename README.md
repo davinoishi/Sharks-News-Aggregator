@@ -383,7 +383,7 @@ docker-compose up -d
 - Production deployment on Raspberry Pi 5
 - Public access via noBGP proxy
 - Server-side API proxy (no exposed backend URL)
-- LLM-based relevance checking (evaluation mode with Ollama)
+- LLM-based relevance filtering, tagging, and clustering (Google Gemma 4 via OpenRouter)
 - BlueSky social media integration (automatic posting)
 
 ### Planned
