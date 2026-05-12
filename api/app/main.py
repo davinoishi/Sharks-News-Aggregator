@@ -393,6 +393,112 @@ def record_cluster_click(
 # Admin Endpoints (Protected)
 # ============================================================================
 
+@app.get("/admin/sources")
+def list_sources(
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """
+    List all sources with their current health status.
+
+    Returns each source with:
+    - Basic info (name, category, feed URL)
+    - Health status (active/broken/stale)
+    - Last fetch time and error count
+    - Recent ingestion stats
+    """
+    check_admin_access(request)
+
+    from app.models import Source, SourceStatus, RawItem
+
+    sources = db.query(Source).order_by(Source.name).all()
+
+    items = []
+    for source in sources:
+        # Determine health status
+        if source.status != SourceStatus.APPROVED:
+            health = "disabled"
+        elif source.fetch_error_count and source.fetch_error_count >= 3:
+            health = "broken"
+        elif source.last_fetched_at:
+            hours_since = (datetime.utcnow() - source.last_fetched_at.replace(tzinfo=None)).total_seconds() / 3600
+            health = "stale" if hours_since > 2 else "active"
+        else:
+            health = "unknown"
+
+        # Count recent items from this source (last 7 days)
+        recent_items = db.query(func.count(RawItem.id)).filter(
+            RawItem.source_id == source.id,
+            RawItem.created_at >= datetime.utcnow() - timedelta(days=7)
+        ).scalar() or 0
+
+        items.append({
+            "id": source.id,
+            "name": source.name,
+            "category": source.category.value,
+            "feed_url": source.feed_url,
+            "status": source.status.value,
+            "health": health,
+            "last_fetched_at": source.last_fetched_at.isoformat() if source.last_fetched_at else None,
+            "fetch_error_count": source.fetch_error_count or 0,
+            "recent_items_7d": recent_items,
+        })
+
+    return {
+        "sources": items,
+        "total": len(items),
+        "healthy": sum(1 for s in items if s["health"] == "active"),
+        "broken": sum(1 for s in items if s["health"] == "broken"),
+    }
+
+
+@app.post("/admin/sources/{source_id}/disable")
+def disable_source(
+    source_id: int,
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """
+    Disable a source by setting its status to 'rejected'.
+    """
+    check_admin_access(request)
+
+    from app.models import Source, SourceStatus
+
+    source = db.query(Source).filter(Source.id == source_id).first()
+    if not source:
+        raise HTTPException(status_code=404, detail="Source not found")
+
+    source.status = SourceStatus.REJECTED
+    db.commit()
+
+    return {"status": "disabled", "source_id": source_id, "name": source.name}
+
+
+@app.post("/admin/sources/{source_id}/enable")
+def enable_source(
+    source_id: int,
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """
+    Re-enable a disabled source by setting its status to 'approved'.
+    """
+    check_admin_access(request)
+
+    from app.models import Source, SourceStatus
+
+    source = db.query(Source).filter(Source.id == source_id).first()
+    if not source:
+        raise HTTPException(status_code=404, detail="Source not found")
+
+    source.status = SourceStatus.APPROVED
+    source.fetch_error_count = 0
+    db.commit()
+
+    return {"status": "enabled", "source_id": source_id, "name": source.name}
+
+
 @app.get("/admin/candidate-sources")
 def list_candidate_sources(
     status: str = Query("queued_for_review", description="Filter by status"),
@@ -403,11 +509,6 @@ def list_candidate_sources(
 
     TODO: Add authentication/authorization
     """
-    # TODO: Implement query
-    # candidates = db.query(CandidateSource).filter(
-    #     CandidateSource.status == status
-    # ).all()
-
     return {"candidates": [], "count": 0}
 
 
