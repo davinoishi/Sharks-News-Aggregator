@@ -1115,7 +1115,7 @@ def add_cluster_tag_associations(db: Session, cluster, tag_names: List[str]):
         # Get or create tag
         tag = db.query(Tag).filter(Tag.name == tag_name).first()
         if not tag:
-            tag = Tag(name=tag_name, slug=Tag.make_slug(tag_name))
+            tag = Tag(name=tag_name, slug=tag_name.lower().replace(" ", "-"))
             db.add(tag)
             db.flush()
 
