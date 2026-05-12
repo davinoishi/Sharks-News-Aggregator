@@ -2,8 +2,9 @@ version: "3.9"
 
 # Pi5-ai2 specific configuration
 # - Web on port 3001 (3000 used by Open WebUI)
-# - API on port 8001 (8000 used by Hailo-Ollama)
+# - API on port 8001
 # - Production mode (no hot-reload volumes)
+# - LLM via OpenRouter (Gemma 4), API key from .env
 
 services:
   db:
@@ -42,11 +43,13 @@ services:
       CELERY_BROKER_URL: redis://redis:6379/1
       CELERY_RESULT_BACKEND: redis://redis:6379/2
       ALLOWED_ORIGINS: "*"
-      # Ollama LLM settings (Hailo-Ollama on host)
-      OLLAMA_BASE_URL: http://172.18.0.1:8000
-      OLLAMA_MODEL: qwen2.5-instruct:1.5b
-      OLLAMA_TIMEOUT_SECONDS: "30"
+      # OpenRouter LLM settings (Gemma 4 via openrouter.ai)
+      OPENROUTER_API_KEY: "${OPENROUTER_API_KEY}"
+      OPENROUTER_MODEL: "${OPENROUTER_MODEL:-google/gemma-4-27b-it:free}"
+      OPENROUTER_TIMEOUT_SECONDS: "${OPENROUTER_TIMEOUT_SECONDS:-45}"
       LLM_RELEVANCE_ENABLED: "true"
+      LLM_TAGGING_ENABLED: "true"
+      LLM_CLUSTERING_ENABLED: "true"
       # Shadow mode: keyword decides, LLM evaluates for comparison
       LLM_EVALUATION_MODE: "true"
       # Admin settings (include Docker bridge network)
@@ -73,11 +76,13 @@ services:
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
       CELERY_BROKER_URL: redis://redis:6379/1
       CELERY_RESULT_BACKEND: redis://redis:6379/2
-      # Ollama LLM settings (Hailo-Ollama on host)
-      OLLAMA_BASE_URL: http://172.18.0.1:8000
-      OLLAMA_MODEL: qwen2.5-instruct:1.5b
-      OLLAMA_TIMEOUT_SECONDS: "30"
+      # OpenRouter LLM settings (Gemma 4 via openrouter.ai)
+      OPENROUTER_API_KEY: "${OPENROUTER_API_KEY}"
+      OPENROUTER_MODEL: "${OPENROUTER_MODEL:-google/gemma-4-27b-it:free}"
+      OPENROUTER_TIMEOUT_SECONDS: "${OPENROUTER_TIMEOUT_SECONDS:-45}"
       LLM_RELEVANCE_ENABLED: "true"
+      LLM_TAGGING_ENABLED: "true"
+      LLM_CLUSTERING_ENABLED: "true"
       # Shadow mode: keyword decides, LLM evaluates for comparison
       LLM_EVALUATION_MODE: "true"
       # BlueSky posting settings
