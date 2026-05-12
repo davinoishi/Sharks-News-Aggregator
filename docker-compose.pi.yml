@@ -45,7 +45,7 @@ services:
       ALLOWED_ORIGINS: "*"
       # OpenRouter LLM settings (Gemma 4 via openrouter.ai)
       OPENROUTER_API_KEY: "${OPENROUTER_API_KEY}"
-      OPENROUTER_MODEL: "${OPENROUTER_MODEL:-google/gemma-4-27b-it:free}"
+      OPENROUTER_MODEL: "${OPENROUTER_MODEL:-google/gemma-4-26b-a4b-it:free}"
       OPENROUTER_TIMEOUT_SECONDS: "${OPENROUTER_TIMEOUT_SECONDS:-45}"
       LLM_RELEVANCE_ENABLED: "true"
       LLM_TAGGING_ENABLED: "true"
@@ -78,7 +78,7 @@ services:
       CELERY_RESULT_BACKEND: redis://redis:6379/2
       # OpenRouter LLM settings (Gemma 4 via openrouter.ai)
       OPENROUTER_API_KEY: "${OPENROUTER_API_KEY}"
-      OPENROUTER_MODEL: "${OPENROUTER_MODEL:-google/gemma-4-27b-it:free}"
+      OPENROUTER_MODEL: "${OPENROUTER_MODEL:-google/gemma-4-26b-a4b-it:free}"
       OPENROUTER_TIMEOUT_SECONDS: "${OPENROUTER_TIMEOUT_SECONDS:-45}"
       LLM_RELEVANCE_ENABLED: "true"
       LLM_TAGGING_ENABLED: "true"
