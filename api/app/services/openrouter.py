@@ -16,26 +16,34 @@ from app.core.config import settings
 
 
 RELEVANCE_PROMPT_SYSTEM = (
-    "You are a relevance filter for a San Jose Sharks NHL news aggregator. "
+    "You are a strict relevance filter for a San Jose Sharks NHL news aggregator. "
     "Respond with valid JSON only."
 )
 
-RELEVANCE_PROMPT_USER = """Determine if this article is relevant to San Jose Sharks fans.
+RELEVANCE_PROMPT_USER = """Determine if this article is PRIMARILY about the San Jose Sharks or their current organization.
 
-APPROVE if the article is about ANY of these:
-- The San Jose Sharks or San Jose Barracuda (AHL affiliate)
-- Any current or former Sharks/Barracuda player, prospect, or draft pick
-- Sharks coaches, staff, or front office
-- Games involving the Sharks or Barracuda
-- Trades, signings, or rumors involving Sharks-affiliated people
-- Articles where a Sharks-affiliated person is a main subject, even if the article is about another team or event (e.g., a Sharks player at an international tournament)
+APPROVE if the article's MAIN TOPIC is any of these:
+- The San Jose Sharks team, games, or organization
+- The San Jose Barracuda (AHL affiliate)
+- A CURRENT Sharks/Barracuda player, prospect, or draft pick as a main subject
+- Current Sharks coaches, GM, or front office
+- Trades, signings, or rumors directly involving the current Sharks roster or organization
+- A current Sharks player at an international tournament, All-Star game, etc.
 
-REJECT only if the Sharks and their people have NO meaningful connection to the article.
+REJECT if:
+- The Sharks are only mentioned in passing, as historical context, or as a comparison
+- "San Jose Sharks" only appears in YouTube channel names, sidebar text, or metadata — not the actual article content
+- The article is about a former Sharks player who now plays for another team (unless the article is about their time with or return to the Sharks)
+- The author merely identifies as a Sharks fan but the article is about another topic
+- The article is about a different sport (baseball, basketball, football, soccer)
+- The article is about another NHL team with only a passing Sharks reference
+
+Focus on the TITLE first. The title tells you what the article is actually about. Descriptions often contain unrelated metadata, sidebar text, or YouTube recommendations — ignore those parts.
 
 {entities_context}Title: {title}
 Description: {description}
 
-Respond as JSON: {{"relevant": true, "confidence": "HIGH", "reason": "one sentence"}}"""
+Respond as JSON: {{"relevant": true/false, "confidence": "HIGH/MEDIUM/LOW", "reason": "one sentence"}}"""
 
 CLASSIFY_PROMPT_SYSTEM = (
     "You are a classifier for a San Jose Sharks NHL news aggregator. "
@@ -206,7 +214,8 @@ class OpenRouterService:
 
         if entity_names:
             entities_context = (
-                f"The following Sharks-affiliated people were detected in this article: {entity_names}\n\n"
+                f"CURRENT Sharks roster/staff members detected in this article: {entity_names}\n"
+                "If these people are a main subject of the article, APPROVE.\n\n"
             )
         else:
             entities_context = ""
