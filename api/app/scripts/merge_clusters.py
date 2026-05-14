@@ -136,6 +136,13 @@ def merge_clusters(cluster_ids: list[int], dry_run: bool = False):
         target.entities_agg = list(all_entities)
         target.updated_at = datetime.utcnow()
 
+        # Keep the first available LLM summary
+        if not target.llm_summary:
+            for sid in source_ids:
+                if cluster_map[sid].llm_summary:
+                    target.llm_summary = cluster_map[sid].llm_summary
+                    break
+
         # 5. Update source count
         new_count = db.query(func.count(ClusterVariant.id)).filter(
             ClusterVariant.cluster_id == target_id

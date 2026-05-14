@@ -66,6 +66,7 @@ class Cluster(Base):
     source_count = Column(Integer, default=0)
     click_count = Column(Integer, default=0)
     game_identifier = Column(String(20), nullable=True, index=True)
+    llm_summary = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
 
