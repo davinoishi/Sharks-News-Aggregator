@@ -759,7 +759,14 @@ def match_or_create_cluster(
         T = jaccard_similarity(tokens, cluster_tokens)
         K = event_compatibility_score(event_type, cluster.event_type.value)
 
-        if has_llm_signal:
+        L = 0.0
+        if has_llm_signal and cluster.llm_summary:
+            L = title_similarity(
+                normalize_title_for_matching(llm_summary),
+                normalize_title_for_matching(cluster.llm_summary),
+            )
+            S = 0.35 * E + 0.20 * T + 0.10 * K + 0.35 * L
+        elif has_llm_signal:
             L = title_similarity(
                 normalize_title_for_matching(llm_summary),
                 normalize_title_for_matching(cluster.headline),
@@ -769,7 +776,7 @@ def match_or_create_cluster(
             S = 0.55 * E + 0.35 * T + 0.10 * K
 
         # Check if this is a match (use clustering_entities for the gate check)
-        if is_match(E, T, S, clustering_entities):
+        if is_match(E, T, S, clustering_entities, L):
             if S > best_score + 0.000001:
                 best_cluster = cluster
                 best_score = S
@@ -939,12 +946,13 @@ def title_similarity(title1: str, title2: str) -> float:
     return SequenceMatcher(None, title1, title2).ratio()
 
 
-def is_match(E: float, T: float, S: float, entities_v: List[int]) -> bool:
+def is_match(E: float, T: float, S: float, entities_v: List[int], L: float = 0.0) -> bool:
     """
     Determine if similarity scores indicate a match.
 
     From PRD Section 8.4:
     - Entity gate: E >= 0.50 OR (|entities(v)| == 0 AND T >= 0.40)
+    - LLM override: L >= 0.70 bypasses entity gate (high-confidence semantic match)
     - Overall score: S >= 0.62
     """
     # Entity gate
@@ -952,6 +960,10 @@ def is_match(E: float, T: float, S: float, entities_v: List[int]) -> bool:
         entity_gate = E >= settings.entity_overlap_threshold
     else:
         entity_gate = T >= settings.token_similarity_threshold
+
+    # High-confidence LLM match can bypass the entity gate
+    if L >= 0.70:
+        entity_gate = True
 
     # Overall score gate
     score_gate = S >= settings.cluster_similarity_threshold
@@ -1007,6 +1019,8 @@ def create_cluster(
 
     event_type_enum = EventType[event_type.upper()] if event_type.upper() in EventType.__members__ else EventType.OTHER
 
+    llm_summary = (variant.extra_metadata or {}).get("llm_summary") if hasattr(variant, 'extra_metadata') else None
+
     cluster = Cluster(
         headline=variant.title or "Untitled",
         event_type=event_type_enum,
@@ -1016,6 +1030,7 @@ def create_cluster(
         tokens=tokens,
         entities_agg=entities,
         game_identifier=game_identifier,
+        llm_summary=llm_summary,
     )
 
     db.add(cluster)
