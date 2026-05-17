@@ -63,7 +63,7 @@ Title: {title}
 Description: {description}
 Entities mentioned: {entity_names}
 
-Respond as JSON: {{"tags": ["Tag1", "Tag2"], "event_type": "game", "summary": "5-10 word summary of core event", "confidence": "HIGH"}}"""
+Respond as JSON: {{"tags": ["Tag1", "Tag2"], "event_type": "game", "summary": "5-10 word factual topic using key nouns (e.g. 'Celebrini contract extension analysis')", "confidence": "HIGH"}}"""
 
 
 @dataclass
