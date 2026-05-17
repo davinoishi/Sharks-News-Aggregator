@@ -756,21 +756,20 @@ def match_or_create_cluster(
 
         # Calculate scores
         E = entity_overlap_score(clustering_entities, cluster_clustering_entities)
-        T = jaccard_similarity(tokens, cluster_tokens)
+        # Use max of full-pool Jaccard and headline-only Jaccard to avoid dilution
+        # as clusters grow and accumulate tokens from many articles
+        T_pool = jaccard_similarity(tokens, cluster_tokens)
+        headline_tokens = normalize_tokens(cluster.headline) if cluster.headline else []
+        T_headline = jaccard_similarity(tokens, headline_tokens)
+        T = max(T_pool, T_headline)
         K = event_compatibility_score(event_type, cluster.event_type.value)
 
         L = 0.0
         if has_llm_signal and cluster.llm_summary:
-            L = title_similarity(
-                normalize_title_for_matching(llm_summary),
-                normalize_title_for_matching(cluster.llm_summary),
-            )
+            L = summary_similarity(llm_summary, cluster.llm_summary)
             S = 0.35 * E + 0.20 * T + 0.10 * K + 0.35 * L
         elif has_llm_signal:
-            L = title_similarity(
-                normalize_title_for_matching(llm_summary),
-                normalize_title_for_matching(cluster.headline),
-            )
+            L = summary_similarity(llm_summary, cluster.headline)
             S = 0.45 * E + 0.25 * T + 0.10 * K + 0.20 * L
         else:
             S = 0.55 * E + 0.35 * T + 0.10 * K
@@ -889,6 +888,12 @@ def event_compatibility_score(event_v: str, event_c: str) -> float:
         ('game', 'lineup'),
         ('recall', 'lineup'),
         ('lineup', 'recall'),
+        ('opinion', 'signing'),
+        ('signing', 'opinion'),
+        ('opinion', 'trade'),
+        ('trade', 'opinion'),
+        ('opinion', 'other'),
+        ('other', 'opinion'),
     }
 
     if (event_v, event_c) in compatible_pairs:
@@ -946,6 +951,46 @@ def title_similarity(title1: str, title2: str) -> float:
     return SequenceMatcher(None, title1, title2).ratio()
 
 
+def summary_similarity(text1: str, text2: str) -> float:
+    """
+    Calculate similarity between two LLM summaries or short texts using
+    token-based Jaccard combined with SequenceMatcher.
+
+    Takes the max of both approaches to handle:
+    - Paraphrased content (Jaccard catches shared keywords regardless of order)
+    - Near-identical content (SequenceMatcher catches character-level similarity)
+
+    Returns:
+        Similarity score between 0.0 and 1.0
+    """
+    from difflib import SequenceMatcher
+
+    if not text1 or not text2:
+        return 0.0
+
+    norm1 = normalize_title_for_matching(text1)
+    norm2 = normalize_title_for_matching(text2)
+
+    if not norm1 or not norm2:
+        return 0.0
+
+    seq_score = SequenceMatcher(None, norm1, norm2).ratio()
+
+    tokens1 = set(norm1.split())
+    tokens2 = set(norm2.split())
+    tokens1 = {t for t in tokens1 if len(t) > 2}
+    tokens2 = {t for t in tokens2 if len(t) > 2}
+
+    if tokens1 and tokens2:
+        intersection = len(tokens1 & tokens2)
+        union = len(tokens1 | tokens2)
+        jaccard = intersection / union
+    else:
+        jaccard = 0.0
+
+    return max(seq_score, jaccard)
+
+
 def is_match(E: float, T: float, S: float, entities_v: List[int], L: float = 0.0) -> bool:
     """
     Determine if similarity scores indicate a match.
@@ -975,17 +1020,16 @@ def get_time_window_for_event(event_type: str) -> timedelta:
     """
     Get time window for clustering based on event type.
 
-    From PRD:
-    - 72 hours: trade, injury, lineup, recall, waiver, signing
+    - 72 hours: trade, injury, lineup, recall, waiver, signing, prospect, other
+    - 48 hours: opinion (analysis pieces on the same topic often span days)
     - 24 hours: game
-    - 12 hours: opinion
     """
     if event_type in ['trade', 'injury', 'lineup', 'recall', 'waiver', 'signing', 'prospect', 'other']:
         return timedelta(hours=72)
     elif event_type == 'game':
         return timedelta(hours=24)
     elif event_type == 'opinion':
-        return timedelta(hours=12)
+        return timedelta(hours=48)
     else:
         return timedelta(hours=72)
 
