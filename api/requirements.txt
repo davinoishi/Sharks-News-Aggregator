@@ -29,7 +29,7 @@ pydantic-settings>=2.1.0
 # Utilities
 python-dateutil==2.9.0.post0
 python-dotenv==1.2.2
-watchfiles==0.21.0
+watchfiles==1.2.0
 
 # Social Media
 atproto==0.0.65
