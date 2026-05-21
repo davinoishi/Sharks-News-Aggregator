@@ -145,7 +145,10 @@ class OpenRouterService:
                     )
 
                 if resp.status_code == 429:
-                    retry_after = min(int(resp.headers.get("Retry-After", "5")), 30)
+                    try:
+                        retry_after = min(int(resp.headers.get("Retry-After", "5")), 30)
+                    except (ValueError, TypeError):
+                        retry_after = 5
                     if attempt == 0:
                         time.sleep(retry_after)
                         continue

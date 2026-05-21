@@ -501,48 +501,46 @@ def enable_source(
 
 @app.get("/admin/candidate-sources")
 def list_candidate_sources(
+    request: Request,
     status: str = Query("queued_for_review", description="Filter by status"),
     db: Session = Depends(get_db)
 ):
     """
     List candidate sources for review.
 
-    TODO: Add authentication/authorization
+    Protected by IP whitelist or API key.
     """
+    check_admin_access(request)
     return {"candidates": [], "count": 0}
 
 
 @app.post("/admin/candidate-sources/{candidate_id}/approve")
 def approve_candidate_source(
     candidate_id: int,
+    request: Request,
     db: Session = Depends(get_db)
 ):
     """
     Approve a candidate source and convert to active source.
 
-    TODO: Add authentication/authorization
+    Protected by IP whitelist or API key.
     """
-    # TODO: Implement approval logic
-    # 1. Load candidate
-    # 2. Create new Source record
-    # 3. Update candidate status
-    # 4. Return confirmation
-
+    check_admin_access(request)
     raise HTTPException(status_code=501, detail="Not implemented yet")
 
 
 @app.post("/admin/candidate-sources/{candidate_id}/reject")
 def reject_candidate_source(
     candidate_id: int,
+    request: Request,
     db: Session = Depends(get_db)
 ):
     """
     Reject a candidate source.
 
-    TODO: Add authentication/authorization
+    Protected by IP whitelist or API key.
     """
-    # TODO: Implement rejection logic
-
+    check_admin_access(request)
     raise HTTPException(status_code=501, detail="Not implemented yet")
 
 
@@ -594,11 +592,6 @@ def check_admin_access(request: Request):
                     return True
         except ValueError:
             continue
-
-    # Also allow any private network IP (Docker, local proxies like noBGP agent)
-    # These are inherently trusted as they're local connections
-    if client_ip_obj.is_private:
-        return True
 
     raise HTTPException(
         status_code=403,
