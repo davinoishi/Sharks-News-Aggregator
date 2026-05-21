@@ -1111,8 +1111,13 @@ def update_cluster_metadata(db: Session, cluster, variant, tokens: List[str], en
         tokens: Variant's tokens
         entities: Variant's entity IDs
     """
-    # Update timestamps
-    cluster.last_seen_at = datetime.utcnow()
+    # Update last_seen_at to the variant's publication date if available,
+    # but never move it backwards
+    variant_time = variant.published_at or datetime.utcnow()
+    if variant_time.tzinfo:
+        variant_time = variant_time.replace(tzinfo=None)
+    if variant_time > cluster.last_seen_at.replace(tzinfo=None):
+        cluster.last_seen_at = variant_time
 
     # Update source count (will be recalculated properly in a query)
     cluster.source_count = cluster.source_count + 1

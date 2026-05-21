@@ -239,6 +239,14 @@ def create_raw_item(
     if not original_url:
         return None
 
+    # Reject articles older than the configured max age
+    if published_at:
+        from app.core.config import settings
+        from datetime import timedelta
+        max_age = timedelta(days=settings.max_article_age_days)
+        if datetime.utcnow() - published_at.replace(tzinfo=None) > max_age:
+            return None
+
     # Normalize URL for deduplication
     canonical_url = normalize_url(original_url)
 

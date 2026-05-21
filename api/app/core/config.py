@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     entity_overlap_threshold: float = 0.50
     token_similarity_threshold: float = 0.40
 
+    # Ingestion age gate
+    max_article_age_days: int = 7
+
     # Rate limiting
     submission_rate_limit_per_ip: int = 10  # per hour
 
