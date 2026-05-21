@@ -359,6 +359,7 @@ Now that the infrastructure is set up:
   - `CLUSTER_SIMILARITY_THRESHOLD=0.62`
   - `ENTITY_OVERLAP_THRESHOLD=0.50`
   - `TOKEN_SIMILARITY_THRESHOLD=0.40`
+- **Adjust article freshness** - `MAX_ARTICLE_AGE_DAYS=7` (rejects articles older than 7 days at ingestion)
 
 ## Production Considerations
 
