@@ -292,6 +292,7 @@ Stories are grouped when they cover the same event from multiple sources:
 | `DATABASE_URL` | - | PostgreSQL connection string |
 | `CELERY_BROKER_URL` | - | Redis broker URL |
 | `INGEST_INTERVAL_MINUTES` | 10 | RSS fetch frequency |
+| `MAX_ARTICLE_AGE_DAYS` | 7 | Reject articles older than this many days |
 | `ALLOWED_ORIGINS` | * (production) | CORS allowed origins |
 | `NEXT_PUBLIC_API_BASE_URL` | (auto-detected) | API URL for frontend |
 
@@ -301,6 +302,7 @@ cluster_similarity_threshold = 0.62
 entity_overlap_threshold = 0.50
 token_similarity_threshold = 0.40
 ingest_interval_minutes = 10
+max_article_age_days = 7
 submission_rate_limit_per_ip = 10
 ```
 

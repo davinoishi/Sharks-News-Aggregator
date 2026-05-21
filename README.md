@@ -248,6 +248,7 @@ Key settings in `.env`:
 ```bash
 # Ingestion
 INGEST_INTERVAL_MINUTES=10
+MAX_ARTICLE_AGE_DAYS=7  # Reject articles older than this many days
 
 # Database (set via .env file - use strong passwords!)
 DATABASE_URL=postgresql+psycopg://user:password@db:5432/sharks
