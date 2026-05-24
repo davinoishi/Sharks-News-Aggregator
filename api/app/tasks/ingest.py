@@ -145,13 +145,23 @@ def ingest_rss(db: Session, source) -> dict:
         print(f"  Found {len(feed.entries)} entries in feed")
 
         for entry in feed.entries:
+            entry_url = entry.get('link')
+            entry_title = strip_html(entry.get('title'))
+
+            # SportSpyder pages are ad wrappers — resolve to the real article
+            if entry_url and 'sportspyder.com' in entry_url:
+                resolved = resolve_sportspyder_url(entry_url)
+                if resolved:
+                    entry_url = resolved['url']
+                    entry_title = resolved.get('title', entry_title)
+
             # Create raw_item with idempotency
             raw_item = create_raw_item(
                 db=db,
                 source_id=source.id,
                 source_item_id=entry.get('id'),
-                original_url=entry.get('link'),
-                raw_title=strip_html(entry.get('title')),
+                original_url=entry_url,
+                raw_title=entry_title,
                 raw_description=entry.get('summary'),
                 published_at=parse_published_date(entry),
             )
@@ -368,6 +378,55 @@ def strip_html(text: Optional[str]) -> Optional[str]:
         return text
     cleaned = re.sub(r'<[^>]+>', '', text)
     return html.unescape(cleaned).strip()
+
+
+def resolve_sportspyder_url(url: str) -> Optional[dict]:
+    """
+    Resolve a SportSpyder wrapper URL to the real article URL.
+
+    SportSpyder pages are JS-rendered ad wrappers with an "Open Article"
+    button. Their API at /api/v1/articles/{id} returns the final_url
+    and clean title.
+
+    Returns:
+        Dict with 'url' and 'title', or None on failure
+    """
+    import re
+
+    match = re.search(r'/articles/(\d+)', url)
+    if not match:
+        return None
+
+    article_id = match.group(1)
+    try:
+        resp = httpx.get(
+            f"https://sportspyder.com/api/v1/articles/{article_id}",
+            timeout=15.0,
+            headers={"User-Agent": "SharksNewsAggregator/1.0"}
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+        articles = data.get("articles", [])
+        if not articles:
+            return None
+
+        article = articles[0]
+        final_url = article.get("final_url")
+        if not final_url:
+            return None
+
+        result = {"url": final_url}
+        title = article.get("title")
+        if title:
+            result["title"] = title
+
+        print(f"  SportSpyder resolved: {url} → {final_url}")
+        return result
+
+    except Exception as e:
+        print(f"  SportSpyder resolution failed for {url}: {e}")
+        return None
 
 
 def normalize_url(url: str) -> str:

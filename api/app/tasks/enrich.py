@@ -765,9 +765,14 @@ def match_or_create_cluster(
         K = event_compatibility_score(event_type, cluster.event_type.value)
 
         L = 0.0
+        no_entities = not clustering_entities and not cluster_clustering_entities
         if has_llm_signal and cluster.llm_summary:
             L = summary_similarity(llm_summary, cluster.llm_summary)
-            S = 0.35 * E + 0.20 * T + 0.10 * K + 0.35 * L
+            if no_entities:
+                # No non-team entities on either side — shift E weight to L
+                S = 0.30 * T + 0.10 * K + 0.60 * L
+            else:
+                S = 0.35 * E + 0.20 * T + 0.10 * K + 0.35 * L
         elif has_llm_signal:
             L = summary_similarity(llm_summary, cluster.headline)
             S = 0.45 * E + 0.25 * T + 0.10 * K + 0.20 * L
