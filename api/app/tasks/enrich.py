@@ -280,9 +280,10 @@ def extract_entities(db: Session, text: str) -> List[int]:
 
 
 def _has_sharks_context(text_lower: str) -> bool:
-    """Check if text contains Sharks-related keywords."""
+    """Check if text contains Sharks-related keywords (hockey-specific)."""
     sharks_keywords = [
-        'sharks', 'sj sharks', 'san jose', 'barracuda', 'sap center',
+        'sharks', 'sj sharks', 'san jose sharks', 'barracuda',
+        'sap center', 'tech ccs arena',
     ]
     return any(kw in text_lower for kw in sharks_keywords)
 
@@ -331,12 +332,14 @@ def check_sharks_relevance(db: Session, title: str, entity_ids: List[int]) -> bo
     """
     text_lower = title.lower()
 
-    # Direct team mentions in title
+    # Direct team mentions in title (hockey-specific only)
     sharks_keywords = [
         'sharks',
         'sj sharks',
+        'san jose sharks',
         'barracuda',
         'sap center',
+        'tech ccs arena',
     ]
 
     if any(keyword in text_lower for keyword in sharks_keywords):
