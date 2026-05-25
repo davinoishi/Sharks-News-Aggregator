@@ -1,6 +1,7 @@
 """
 Maintenance tasks for cleanup and housekeeping.
 """
+import re
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 
@@ -65,6 +66,54 @@ def purge_old_items():
             "raw_items_deleted": items_deleted,
             "cutoff": cutoff.isoformat(),
         }
+
+    finally:
+        db.close()
+
+
+@celery.task(name="app.tasks.maintenance.cleanup_bogus_entities")
+def cleanup_bogus_entities():
+    """
+    Remove entities whose names contain no letters (e.g. "115", "4").
+    These are created when the roster sync captures non-name values
+    from CapWages HTML. Also removes their cluster associations and
+    cleans up entities_agg on affected clusters.
+    """
+    from app.models import Entity, ClusterEntity, Cluster
+
+    db = SessionLocal()
+    try:
+        bogus = db.query(Entity).filter(
+            ~Entity.name.op('~')(r'[a-zA-Z]')
+        ).all()
+
+        if not bogus:
+            print("No bogus entities found.")
+            return {"status": "success", "deleted": 0}
+
+        bogus_ids = {e.id for e in bogus}
+        print(f"Found {len(bogus_ids)} bogus entities: {[e.name for e in bogus]}")
+
+        db.query(ClusterEntity).filter(
+            ClusterEntity.entity_id.in_(bogus_ids)
+        ).delete(synchronize_session='fetch')
+
+        clusters = db.query(Cluster).filter(
+            Cluster.entities_agg.overlap(list(bogus_ids))
+        ).all()
+        for cluster in clusters:
+            cluster.entities_agg = [
+                eid for eid in (cluster.entities_agg or [])
+                if eid not in bogus_ids
+            ]
+
+        for entity in bogus:
+            db.delete(entity)
+
+        db.commit()
+        print(f"Deleted {len(bogus_ids)} bogus entities and cleaned up associations.")
+
+        return {"status": "success", "deleted": len(bogus_ids)}
 
     finally:
         db.close()

@@ -257,6 +257,8 @@ def extract_entities(db: Session, text: str) -> List[int]:
     has_sharks_context = _has_sharks_context(text_lower)
 
     for entity in entities:
+        if not re.search(r'[a-zA-Z]', entity.name):
+            continue
         name_lower = entity.name.lower()
 
         # Full name match (high confidence) - always accepted

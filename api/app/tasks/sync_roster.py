@@ -149,8 +149,10 @@ def parse_player_name(raw_name: str) -> Optional[str]:
         Normalized name (e.g., "Macklin Celebrini") or None if unparseable.
     """
     raw_name = raw_name.strip()
+    if not raw_name or not re.search(r'[a-zA-Z]', raw_name):
+        return None
     if "," not in raw_name:
-        return raw_name if raw_name else None
+        return raw_name
 
     parts = raw_name.split(",", 1)
     last_name = parts[0].strip()
