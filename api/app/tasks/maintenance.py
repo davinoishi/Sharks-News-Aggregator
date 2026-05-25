@@ -98,8 +98,11 @@ def cleanup_bogus_entities():
             ClusterEntity.entity_id.in_(bogus_ids)
         ).delete(synchronize_session='fetch')
 
+        from sqlalchemy import cast
+        from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY
+        from sqlalchemy import Integer
         clusters = db.query(Cluster).filter(
-            Cluster.entities_agg.overlap(list(bogus_ids))
+            Cluster.entities_agg.op('&&')(cast(list(bogus_ids), PG_ARRAY(Integer)))
         ).all()
         for cluster in clusters:
             cluster.entities_agg = [
