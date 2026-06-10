@@ -6,9 +6,21 @@ from typing import Optional, List
 from datetime import datetime, timedelta
 from pydantic import BaseModel, HttpUrl
 import ipaddress
+import hashlib
 
 from app.core.config import settings
 from app.core.database import get_db
+
+
+def hash_client_ip(ip: Optional[str]) -> str:
+    """Return a salted SHA-256 hash of a client IP for privacy-preserving storage.
+
+    Raw IPs are never persisted; the salted hash is deterministic so rate-limit
+    comparisons still work. Set IP_HASH_SALT in the environment so the hashes
+    aren't trivially reversible via a rainbow table of the IP space.
+    """
+    salt = settings.ip_hash_salt or ""
+    return hashlib.sha256(f"{salt}:{ip or ''}".encode("utf-8")).hexdigest()
 
 
 # ============================================================================
@@ -270,23 +282,24 @@ async def submit_link(
     """
     from app.models import Submission, SubmissionStatus
 
-    # Get client IP for rate limiting
-    client_ip = request.client.host
+    # Hash the client IP before any storage/comparison so raw IPs are never
+    # persisted. The salted hash is stable, so rate-limit counting still works.
+    ip_hash = hash_client_ip(request.client.host)
 
     # Check rate limit
     recent_submissions = db.query(Submission).filter(
-        Submission.submitter_ip == client_ip,
+        Submission.submitter_ip == ip_hash,
         Submission.created_at >= datetime.utcnow() - timedelta(hours=1)
     ).count()
 
     if recent_submissions >= settings.submission_rate_limit_per_ip:
         raise HTTPException(status_code=429, detail="Rate limit exceeded. Maximum 10 submissions per hour.")
 
-    # Create submission record
+    # Create submission record (submitter_ip stores the hash, not the raw IP)
     submission = Submission(
         url=str(payload.url),
         note=payload.note,
-        submitter_ip=client_ip,
+        submitter_ip=ip_hash,
         status=SubmissionStatus.RECEIVED
     )
     db.add(submission)

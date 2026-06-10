@@ -16,7 +16,16 @@ A checklist of tasks for deploying the Sharks News Aggregator to production.
 - [x] **Rate limiting** — 10 submissions per IP per hour on `/submit/link`
 - [x] **Disable API documentation** — Set `docs_url=None, redoc_url=None` in FastAPI app (optional)
 - [x] **Protect admin endpoints** — Currently return 501 (not implemented)
-- [x] **Review CSP headers** — Add Content-Security-Policy if needed
+- [x] **Security headers** — `next.config.js` sets `X-Content-Type-Options`,
+  `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`, and an enforced CSP.
+- [x] **Network isolation** — Postgres/Redis are no longer published to the host;
+  they're reachable only on the compose network. Redis requires a password
+  (`REDIS_PASSWORD`, threaded into the Celery broker/result URLs).
+- [x] **Hash submitter IPs** — `/submit/link` stores a salted SHA-256 hash
+  (`IP_HASH_SALT`), never the raw IP. Run `api/migrations/hash_submitter_ip.sql`.
+
+> **Required env (set before deploy):** `REDIS_PASSWORD` (URL-safe), and ideally
+> `IP_HASH_SALT`. Compose now refuses to start if `REDIS_PASSWORD` is empty.
 
 ## Environment Configuration
 
@@ -32,6 +41,8 @@ A checklist of tasks for deploying the Sharks News Aggregator to production.
   - Web: https://x2mq74oetjlz.nobgp.com
   - `auth_required=false` for public access
 - [x] **Docker containers running** — All 6 services operational
+- [x] **Datastore ports not exposed** — `db`/`redis` host port mappings removed
+  (commented loopback-only mappings remain for local debugging)
 - [x] **Auto-restart enabled** — `restart: unless-stopped` on all containers
 - [x] **Database persistence** — PostgreSQL data persisted via Docker volumes
 - [ ] **Database backups** — Set up automated PostgreSQL backups
