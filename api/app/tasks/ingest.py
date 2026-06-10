@@ -6,16 +6,15 @@ import hashlib
 import html
 import re
 from datetime import datetime
-from typing import List, Optional
+from typing import Optional
+
 import feedparser
 import httpx
-from bs4 import BeautifulSoup
 from celery import group
 from sqlalchemy.orm import Session
 
-from app.tasks.celery_app import celery
 from app.core.database import SessionLocal
-from app.core.config import settings
+from app.tasks.celery_app import celery
 
 
 @celery.task(name="app.tasks.ingest.ingest_all_sources", bind=True)
@@ -24,7 +23,6 @@ def ingest_all_sources(self):
     Master task that triggers ingestion for all approved sources.
     Runs on schedule via Celery Beat.
     """
-    from app.models import Source, SourceStatus
     from app.core.db_utils import get_active_sources
 
     db = SessionLocal()
@@ -57,7 +55,7 @@ def ingest_source(self, source_id: int):
     Args:
         source_id: ID of the source to ingest
     """
-    from app.models import Source, IngestMethod
+    from app.models import IngestMethod, Source
 
     db = SessionLocal()
     try:
@@ -123,7 +121,7 @@ def ingest_rss(db: Session, source) -> dict:
 
         # If initial parse failed to recover entries, try sanitizing the XML
         if feed.bozo and not feed.entries and raw_content:
-            print(f"  Initial parse failed, attempting XML sanitization...")
+            print("  Initial parse failed, attempting XML sanitization...")
             sanitized = sanitize_feed_xml(raw_content)
             feed = feedparser.parse(sanitized)
             if feed.entries:
@@ -251,8 +249,9 @@ def create_raw_item(
 
     # Reject articles older than the configured max age
     if published_at:
-        from app.core.config import settings
         from datetime import timedelta
+
+        from app.core.config import settings
         max_age = timedelta(days=settings.max_article_age_days)
         if datetime.utcnow() - published_at.replace(tzinfo=None) > max_age:
             return None
@@ -434,7 +433,7 @@ def normalize_url(url: str) -> str:
     Normalize URL for deduplication.
     Removes tracking parameters, fragments, and unwraps Google redirect URLs.
     """
-    from urllib.parse import urlparse, parse_qs, urlencode, urlunparse, unquote
+    from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
     parsed = urlparse(url)
 

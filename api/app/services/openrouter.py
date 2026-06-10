@@ -7,13 +7,12 @@ Falls back to keyword-based logic if the API is unavailable.
 import json
 import re
 import time
-from typing import List, Tuple, Optional
 from dataclasses import dataclass, field
+from typing import List, Optional, Tuple
 
 import httpx
 
 from app.core.config import settings
-
 
 RELEVANCE_PROMPT_SYSTEM = (
     "You are a relevance filter for a San Jose Sharks NHL news aggregator. "
@@ -152,7 +151,7 @@ class OpenRouterService:
                     if attempt == 0:
                         time.sleep(retry_after)
                         continue
-                    return None, f"Rate limited (429) after retry"
+                    return None, "Rate limited (429) after retry"
 
                 if resp.status_code >= 500:
                     if attempt == 0:

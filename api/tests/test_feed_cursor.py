@@ -1,7 +1,7 @@
 """Pure-logic tests for feed keyset cursors (brief 04, P3). No DB needed."""
 from datetime import datetime, timezone
 
-from app.core.queries import encode_cursor, decode_cursor
+from app.core.queries import decode_cursor, encode_cursor
 
 
 def test_cursor_round_trip():

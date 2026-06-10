@@ -2,7 +2,8 @@
 Tag model - represents story tags (News, Rumors, Injury, etc.).
 """
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, DateTime
+
+from sqlalchemy import Column, DateTime, Integer, String
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base

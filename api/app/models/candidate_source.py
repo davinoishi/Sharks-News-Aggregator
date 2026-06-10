@@ -2,11 +2,12 @@
 CandidateSource model - proposed sources awaiting review.
 """
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, ForeignKey, JSON, Enum
+
+from sqlalchemy import JSON, Boolean, Column, DateTime, Enum, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
-from app.models.source import SourceCategory, SourceStatus, IngestMethod
+from app.models.source import IngestMethod, SourceCategory, SourceStatus
 
 
 class CandidateSource(Base):

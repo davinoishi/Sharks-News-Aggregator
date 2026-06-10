@@ -2,7 +2,8 @@
 Entity model - represents players, coaches, teams, and staff.
 """
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, DateTime, JSON
+
+from sqlalchemy import JSON, Column, DateTime, Integer, String
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base

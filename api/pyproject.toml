@@ -1,0 +1,17 @@
+# Tooling config for the API package. Ruff lint config for CI (brief 05).
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+# Start permissive: ruff's default rules (pyflakes F + a subset of pycodestyle E)
+# plus import sorting (I). Tighten in brief 07.
+select = ["E4", "E7", "E9", "F", "I"]
+# Pre-existing violations deferred to the brief 07 cleanup rather than touching
+# unfamiliar logic here:
+#   E722 - bare `except:` (a few intentional catch-alls in task workers)
+#   F841 - assigned-but-unused locals
+ignore = ["E722", "F841"]
+
+# `ruff format` would restyle ~40 files; that mass reformat is out of scope for
+# the CI brief (see brief 07). CI runs `ruff check` only, not `ruff format --check`.

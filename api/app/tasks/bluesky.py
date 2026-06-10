@@ -5,9 +5,9 @@ Handles scheduled posting of new clusters and retrying failed posts.
 """
 from datetime import datetime, timedelta
 
-from app.tasks.celery_app import celery
-from app.core.database import SessionLocal
 from app.core.config import settings
+from app.core.database import SessionLocal
+from app.tasks.celery_app import celery
 
 
 @celery.task(name="app.tasks.bluesky.post_new_clusters")
@@ -27,10 +27,10 @@ def post_new_clusters():
     if not settings.bluesky_enabled:
         return {"status": "disabled", "message": "BlueSky posting is disabled"}
 
+    from app.core.queries import get_cluster_variants_sorted
     from app.models import Cluster, ClusterStatus, EventType
     from app.models.bluesky_post import BlueSkyPost, PostStatus
-    from app.services.bluesky import get_service, format_cluster_post
-    from app.core.queries import get_cluster_variants_sorted
+    from app.services.bluesky import format_cluster_post, get_service
 
     db = SessionLocal()
     try:
@@ -165,10 +165,10 @@ def retry_failed_posts():
     if not settings.bluesky_enabled:
         return {"status": "disabled", "message": "BlueSky posting is disabled"}
 
+    from app.core.queries import get_cluster_variants_sorted
     from app.models import Cluster
     from app.models.bluesky_post import BlueSkyPost, PostStatus
-    from app.services.bluesky import get_service, format_cluster_post
-    from app.core.queries import get_cluster_variants_sorted
+    from app.services.bluesky import format_cluster_post, get_service
 
     db = SessionLocal()
     try:
@@ -287,10 +287,10 @@ def post_cluster(cluster_id: int):
     if not settings.bluesky_enabled:
         return {"status": "disabled", "message": "BlueSky posting is disabled"}
 
+    from app.core.queries import get_cluster_variants_sorted
     from app.models import Cluster, ClusterStatus
     from app.models.bluesky_post import BlueSkyPost, PostStatus
-    from app.services.bluesky import get_service, format_cluster_post
-    from app.core.queries import get_cluster_variants_sorted
+    from app.services.bluesky import format_cluster_post, get_service
 
     db = SessionLocal()
     try:

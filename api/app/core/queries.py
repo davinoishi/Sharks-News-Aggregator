@@ -2,16 +2,23 @@
 Query builder functions for feed and cluster endpoints.
 """
 import base64
-from typing import Optional, List, Tuple
 from datetime import datetime, timedelta
+from typing import List, Optional, Tuple
+
+from sqlalchemy import and_, desc, func, or_
 from sqlalchemy.orm import Session, joinedload, selectinload
-from sqlalchemy import and_, or_, func, desc
 
 from app.models import (
-    Cluster, ClusterStatus, StoryVariant, ClusterVariant,
-    ClusterTag, ClusterEntity, Tag, Entity, Source
+    Cluster,
+    ClusterEntity,
+    ClusterStatus,
+    ClusterTag,
+    ClusterVariant,
+    Entity,
+    Source,
+    StoryVariant,
+    Tag,
 )
-
 
 # Decoded keyset cursor: (last_seen_at, cluster_id).
 CursorKey = Tuple[datetime, int]

@@ -3,8 +3,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.core.database import Base
-from app.models import Submission, SubmissionStatus
 from app.main import list_submissions
+from app.models import Submission, SubmissionStatus
 
 
 def _session():

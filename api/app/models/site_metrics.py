@@ -2,7 +2,8 @@
 SiteMetrics model - simple key-value store for site-wide metrics.
 """
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, BigInteger, DateTime
+
+from sqlalchemy import BigInteger, Column, DateTime, Integer, String
 
 from app.core.database import Base
 

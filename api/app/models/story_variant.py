@@ -1,9 +1,10 @@
 """
 StoryVariant model - represents one source's version of a story.
 """
-from datetime import datetime
 import enum
-from sqlalchemy import Column, Integer, String, Enum, Text, DateTime, ForeignKey, ARRAY, JSON
+from datetime import datetime
+
+from sqlalchemy import ARRAY, JSON, Column, DateTime, Enum, ForeignKey, Integer, Text
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base

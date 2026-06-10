@@ -2,19 +2,21 @@
 Enrichment worker tasks for processing raw items into story variants.
 Handles entity extraction, tagging, clustering, and headline generation.
 """
-from typing import List, Set, Tuple, Optional
 from datetime import datetime, timedelta
+from typing import List, Optional, Tuple
+
 from sqlalchemy.orm import Session
 
-from app.tasks.celery_app import celery
-from app.core.database import SessionLocal
 from app.core.config import settings
+from app.core.database import SessionLocal
 from app.models.validation_log import ValidationLog, ValidationMethod, ValidationResult
 from app.services.openrouter import (
     check_relevance as llm_check_relevance,
+)
+from app.services.openrouter import (
     classify_and_summarize as llm_classify_and_summarize,
 )
-
+from app.tasks.celery_app import celery
 
 # NHL opponent teams mapping (excluding Sharks)
 # Maps team names and common variations to 3-letter abbreviations
@@ -87,7 +89,7 @@ def enrich_raw_item(self, raw_item_id: int):
     Args:
         raw_item_id: ID of the raw_item to process
     """
-    from app.models import RawItem, StoryVariant, Source, EventType
+    from app.models import EventType, RawItem, Source, StoryVariant
 
     db = SessionLocal()
     try:
@@ -205,6 +207,7 @@ def normalize_tokens(text: str) -> List[str]:
         List of normalized tokens
     """
     import re
+
     from nltk.corpus import stopwords
     from nltk.tokenize import word_tokenize
 
@@ -245,6 +248,7 @@ def extract_entities(db: Session, text: str) -> List[int]:
         List of entity IDs found in text
     """
     import re
+
     from app.models import Entity
 
     # Load all known entities from database
@@ -441,7 +445,7 @@ def validate_sharks_relevance(
                 keyword_matched=keyword_matched,
                 entity_ids=entity_ids,
                 error_message=str(e)[:200],
-                reason=f"[EVAL MODE] LLM exception | Decision: keyword"
+                reason="[EVAL MODE] LLM exception | Decision: keyword"
             )
 
         return keyword_matched  # Keyword always decides in eval mode
@@ -676,7 +680,7 @@ def match_or_create_cluster(
     Returns:
         cluster_id
     """
-    from app.models import Cluster, ClusterVariant, ClusterStatus, EventType
+    from app.models import Cluster, ClusterStatus, ClusterVariant
 
     # Step 1: Determine time window based on event type
     time_window = get_time_window_for_event(event_type)

@@ -4,11 +4,11 @@ Handles URL validation, content fetch, and candidate source proposals.
 """
 from typing import Optional
 from urllib.parse import urlparse
+
 from sqlalchemy.orm import Session
 
-from app.tasks.celery_app import celery
 from app.core.database import SessionLocal
-from app.core.config import settings
+from app.tasks.celery_app import celery
 
 
 @celery.task(name="app.tasks.submissions.process_submission", bind=True)
@@ -26,7 +26,7 @@ def process_submission(self, submission_id: int):
     Args:
         submission_id: ID of the submission to process
     """
-    from app.models import Submission, RawItem, StoryVariant, SubmissionStatus
+    from app.models import StoryVariant, Submission, SubmissionStatus
 
     db = SessionLocal()
     try:
@@ -56,7 +56,7 @@ def process_submission(self, submission_id: int):
 
         # Step 2.5: SSRF guard (defense in depth — the row may predate validation
         # or DNS may have changed since submission).
-        from app.core.url_guard import validate_url, UrlNotAllowed
+        from app.core.url_guard import UrlNotAllowed, validate_url
         try:
             validate_url(normalized_url)
         except UrlNotAllowed as e:
@@ -95,7 +95,7 @@ def process_submission(self, submission_id: int):
         if not raw_item:
             submission.status = SubmissionStatus.DUPLICATE
             db.commit()
-            print(f"  Duplicate found during raw_item creation")
+            print("  Duplicate found during raw_item creation")
             return {"status": "duplicate"}
 
         # Step 5: Trigger enrichment
@@ -199,7 +199,7 @@ def get_or_create_user_submission_source(db: Session) -> int:
     ``raw_items.source_id`` foreign key. This source uses the API ingest method
     (a no-op stub), so the scheduled ingester never tries to fetch it.
     """
-    from app.models import Source, SourceCategory, SourceStatus, IngestMethod
+    from app.models import IngestMethod, Source, SourceCategory, SourceStatus
 
     source = db.query(Source).filter(
         Source.base_url == USER_SUBMISSION_SOURCE_URL
@@ -258,6 +258,7 @@ def fetch_url_metadata(url: str) -> dict:
     """
     try:
         import trafilatura
+
         from app.core.url_guard import fetch_guarded
 
         # SSRF-guarded fetch: validates every redirect hop, caps body size,
@@ -302,8 +303,9 @@ def is_known_source(db: Session, domain: str) -> bool:
     Returns:
         True if domain is a known source
     """
-    from app.models import Source
     from urllib.parse import urlparse
+
+    from app.models import Source
 
     # Check if any source has this domain
     sources = db.query(Source).all()
@@ -337,6 +339,7 @@ def discover_rss_feed(base_url: str) -> Optional[str]:
     """
     try:
         from bs4 import BeautifulSoup
+
         from app.core.url_guard import fetch_guarded
 
         # Fetch homepage (SSRF-guarded — base_url is derived from a submission).

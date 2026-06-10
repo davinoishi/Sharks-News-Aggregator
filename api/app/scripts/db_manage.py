@@ -15,12 +15,20 @@ Commands:
 """
 import sys
 from datetime import datetime, timedelta
+
 from sqlalchemy import func
 
 from app.core.database import SessionLocal
 from app.models import (
-    Source, RawItem, StoryVariant, Cluster, Tag, Entity,
-    Submission, CandidateSource, ClusterStatus
+    CandidateSource,
+    Cluster,
+    ClusterStatus,
+    Entity,
+    RawItem,
+    Source,
+    StoryVariant,
+    Submission,
+    Tag,
 )
 
 
@@ -45,7 +53,7 @@ def show_status():
         submission_count = db.query(func.count(Submission.id)).scalar()
         candidate_count = db.query(func.count(CandidateSource.id)).scalar()
 
-        print(f"\nRecord Counts:")
+        print("\nRecord Counts:")
         print(f"  Sources:           {source_count}")
         print(f"  Raw Items:         {raw_item_count}")
         print(f"  Story Variants:    {variant_count}")
@@ -56,7 +64,7 @@ def show_status():
         print(f"  Candidate Sources: {candidate_count}")
 
         # Recent activity
-        print(f"\nRecent Activity (last 24 hours):")
+        print("\nRecent Activity (last 24 hours):")
         yesterday = datetime.utcnow() - timedelta(days=1)
 
         recent_items = db.query(func.count(RawItem.id)).filter(

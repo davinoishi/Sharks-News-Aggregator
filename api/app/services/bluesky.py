@@ -3,9 +3,8 @@ BlueSky social media posting service.
 
 Uses the AT Protocol SDK to post new story clusters to BlueSky.
 """
-from datetime import datetime
-from typing import Optional, Tuple
 from dataclasses import dataclass
+from typing import Optional
 
 from app.core.config import settings
 
@@ -88,7 +87,7 @@ class BlueSkyService:
             PostResult with success status, post URI/CID, or error message
         """
         try:
-            from atproto import Client, client_utils
+            from atproto import client_utils
 
             client = self._get_client()
 
@@ -227,7 +226,7 @@ def format_cluster_post(
     event_display = event_type.replace("_", " ").title()
 
     # Build source info line
-    source_text = f"1 source" if source_count == 1 else f"{source_count} sources"
+    source_text = "1 source" if source_count == 1 else f"{source_count} sources"
     info_line = f"{event_display} | {source_text}"
 
     # Build hashtags - always include base tags

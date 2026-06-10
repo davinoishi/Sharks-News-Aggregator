@@ -1,12 +1,10 @@
 """
 Maintenance tasks for cleanup and housekeeping.
 """
-import re
 from datetime import datetime, timedelta
-from sqlalchemy.orm import Session
 
-from app.tasks.celery_app import celery
 from app.core.database import SessionLocal
+from app.tasks.celery_app import celery
 
 
 @celery.task(name="app.tasks.maintenance.purge_old_items")
@@ -61,7 +59,7 @@ def cleanup_bogus_entities():
     from CapWages HTML. Also removes their cluster associations and
     cleans up entities_agg on affected clusters.
     """
-    from app.models import Entity, ClusterEntity, Cluster
+    from app.models import Cluster, ClusterEntity, Entity
 
     db = SessionLocal()
     try:
@@ -80,9 +78,8 @@ def cleanup_bogus_entities():
             ClusterEntity.entity_id.in_(bogus_ids)
         ).delete(synchronize_session='fetch')
 
-        from sqlalchemy import cast
+        from sqlalchemy import Integer, cast
         from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY
-        from sqlalchemy import Integer
         clusters = db.query(Cluster).filter(
             Cluster.entities_agg.op('&&')(cast(list(bogus_ids), PG_ARRAY(Integer)))
         ).all()

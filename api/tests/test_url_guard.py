@@ -5,7 +5,7 @@ import httpx
 import pytest
 
 from app.core import url_guard
-from app.core.url_guard import UrlNotAllowed, validate_url, fetch_guarded
+from app.core.url_guard import UrlNotAllowed, fetch_guarded, validate_url
 
 
 def _mock_dns(monkeypatch, mapping):
