@@ -134,7 +134,7 @@ Update this table as PRs merge.
 |-------|--------|----|
 | 1 | in review | [#52](https://github.com/davinoishi/Sharks-News-Aggregator/pull/52) |
 | 2 | in review | [#53](https://github.com/davinoishi/Sharks-News-Aggregator/pull/53) |
-| 3 | not started | |
+| 3 | in review | [#54](https://github.com/davinoishi/Sharks-News-Aggregator/pull/54) |
 | 4 | not started | |
 | 5 | not started | |
 | 6 | not started | |

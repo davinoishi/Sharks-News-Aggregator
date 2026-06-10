@@ -37,6 +37,10 @@ class Settings(BaseSettings):
     submission_max_redirects: int = 5
     submission_fetch_max_bytes: int = 5_242_880  # 5 MB
 
+    # Privacy: salt used when hashing submitter IPs before storage. Set a
+    # stable, secret value in the environment (empty = unsalted, less secure).
+    ip_hash_salt: str = ""
+
     # OpenRouter LLM settings (Gemma 4 via openrouter.ai)
     openrouter_api_key: str = ""
     openrouter_model: str = "google/gemma-4-26b-a4b-it:free"

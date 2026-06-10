@@ -34,7 +34,8 @@ class Submission(Base):
         normalized_url: Cleaned URL for deduplication
         domain: Extracted domain name
         note: Optional user note
-        submitter_ip: IP address for rate limiting
+        submitter_ip: Salted SHA-256 hash of the submitter IP (raw IP not stored),
+            used for rate limiting
         status: Processing status
         raw_item_id: Created raw_item (if processed)
         variant_id: Created variant (if published)
@@ -50,7 +51,8 @@ class Submission(Base):
     normalized_url = Column(Text, nullable=True)
     domain = Column(String(255), nullable=True)
     note = Column(Text, nullable=True)
-    submitter_ip = Column(String(45), nullable=True)
+    # Stores a salted SHA-256 hex digest (64 chars), not a raw IP.
+    submitter_ip = Column(String(64), nullable=True)
     status = Column(Enum(SubmissionStatus, values_callable=lambda x: [e.value for e in x]), nullable=False, default=SubmissionStatus.RECEIVED)
     raw_item_id = Column(Integer, ForeignKey("raw_items.id", ondelete="SET NULL"), nullable=True)
     variant_id = Column(Integer, ForeignKey("story_variants.id", ondelete="SET NULL"), nullable=True)

@@ -19,16 +19,22 @@ A checklist of tasks for deploying the Sharks News Aggregator to production.
   client IP via `X-Forwarded-For` from trusted proxies (`TRUSTED_PROXY_IPS`).
 - [x] **Disable API documentation** — Set `docs_url=None, redoc_url=None` in FastAPI app (optional)
 - [x] **Protect admin endpoints** — Every `/admin/*` route requires the
-  `require_admin` dependency (`X-Admin-API-Key` == `ADMIN_API_KEY`, constant-time
-  compare, **fail closed** when unset). The Next.js proxy injects the key
-  server-side and gates the admin page/proxy with HTTP Basic
+  `require_admin` dependency (`X-Admin-API-Key` via constant-time compare,
+  **fail closed** when unset). The Next.js proxy injects the key server-side and
+  gates the admin page/proxy with HTTP Basic
   (`ADMIN_PANEL_USER`/`ADMIN_PANEL_PASSWORD`). The old IP allowlist was removed.
-- [x] **Review CSP headers** — Add Content-Security-Policy if needed
+- [x] **Security headers** — `next.config.js` sets `X-Content-Type-Options`,
+  `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`, and an enforced CSP.
+- [x] **Network isolation** — Postgres/Redis are no longer published to the host;
+  they're reachable only on the compose network. Redis requires a password
+  (`REDIS_PASSWORD`, threaded into the Celery broker/result URLs).
+- [x] **Hash submitter IPs** — `/submit/link` stores a salted SHA-256 hash
+  (`IP_HASH_SALT`), never the raw IP. Run `api/migrations/hash_submitter_ip.sql`.
 
-> **Required env (set before deploy):** `ADMIN_API_KEY`, `ADMIN_PANEL_PASSWORD`
-> (and optionally `ADMIN_PANEL_USER`, `TRUSTED_PROXY_IPS`,
-> `METRICS_RATE_LIMIT_PER_MIN`). The compose files now require `ADMIN_API_KEY`
-> and `ADMIN_PANEL_PASSWORD` to be non-empty (`${VAR:?...}`).
+> **Required env (set before deploy):** `ADMIN_API_KEY`, `ADMIN_PANEL_PASSWORD`,
+> and `REDIS_PASSWORD` (URL-safe) — the compose files refuse to start if any are
+> empty (`${VAR:?...}`). Also set `IP_HASH_SALT`; optionally `ADMIN_PANEL_USER`,
+> `TRUSTED_PROXY_IPS`, `METRICS_RATE_LIMIT_PER_MIN`.
 
 ## Environment Configuration
 
@@ -44,6 +50,8 @@ A checklist of tasks for deploying the Sharks News Aggregator to production.
   - Web: https://x2mq74oetjlz.nobgp.com
   - `auth_required=false` for public access
 - [x] **Docker containers running** — All 6 services operational
+- [x] **Datastore ports not exposed** — `db`/`redis` host port mappings removed
+  (commented loopback-only mappings remain for local debugging)
 - [x] **Auto-restart enabled** — `restart: unless-stopped` on all containers
 - [x] **Database persistence** — PostgreSQL data persisted via Docker volumes
 - [ ] **Database backups** — Set up automated PostgreSQL backups
