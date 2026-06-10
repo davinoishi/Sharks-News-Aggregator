@@ -1,9 +1,10 @@
 """
 Query builder functions for feed and cluster endpoints.
 """
+import base64
 from typing import Optional, List, Tuple
 from datetime import datetime, timedelta
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy import and_, or_, func, desc
 
 from app.models import (
@@ -12,64 +13,110 @@ from app.models import (
 )
 
 
+# Decoded keyset cursor: (last_seen_at, cluster_id).
+CursorKey = Tuple[datetime, int]
+
+
+def encode_cursor(last_seen_at: datetime, cluster_id: int) -> str:
+    """Opaque base64 cursor for keyset pagination on (last_seen_at, id)."""
+    raw = f"{last_seen_at.isoformat()}:{cluster_id}"
+    return base64.urlsafe_b64encode(raw.encode("utf-8")).decode("ascii")
+
+
+def decode_cursor(cursor: Optional[str]) -> Optional[CursorKey]:
+    """Decode a cursor to ``(last_seen_at, id)``.
+
+    Returns ``None`` for an absent cursor or anything unparseable — including the
+    old numeric offset cursors clients may still have cached (treated as "start
+    from the top" rather than erroring).
+    """
+    if not cursor or cursor.isdigit():
+        return None
+    try:
+        raw = base64.urlsafe_b64decode(cursor.encode("ascii")).decode("utf-8")
+        ts_str, id_str = raw.rsplit(":", 1)
+        return datetime.fromisoformat(ts_str), int(id_str)
+    except (ValueError, TypeError):
+        return None
+
+
 def build_feed_query(
     db: Session,
     tag_slugs: Optional[List[str]] = None,
     entity_slugs: Optional[List[str]] = None,
     since: Optional[datetime] = None,
     limit: int = 50,
-    offset: int = 0
-) -> Tuple[List[Cluster], int]:
+    cursor: Optional[CursorKey] = None,
+) -> Tuple[List[Cluster], bool]:
     """
-    Build and execute feed query with filters.
+    Build and execute the feed query with filters and keyset pagination.
 
-    Args:
-        db: Database session
-        tag_slugs: List of tag slugs to filter by
-        entity_slugs: List of entity slugs to filter by
-        since: Filter clusters updated since this time
-        limit: Max results to return
-        offset: Offset for pagination
+    Semantics: a cluster matches if it has ANY of the requested tags AND ANY of
+    the requested entities. Filters use EXISTS subqueries so a cluster matching
+    several requested tags is still returned exactly once (fixes the old
+    join-based duplication, C1). If a requested slug list resolves to zero known
+    tags/entities, the feed is empty rather than silently unfiltered.
+
+    Tags+entities are eager-loaded (selectinload) so formatting the page does no
+    per-cluster queries (P1). We fetch ``limit + 1`` rows to derive ``has_more``
+    instead of a full ``count()`` (P2), and paginate by keyset on
+    ``(last_seen_at, id)`` so shifting ``last_seen_at`` values can't cause
+    skips/dupes across pages (P3).
 
     Returns:
-        Tuple of (clusters, total_count)
+        Tuple of (clusters, has_more).
     """
-    # Base query
     query = db.query(Cluster).filter(Cluster.status == ClusterStatus.ACTIVE)
 
-    # Apply time filter
     if since:
         query = query.filter(Cluster.last_seen_at >= since)
 
-    # Apply tag filter
+    # Tag filter (ANY of the requested tags) via EXISTS — no row duplication.
     if tag_slugs:
-        tag_ids = db.query(Tag.id).filter(Tag.slug.in_(tag_slugs)).all()
-        tag_ids = [t[0] for t in tag_ids]
+        tag_ids = [t[0] for t in db.query(Tag.id).filter(Tag.slug.in_(tag_slugs)).all()]
+        if not tag_ids:
+            return [], False
+        query = query.filter(
+            db.query(ClusterTag.cluster_id)
+            .filter(
+                ClusterTag.cluster_id == Cluster.id,
+                ClusterTag.tag_id.in_(tag_ids),
+            )
+            .exists()
+        )
 
-        if tag_ids:
-            query = query.join(ClusterTag).filter(ClusterTag.tag_id.in_(tag_ids))
-
-    # Apply entity filter
+    # Entity filter (ANY of the requested entities) via EXISTS.
     if entity_slugs:
-        entity_ids = db.query(Entity.id).filter(Entity.slug.in_(entity_slugs)).all()
-        entity_ids = [e[0] for e in entity_ids]
+        entity_ids = [e[0] for e in db.query(Entity.id).filter(Entity.slug.in_(entity_slugs)).all()]
+        if not entity_ids:
+            return [], False
+        query = query.filter(
+            db.query(ClusterEntity.cluster_id)
+            .filter(
+                ClusterEntity.cluster_id == Cluster.id,
+                ClusterEntity.entity_id.in_(entity_ids),
+            )
+            .exists()
+        )
 
-        if entity_ids:
-            query = query.join(ClusterEntity).filter(ClusterEntity.entity_id.in_(entity_ids))
+    # Keyset pagination: rows strictly after the cursor in (last_seen_at, id) desc.
+    if cursor is not None:
+        cursor_ts, cursor_id = cursor
+        query = query.filter(
+            or_(
+                Cluster.last_seen_at < cursor_ts,
+                and_(Cluster.last_seen_at == cursor_ts, Cluster.id < cursor_id),
+            )
+        )
 
-    # Get total count before pagination
-    total_count = query.count()
+    query = query.options(
+        selectinload(Cluster.cluster_tags).selectinload(ClusterTag.tag),
+        selectinload(Cluster.cluster_entities).selectinload(ClusterEntity.entity),
+    ).order_by(desc(Cluster.last_seen_at), desc(Cluster.id))
 
-    # Order by last_seen_at descending (most recent first)
-    query = query.order_by(desc(Cluster.last_seen_at))
-
-    # Apply pagination
-    query = query.limit(limit).offset(offset)
-
-    # Execute and return
-    clusters = query.all()
-
-    return clusters, total_count
+    rows = query.limit(limit + 1).all()
+    has_more = len(rows) > limit
+    return rows[:limit], has_more
 
 
 def get_cluster_with_details(db: Session, cluster_id: int) -> Optional[Cluster]:

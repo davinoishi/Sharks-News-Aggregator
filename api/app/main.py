@@ -251,7 +251,9 @@ def get_feed(
     Returns:
     - List of clusters with headline, tags, source count, etc.
     """
-    from app.core.queries import build_feed_query, format_cluster_for_feed
+    from app.core.queries import (
+        build_feed_query, format_cluster_for_feed, decode_cursor, encode_cursor,
+    )
 
     # Parse time filter
     since_datetime = parse_since_parameter(since)
@@ -260,35 +262,30 @@ def get_feed(
     tag_list = tags.split(',') if tags else None
     entity_list = entities.split(',') if entities else None
 
-    # Build and execute query
-    clusters, total = build_feed_query(
+    # Keyset pagination. Old numeric cursors decode to None (start from the top).
+    cursor_key = decode_cursor(cursor)
+
+    clusters, has_more = build_feed_query(
         db=db,
         tag_slugs=tag_list,
         entity_slugs=entity_list,
         since=since_datetime,
         limit=limit,
-        offset=int(cursor) if cursor else 0
+        cursor=cursor_key,
     )
 
-    # Format results
+    # Tags/entities are eager-loaded, so this does no per-cluster queries.
     cluster_items = [format_cluster_for_feed(db, cluster) for cluster in clusters]
 
-    # Calculate pagination
     next_cursor = None
-    has_more = False
-    if cursor:
-        current_offset = int(cursor)
-        if len(clusters) == limit and current_offset + limit < total:
-            next_cursor = str(current_offset + limit)
-            has_more = True
-    elif len(clusters) == limit and limit < total:
-        next_cursor = str(limit)
-        has_more = True
+    if has_more and clusters:
+        last = clusters[-1]
+        next_cursor = encode_cursor(last.last_seen_at, last.id)
 
     return {
         "clusters": cluster_items,
         "cursor": next_cursor,
-        "has_more": has_more
+        "has_more": has_more,
     }
 
 
@@ -539,6 +536,15 @@ def list_sources(
 
     sources = db.query(Source).order_by(Source.name).all()
 
+    # Recent-item counts for ALL sources in one grouped query (was N+1).
+    cutoff = datetime.utcnow() - timedelta(days=7)
+    recent_counts = dict(
+        db.query(RawItem.source_id, func.count(RawItem.id))
+        .filter(RawItem.created_at >= cutoff)
+        .group_by(RawItem.source_id)
+        .all()
+    )
+
     items = []
     for source in sources:
         # Determine health status
@@ -552,11 +558,7 @@ def list_sources(
         else:
             health = "unknown"
 
-        # Count recent items from this source (last 7 days)
-        recent_items = db.query(func.count(RawItem.id)).filter(
-            RawItem.source_id == source.id,
-            RawItem.created_at >= datetime.utcnow() - timedelta(days=7)
-        ).scalar() or 0
+        recent_items = recent_counts.get(source.id, 0)
 
         items.append({
             "id": source.id,
@@ -786,7 +788,10 @@ def list_validations(
 
     from app.models import ValidationLog, ValidationMethod, ValidationResult, RawItem
 
-    query = db.query(ValidationLog).join(RawItem, ValidationLog.raw_item_id == RawItem.id)
+    # Select the joined RawItem alongside each log (was a per-log re-query, N+1).
+    query = db.query(ValidationLog, RawItem).join(
+        RawItem, ValidationLog.raw_item_id == RawItem.id
+    )
 
     if method:
         try:
@@ -804,11 +809,10 @@ def list_validations(
 
     total = query.count()
 
-    logs = query.order_by(desc(ValidationLog.created_at)).offset(offset).limit(limit).all()
+    rows = query.order_by(desc(ValidationLog.created_at)).offset(offset).limit(limit).all()
 
     items = []
-    for log in logs:
-        raw_item = db.query(RawItem).filter(RawItem.id == log.raw_item_id).first()
+    for log, raw_item in rows:
         items.append({
             "id": log.id,
             "raw_item_id": log.raw_item_id,
@@ -1147,7 +1151,11 @@ def list_bluesky_posts(
     from app.models import Cluster
     from app.models.bluesky_post import BlueSkyPost, PostStatus
 
-    query = db.query(BlueSkyPost)
+    # Outer-join the cluster (was a per-post re-query, N+1); LEFT join so posts
+    # whose cluster was purged still appear.
+    query = db.query(BlueSkyPost, Cluster).outerjoin(
+        Cluster, Cluster.id == BlueSkyPost.cluster_id
+    )
 
     if status:
         try:
@@ -1158,11 +1166,10 @@ def list_bluesky_posts(
 
     total = query.count()
 
-    posts = query.order_by(desc(BlueSkyPost.created_at)).offset(offset).limit(limit).all()
+    rows = query.order_by(desc(BlueSkyPost.created_at)).offset(offset).limit(limit).all()
 
     items = []
-    for post in posts:
-        cluster = db.query(Cluster).filter(Cluster.id == post.cluster_id).first()
+    for post, cluster in rows:
         items.append({
             "id": post.id,
             "cluster_id": post.cluster_id,

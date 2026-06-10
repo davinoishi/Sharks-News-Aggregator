@@ -12,7 +12,6 @@ from app.models.cluster_tag import ClusterTag
 from app.models.cluster_entity import ClusterEntity
 from app.models.submission import Submission, SubmissionStatus
 from app.models.candidate_source import CandidateSource
-from app.models.feed_cache import FeedCache
 from app.models.site_metrics import SiteMetrics
 from app.models.validation_log import ValidationLog, ValidationMethod, ValidationResult
 from app.models.bluesky_post import BlueSkyPost, PostStatus
@@ -37,7 +36,6 @@ __all__ = [
     "Submission",
     "SubmissionStatus",
     "CandidateSource",
-    "FeedCache",
     "SiteMetrics",
     "ValidationLog",
     "ValidationMethod",

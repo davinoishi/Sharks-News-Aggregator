@@ -253,20 +253,6 @@ CREATE INDEX idx_candidate_sources_status ON candidate_sources(status);
 CREATE INDEX idx_candidate_sources_domain ON candidate_sources(domain);
 
 -- ============================================================================
--- FEED CACHE TABLE (Optional - can use Redis instead)
--- ============================================================================
-CREATE TABLE feed_cache (
-    id SERIAL PRIMARY KEY,
-    cache_key VARCHAR(500) NOT NULL UNIQUE,
-    payload JSONB NOT NULL,
-    expires_at TIMESTAMPTZ NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE INDEX idx_feed_cache_key ON feed_cache(cache_key);
-CREATE INDEX idx_feed_cache_expires ON feed_cache(expires_at);
-
--- ============================================================================
 -- HEALTHCHECK TABLE
 -- ============================================================================
 CREATE TABLE healthcheck (
