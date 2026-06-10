@@ -665,6 +665,73 @@ def reject_candidate_source(
     raise HTTPException(status_code=501, detail="Not implemented yet")
 
 
+@admin_router.get("/admin/submissions")
+def list_submissions(
+    status: Optional[str] = Query(
+        None, description="Filter by status: received|published|pending_review|rejected|duplicate"
+    ),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+):
+    """
+    Report of user-submitted links (newest first) for review.
+
+    Submitted links flow through the normal ingestion/enrichment pipeline
+    automatically; this report exists so new domains can be reviewed and
+    promoted to sources if useful. Raw submitter IPs are never stored, so they
+    are not returned.
+    """
+    from urllib.parse import urlparse
+    from app.models import Submission, SubmissionStatus
+
+    query = db.query(Submission)
+    if status:
+        try:
+            status_enum = SubmissionStatus(status)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid status: {status}")
+        query = query.filter(Submission.status == status_enum)
+
+    total = query.count()
+    rows = (
+        query.order_by(desc(Submission.created_at)).offset(offset).limit(limit).all()
+    )
+
+    items = [
+        {
+            "id": s.id,
+            "url": s.url,
+            "domain": s.domain or urlparse(s.url).netloc,
+            "status": s.status.value,
+            "note": s.note,
+            "rejection_reason": s.rejection_reason,
+            "raw_item_id": s.raw_item_id,
+            "cluster_id": s.cluster_id,
+            "created_at": s.created_at,
+            "processed_at": s.processed_at,
+        }
+        for s in rows
+    ]
+
+    # Status breakdown across all submissions (not just this page).
+    by_status = {}
+    for value, count in (
+        db.query(Submission.status, func.count(Submission.id))
+        .group_by(Submission.status)
+        .all()
+    ):
+        by_status[value.value if hasattr(value, "value") else str(value)] = count
+
+    return {
+        "items": items,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "by_status": by_status,
+    }
+
+
 # ============================================================================
 # Admin Validation Endpoints (auth via require_admin dependency)
 # ============================================================================

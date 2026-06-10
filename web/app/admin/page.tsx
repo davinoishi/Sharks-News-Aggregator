@@ -9,9 +9,10 @@ type AdminLink = { title: string; href: string; desc: string };
 
 const groups: { heading: string; links: AdminLink[] }[] = [
   {
-    heading: 'Sources',
+    heading: 'Sources & submissions',
     links: [
       { title: 'Source health', href: '/admin/sources', desc: 'All sources with health/status (rich view).' },
+      { title: 'Submitted links', href: '/admin/view?endpoint=submissions&label=Submitted%20links', desc: 'User-submitted links + status breakdown — review and add sources.' },
       { title: 'Candidate sources', href: '/admin/view?endpoint=candidate-sources', desc: 'Domains queued for review.' },
     ],
   },
