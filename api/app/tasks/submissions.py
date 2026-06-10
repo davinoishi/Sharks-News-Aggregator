@@ -4,7 +4,6 @@ Handles URL validation, content fetch, and candidate source proposals.
 """
 from typing import Optional
 from urllib.parse import urlparse
-import httpx
 from sqlalchemy.orm import Session
 
 from app.tasks.celery_app import celery
@@ -54,6 +53,18 @@ def process_submission(self, submission_id: int):
             db.commit()
             print(f"  Duplicate found: variant {existing_variant.id}")
             return {"status": "duplicate", "variant_id": existing_variant.id}
+
+        # Step 2.5: SSRF guard (defense in depth — the row may predate validation
+        # or DNS may have changed since submission).
+        from app.core.url_guard import validate_url, UrlNotAllowed
+        try:
+            validate_url(normalized_url)
+        except UrlNotAllowed as e:
+            submission.status = SubmissionStatus.REJECTED
+            submission.rejection_reason = "URL not allowed"
+            db.commit()
+            print(f"  ✗ Rejected by SSRF guard: {e}")
+            return {"status": "rejected", "reason": "url_not_allowed"}
 
         # Step 3: Fetch metadata
         try:
@@ -210,8 +221,11 @@ def fetch_url_metadata(url: str) -> dict:
     """
     try:
         import trafilatura
+        from app.core.url_guard import fetch_guarded
 
-        response = httpx.get(url, timeout=settings.request_timeout_seconds, follow_redirects=True)
+        # SSRF-guarded fetch: validates every redirect hop, caps body size,
+        # and enforces the request timeout.
+        response = fetch_guarded(url)
         response.raise_for_status()
 
         # Extract article content
@@ -231,7 +245,7 @@ def fetch_url_metadata(url: str) -> dict:
                 'text': data.get('text'),
                 'author': data.get('author'),
                 'published': data.get('date'),
-                'canonical_url': response.url.str(),
+                'canonical_url': str(response.url),
             }
 
         return {'canonical_url': str(response.url)}
@@ -286,9 +300,10 @@ def discover_rss_feed(base_url: str) -> Optional[str]:
     """
     try:
         from bs4 import BeautifulSoup
+        from app.core.url_guard import fetch_guarded
 
-        # Fetch homepage
-        response = httpx.get(base_url, timeout=10, follow_redirects=True)
+        # Fetch homepage (SSRF-guarded — base_url is derived from a submission).
+        response = fetch_guarded(base_url, timeout=10)
         response.raise_for_status()
 
         soup = BeautifulSoup(response.text, 'html.parser')
@@ -309,7 +324,7 @@ def discover_rss_feed(base_url: str) -> Optional[str]:
         for path in common_paths:
             try:
                 feed_url = f"{base_url.rstrip('/')}{path}"
-                feed_response = httpx.get(feed_url, timeout=5, follow_redirects=True)
+                feed_response = fetch_guarded(feed_url, timeout=5)
                 if feed_response.status_code == 200:
                     # Verify it's actually a feed
                     import feedparser

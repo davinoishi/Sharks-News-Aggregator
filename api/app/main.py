@@ -368,6 +368,14 @@ async def submit_link(
     - 10 submissions per IP per hour
     """
     from app.models import Submission, SubmissionStatus
+    from app.core.url_guard import validate_url, UrlNotAllowed
+
+    # SSRF guard: validate before storing/queuing. Generic message — do not leak
+    # internal reasoning (which host/IP, why) to the submitter.
+    try:
+        validate_url(str(payload.url))
+    except UrlNotAllowed:
+        raise HTTPException(status_code=422, detail="URL not allowed")
 
     # Real client IP (proxy-aware): behind Next.js, request.client.host is the
     # proxy. Without this, every user shares one rate-limit bucket.

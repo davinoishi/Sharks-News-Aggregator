@@ -32,6 +32,11 @@ class Settings(BaseSettings):
     # is stopping trivial counter spam, not precision.
     metrics_rate_limit_per_min: int = 60
 
+    # SSRF guard for user-submitted links (see app/core/url_guard.py)
+    submission_allowed_ports: str = "80,443"
+    submission_max_redirects: int = 5
+    submission_fetch_max_bytes: int = 5_242_880  # 5 MB
+
     # OpenRouter LLM settings (Gemma 4 via openrouter.ai)
     openrouter_api_key: str = ""
     openrouter_model: str = "google/gemma-4-26b-a4b-it:free"

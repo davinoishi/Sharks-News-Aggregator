@@ -133,7 +133,7 @@ Update this table as PRs merge.
 | Brief | Status | PR |
 |-------|--------|----|
 | 1 | in review | [#52](https://github.com/davinoishi/Sharks-News-Aggregator/pull/52) |
-| 2 | not started | |
+| 2 | in review | [#53](https://github.com/davinoishi/Sharks-News-Aggregator/pull/53) |
 | 3 | not started | |
 | 4 | not started | |
 | 5 | not started | |
