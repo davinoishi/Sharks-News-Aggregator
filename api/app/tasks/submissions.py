@@ -76,13 +76,15 @@ def process_submission(self, submission_id: int):
             print(f"  ✗ Failed to fetch URL: {e}")
             return {"status": "rejected", "reason": str(e)}
 
-        # Step 4: Create raw_item
+        # Step 4: Create raw_item under the dedicated "User Submissions" source.
+        # (A raw_items.source_id FK requires a real sources row — the old
+        # hardcoded source_id=0 violated it and rejected every submission.)
         from app.tasks.ingest import create_raw_item
 
-        # Use a synthetic source_id = 0 for user submissions (or create a special "User Submissions" source)
+        source_id = get_or_create_user_submission_source(db)
         raw_item = create_raw_item(
             db=db,
-            source_id=0,  # Special ID for user submissions
+            source_id=source_id,
             original_url=submission.url,
             raw_title=metadata.get('title'),
             raw_description=metadata.get('description'),
@@ -183,6 +185,41 @@ def create_candidate_source(domain: str, submission_id: int):
 
     finally:
         db.close()
+
+
+# Stable identity for the synthetic source that owns user-submitted links.
+USER_SUBMISSION_SOURCE_NAME = "User Submissions"
+USER_SUBMISSION_SOURCE_URL = "https://submissions.internal/"
+
+
+def get_or_create_user_submission_source(db: Session) -> int:
+    """Return the id of the dedicated "User Submissions" source, creating it once.
+
+    User-submitted links need a real ``sources`` row to satisfy the
+    ``raw_items.source_id`` foreign key. This source uses the API ingest method
+    (a no-op stub), so the scheduled ingester never tries to fetch it.
+    """
+    from app.models import Source, SourceCategory, SourceStatus, IngestMethod
+
+    source = db.query(Source).filter(
+        Source.base_url == USER_SUBMISSION_SOURCE_URL
+    ).first()
+    if source:
+        return source.id
+
+    source = Source(
+        name=USER_SUBMISSION_SOURCE_NAME,
+        category=SourceCategory.OTHER,
+        ingest_method=IngestMethod.API,
+        base_url=USER_SUBMISSION_SOURCE_URL,
+        feed_url=None,
+        status=SourceStatus.APPROVED,
+        priority=1000,
+    )
+    db.add(source)
+    db.commit()
+    db.refresh(source)
+    return source.id
 
 
 def normalize_url(url: str) -> str:
