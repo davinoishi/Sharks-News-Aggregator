@@ -141,7 +141,7 @@ and ship via the integration PR
 | 2 | merged | [#53](https://github.com/davinoishi/Sharks-News-Aggregator/pull/53) via [#55](https://github.com/davinoishi/Sharks-News-Aggregator/pull/55) |
 | 3 | merged | [#54](https://github.com/davinoishi/Sharks-News-Aggregator/pull/54) via [#55](https://github.com/davinoishi/Sharks-News-Aggregator/pull/55) |
 | 4 | in review | [#60](https://github.com/davinoishi/Sharks-News-Aggregator/pull/60) |
-| 5 | in review | _PR link pending_ (branch `improve/05-ci`) |
+| 5 | in review | [#61](https://github.com/davinoishi/Sharks-News-Aggregator/pull/61) |
 | 6 | not started | |
 | 7 | not started | |
 | 8 | not started | |
