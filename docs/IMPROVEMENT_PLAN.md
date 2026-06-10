@@ -134,7 +134,7 @@ Update this table as PRs merge.
 |-------|--------|----|
 | 1 | not started | |
 | 2 | not started | |
-| 3 | in review | _PR link pending_ (branch `improve/03-docker-hardening`) |
+| 3 | in review | [#54](https://github.com/davinoishi/Sharks-News-Aggregator/pull/54) |
 | 4 | not started | |
 | 5 | not started | |
 | 6 | not started | |
