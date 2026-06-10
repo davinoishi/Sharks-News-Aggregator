@@ -38,7 +38,10 @@ services:
       CELERY_RESULT_BACKEND: redis://redis:6379/2
       ALLOWED_ORIGINS: http://localhost:3000
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
-      ADMIN_API_KEY: ${ADMIN_API_KEY:-}
+      # Required: admin auth key injected by the Next.js proxy. Empty => all
+      # admin requests are denied (fail closed).
+      ADMIN_API_KEY: ${ADMIN_API_KEY:?ADMIN_API_KEY is required}
+      TRUSTED_PROXY_IPS: ${TRUSTED_PROXY_IPS:-127.0.0.1,::1,172.16.0.0/12}
     depends_on:
       db:
         condition: service_healthy
@@ -85,6 +88,11 @@ services:
     build: ./web
     environment:
       INTERNAL_API_URL: http://api:8000
+      # Server-side admin key forwarded to the API as X-Admin-API-Key.
+      ADMIN_API_KEY: ${ADMIN_API_KEY:?ADMIN_API_KEY is required}
+      # HTTP Basic gate for the /admin pages and /api/admin proxy routes.
+      ADMIN_PANEL_USER: ${ADMIN_PANEL_USER:-admin}
+      ADMIN_PANEL_PASSWORD: ${ADMIN_PANEL_PASSWORD:?ADMIN_PANEL_PASSWORD is required}
     ports:
       - "3001:3000"
     depends_on:

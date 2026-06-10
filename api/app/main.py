@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, Query, Request
+from fastapi import FastAPI, Depends, HTTPException, Query, Request, Header, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
@@ -6,6 +6,9 @@ from typing import Optional, List
 from datetime import datetime, timedelta
 from pydantic import BaseModel, HttpUrl
 import ipaddress
+import secrets
+import threading
+import time
 
 from app.core.config import settings
 from app.core.database import get_db
@@ -28,6 +31,102 @@ app.add_middleware(
     allow_headers=["*"],
     allow_credentials=True,
 )
+
+
+# ============================================================================
+# Auth, trusted-proxy, and rate-limit helpers
+# ============================================================================
+
+def require_admin(
+    x_admin_api_key: Optional[str] = Header(default=None, alias="X-Admin-API-Key"),
+):
+    """FastAPI dependency enforcing admin auth via the X-Admin-API-Key header.
+
+    Fail-closed: if ``settings.admin_api_key`` is empty/unset, every admin
+    request is denied. There is no IP-based fallback — behind the Next.js proxy
+    the backend only ever sees the proxy/tunnel IP. The 403 body intentionally
+    contains no request detail.
+    """
+    configured = settings.admin_api_key or ""
+    provided = x_admin_api_key or ""
+    if not configured or not secrets.compare_digest(provided, configured):
+        raise HTTPException(status_code=403, detail="Admin access denied")
+    return True
+
+
+# Every /admin/* route is registered on this router so the auth dependency is
+# enforced centrally — no endpoint can forget to call it (auth-bypass-by-omission).
+admin_router = APIRouter(dependencies=[Depends(require_admin)])
+
+
+def _parse_trusted_networks():
+    nets = []
+    for part in settings.trusted_proxy_ips.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            nets.append(ipaddress.ip_network(part, strict=False))
+        except ValueError:
+            continue
+    return nets
+
+
+def get_real_client_ip(request: Request) -> str:
+    """Return the real client IP.
+
+    Honors ``X-Forwarded-For`` only when the direct peer is a configured trusted
+    proxy (the Next.js container on the Docker bridge); otherwise returns the
+    direct peer IP. This stops clients from spoofing their IP with a forged
+    header while still recovering the real IP from our own proxy.
+    """
+    direct_peer = request.client.host if request.client else ""
+    try:
+        peer_obj = ipaddress.ip_address(direct_peer)
+    except ValueError:
+        return direct_peer
+
+    for net in _parse_trusted_networks():
+        if peer_obj in net:
+            xff = request.headers.get("X-Forwarded-For")
+            if xff:
+                # Leftmost entry is the original client.
+                candidate = xff.split(",")[0].strip()
+                if candidate:
+                    return candidate
+            break
+    return direct_peer
+
+
+# In-memory fixed-window limiter for public counter endpoints.
+# NOTE: this is per-process state. With multiple uvicorn workers each worker
+# keeps its own buckets, so the effective limit is roughly N * the configured
+# value. That's acceptable here — the goal is stopping trivial counter spam,
+# not precise enforcement. Back this with Redis if you need a strict global cap.
+_METRICS_WINDOW_SECONDS = 60
+_metrics_buckets: dict = {}  # client_ip -> [window_index, count]
+_metrics_lock = threading.Lock()
+
+
+def enforce_metrics_rate_limit(request: Request):
+    """Cheap per-client rate limit for /metrics/pageview and cluster clicks."""
+    client_ip = get_real_client_ip(request) or "unknown"
+    limit = settings.metrics_rate_limit_per_min
+    window = int(time.time()) // _METRICS_WINDOW_SECONDS
+
+    with _metrics_lock:
+        bucket = _metrics_buckets.get(client_ip)
+        if bucket is None or bucket[0] != window:
+            bucket = [window, 0]
+        bucket[1] += 1
+        _metrics_buckets[client_ip] = bucket
+        count = bucket[1]
+        # Opportunistic cleanup so the dict can't grow unbounded.
+        if len(_metrics_buckets) > 10000:
+            _metrics_buckets.clear()
+
+    if count > limit:
+        raise HTTPException(status_code=429, detail="Rate limit exceeded.")
 
 
 # ============================================================================
@@ -270,8 +369,9 @@ async def submit_link(
     """
     from app.models import Submission, SubmissionStatus
 
-    # Get client IP for rate limiting
-    client_ip = request.client.host
+    # Real client IP (proxy-aware): behind Next.js, request.client.host is the
+    # proxy. Without this, every user shares one rate-limit bucket.
+    client_ip = get_real_client_ip(request)
 
     # Check rate limit
     recent_submissions = db.query(Submission).filter(
@@ -341,13 +441,15 @@ def get_stats(db: Session = Depends(get_db)):
 
 
 @app.post("/metrics/pageview")
-def record_pageview(db: Session = Depends(get_db)):
+def record_pageview(request: Request, db: Session = Depends(get_db)):
     """
     Record a page view.
 
     Increments the global page view counter. No user information is stored.
     Called once per page load (not on SPA navigation or filter changes).
     """
+    enforce_metrics_rate_limit(request)
+
     from app.models import SiteMetrics
 
     metric = db.query(SiteMetrics).filter(SiteMetrics.key == "page_views").first()
@@ -365,6 +467,7 @@ def record_pageview(db: Session = Depends(get_db)):
 @app.post("/cluster/{cluster_id}/click")
 def record_cluster_click(
     cluster_id: int,
+    request: Request,
     db: Session = Depends(get_db)
 ):
     """
@@ -373,6 +476,8 @@ def record_cluster_click(
     Increments the click counter for the cluster. No user information is stored.
     Used to show trending/popular stories.
     """
+    enforce_metrics_rate_limit(request)
+
     from app.models import Cluster, ClusterStatus
 
     cluster = db.query(Cluster).filter(
@@ -393,7 +498,7 @@ def record_cluster_click(
 # Admin Endpoints (Protected)
 # ============================================================================
 
-@app.get("/admin/sources")
+@admin_router.get("/admin/sources")
 def list_sources(
     request: Request,
     db: Session = Depends(get_db)
@@ -407,7 +512,6 @@ def list_sources(
     - Last fetch time and error count
     - Recent ingestion stats
     """
-    check_admin_access(request)
 
     from app.models import Source, SourceStatus, RawItem
 
@@ -452,7 +556,7 @@ def list_sources(
     }
 
 
-@app.post("/admin/sources/{source_id}/disable")
+@admin_router.post("/admin/sources/{source_id}/disable")
 def disable_source(
     source_id: int,
     request: Request,
@@ -461,7 +565,6 @@ def disable_source(
     """
     Disable a source by setting its status to 'rejected'.
     """
-    check_admin_access(request)
 
     from app.models import Source, SourceStatus
 
@@ -475,7 +578,7 @@ def disable_source(
     return {"status": "disabled", "source_id": source_id, "name": source.name}
 
 
-@app.post("/admin/sources/{source_id}/enable")
+@admin_router.post("/admin/sources/{source_id}/enable")
 def enable_source(
     source_id: int,
     request: Request,
@@ -484,7 +587,6 @@ def enable_source(
     """
     Re-enable a disabled source by setting its status to 'approved'.
     """
-    check_admin_access(request)
 
     from app.models import Source, SourceStatus
 
@@ -499,7 +601,7 @@ def enable_source(
     return {"status": "enabled", "source_id": source_id, "name": source.name}
 
 
-@app.get("/admin/candidate-sources")
+@admin_router.get("/admin/candidate-sources")
 def list_candidate_sources(
     request: Request,
     status: str = Query("queued_for_review", description="Filter by status"),
@@ -510,11 +612,10 @@ def list_candidate_sources(
 
     Protected by IP whitelist or API key.
     """
-    check_admin_access(request)
     return {"candidates": [], "count": 0}
 
 
-@app.post("/admin/candidate-sources/{candidate_id}/approve")
+@admin_router.post("/admin/candidate-sources/{candidate_id}/approve")
 def approve_candidate_source(
     candidate_id: int,
     request: Request,
@@ -525,11 +626,10 @@ def approve_candidate_source(
 
     Protected by IP whitelist or API key.
     """
-    check_admin_access(request)
     raise HTTPException(status_code=501, detail="Not implemented yet")
 
 
-@app.post("/admin/candidate-sources/{candidate_id}/reject")
+@admin_router.post("/admin/candidate-sources/{candidate_id}/reject")
 def reject_candidate_source(
     candidate_id: int,
     request: Request,
@@ -540,64 +640,12 @@ def reject_candidate_source(
 
     Protected by IP whitelist or API key.
     """
-    check_admin_access(request)
     raise HTTPException(status_code=501, detail="Not implemented yet")
 
 
 # ============================================================================
-# Admin Validation Endpoints (IP-protected)
+# Admin Validation Endpoints (auth via require_admin dependency)
 # ============================================================================
-
-def check_admin_access(request: Request):
-    """
-    Verify admin access via IP whitelist or API key.
-
-    Raises HTTPException if access denied.
-    """
-    # Check API key header first (for external access)
-    api_key = request.headers.get("X-Admin-API-Key")
-    if settings.admin_api_key and api_key == settings.admin_api_key:
-        return True
-
-    # Get client IP
-    client_ip = request.client.host
-
-    # Try to parse and validate client IP
-    try:
-        client_ip_obj = ipaddress.ip_address(client_ip)
-    except ValueError:
-        raise HTTPException(
-            status_code=403,
-            detail=f"Admin access denied for invalid IP {client_ip}"
-        )
-
-    # Always allow loopback addresses (localhost)
-    if client_ip_obj.is_loopback:
-        return True
-
-    # Check if IP is in allowed networks list
-    allowed_networks = settings.admin_allowed_ips.split(",")
-    for network_str in allowed_networks:
-        network_str = network_str.strip()
-        if not network_str:
-            continue
-        try:
-            if "/" in network_str:
-                network = ipaddress.ip_network(network_str, strict=False)
-                if client_ip_obj in network:
-                    return True
-            else:
-                allowed_ip = ipaddress.ip_address(network_str)
-                if client_ip_obj == allowed_ip:
-                    return True
-        except ValueError:
-            continue
-
-    raise HTTPException(
-        status_code=403,
-        detail=f"Admin access denied for IP {client_ip}"
-    )
-
 
 class ValidationLogItem(BaseModel):
     id: int
@@ -632,7 +680,7 @@ class LLMHealthResponse(BaseModel):
     enabled: bool
 
 
-@app.get("/admin/validations")
+@admin_router.get("/admin/validations")
 def list_validations(
     request: Request,
     limit: int = Query(50, ge=1, le=500),
@@ -646,7 +694,6 @@ def list_validations(
 
     Protected by IP whitelist or API key.
     """
-    check_admin_access(request)
 
     from app.models import ValidationLog, ValidationMethod, ValidationResult, RawItem
 
@@ -698,7 +745,7 @@ def list_validations(
     }
 
 
-@app.get("/admin/validations/stats", response_model=ValidationStatsResponse)
+@admin_router.get("/admin/validations/stats", response_model=ValidationStatsResponse)
 def get_validation_stats(
     request: Request,
     since: Optional[str] = Query(None, description="Time filter: 24h, 7d, 30d"),
@@ -709,7 +756,6 @@ def get_validation_stats(
 
     Protected by IP whitelist or API key.
     """
-    check_admin_access(request)
 
     from app.models import ValidationLog, ValidationMethod, ValidationResult
 
@@ -753,7 +799,7 @@ def get_validation_stats(
     }
 
 
-@app.get("/admin/validations/rejected")
+@admin_router.get("/admin/validations/rejected")
 def list_rejected_validations(
     request: Request,
     limit: int = Query(50, ge=1, le=500),
@@ -766,7 +812,6 @@ def list_rejected_validations(
     Useful for reviewing potential false negatives.
     Protected by IP whitelist or API key.
     """
-    check_admin_access(request)
 
     from app.models import ValidationLog, ValidationResult, RawItem
 
@@ -804,14 +849,13 @@ def list_rejected_validations(
     }
 
 
-@app.get("/admin/llm/health", response_model=LLMHealthResponse)
+@admin_router.get("/admin/llm/health", response_model=LLMHealthResponse)
 def check_llm_health(request: Request):
     """
     Check LLM service health status (OpenRouter).
 
     Protected by IP whitelist or API key.
     """
-    check_admin_access(request)
 
     from app.services.openrouter import health_check
 
@@ -835,7 +879,7 @@ def _parse_llm_approved(llm_response: Optional[str]) -> bool:
     return resp.upper().startswith("YES") or "DECISION: YES" in resp.upper()
 
 
-@app.get("/admin/validations/llm-report")
+@admin_router.get("/admin/validations/llm-report")
 def get_llm_evaluation_report(
     request: Request,
     since: Optional[str] = Query(None, description="Time filter: 24h, 7d, 30d"),
@@ -849,7 +893,6 @@ def get_llm_evaluation_report(
 
     Protected by IP whitelist or API key.
     """
-    check_admin_access(request)
 
     from app.models import ValidationLog, ValidationMethod, ValidationResult, RawItem
 
@@ -945,14 +988,13 @@ class BlueSkyStatsResponse(BaseModel):
     last_posted_at: Optional[datetime] = None
 
 
-@app.get("/admin/bluesky/health", response_model=BlueSkyHealthResponse)
+@admin_router.get("/admin/bluesky/health", response_model=BlueSkyHealthResponse)
 def check_bluesky_health(request: Request):
     """
     Check BlueSky service health status.
 
     Protected by IP whitelist or API key.
     """
-    check_admin_access(request)
 
     from app.services.bluesky import health_check
 
@@ -965,7 +1007,7 @@ def check_bluesky_health(request: Request):
     }
 
 
-@app.get("/admin/bluesky/stats", response_model=BlueSkyStatsResponse)
+@admin_router.get("/admin/bluesky/stats", response_model=BlueSkyStatsResponse)
 def get_bluesky_stats(
     request: Request,
     db: Session = Depends(get_db)
@@ -975,7 +1017,6 @@ def get_bluesky_stats(
 
     Protected by IP whitelist or API key.
     """
-    check_admin_access(request)
 
     from app.models.bluesky_post import BlueSkyPost, PostStatus
 
@@ -1000,7 +1041,7 @@ def get_bluesky_stats(
     }
 
 
-@app.get("/admin/bluesky/posts")
+@admin_router.get("/admin/bluesky/posts")
 def list_bluesky_posts(
     request: Request,
     limit: int = Query(50, ge=1, le=500),
@@ -1013,7 +1054,6 @@ def list_bluesky_posts(
 
     Protected by IP whitelist or API key.
     """
-    check_admin_access(request)
 
     from app.models import Cluster
     from app.models.bluesky_post import BlueSkyPost, PostStatus
@@ -1055,7 +1095,7 @@ def list_bluesky_posts(
     }
 
 
-@app.post("/admin/bluesky/post/{cluster_id}")
+@admin_router.post("/admin/bluesky/post/{cluster_id}")
 def trigger_bluesky_post(
     cluster_id: int,
     request: Request,
@@ -1066,7 +1106,6 @@ def trigger_bluesky_post(
 
     Protected by IP whitelist or API key.
     """
-    check_admin_access(request)
 
     from app.models import Cluster, ClusterStatus
 
@@ -1119,6 +1158,11 @@ def parse_since_parameter(since: Optional[str]) -> Optional[datetime]:
             return datetime.fromisoformat(since.replace('Z', '+00:00'))
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid 'since' parameter")
+
+
+# Register all /admin/* routes (each guarded by the require_admin dependency).
+# Must be included after the routes are attached to admin_router above.
+app.include_router(admin_router)
 
 
 if __name__ == "__main__":

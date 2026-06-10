@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { INTERNAL_API_URL } from '../../config';
+import { INTERNAL_API_URL, getClientIp } from '../../config';
 
 export async function POST(request: NextRequest) {
   const url = `${INTERNAL_API_URL}/submit/link`;
@@ -12,6 +12,8 @@ export async function POST(request: NextRequest) {
       headers: {
         'Accept': 'application/json',
         'Content-Type': 'application/json',
+        // Forward the real client IP so the backend rate-limits per user.
+        'X-Forwarded-For': getClientIp(request),
       },
       body: JSON.stringify(body),
     });

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { INTERNAL_API_URL } from '../../config';
+import { INTERNAL_API_URL, ADMIN_API_KEY } from '../../config';
 
 export async function GET(request: NextRequest) {
   const url = `${INTERNAL_API_URL}/admin/sources`;
@@ -8,6 +8,8 @@ export async function GET(request: NextRequest) {
     const response = await fetch(url, {
       headers: {
         'Accept': 'application/json',
+        // Server-side admin credential — never exposed to the browser.
+        'X-Admin-API-Key': ADMIN_API_KEY,
       },
       cache: 'no-store',
     });
