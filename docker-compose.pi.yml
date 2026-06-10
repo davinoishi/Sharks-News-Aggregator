@@ -52,8 +52,10 @@ services:
       LLM_CLUSTERING_ENABLED: "true"
       # Shadow mode: keyword decides, LLM evaluates for comparison
       LLM_EVALUATION_MODE: "true"
-      # Admin settings (include Docker bridge network)
-      ADMIN_ALLOWED_IPS: "127.0.0.1,192.168.0.0/24,10.0.0.0/8,172.16.0.0/12"
+      # Admin auth: API key injected by the Next.js proxy (fail closed if empty).
+      ADMIN_API_KEY: ${ADMIN_API_KEY:?ADMIN_API_KEY is required}
+      # Trust X-Forwarded-For only from the Docker bridge (the web container).
+      TRUSTED_PROXY_IPS: "${TRUSTED_PROXY_IPS:-127.0.0.1,::1,172.16.0.0/12}"
       # BlueSky posting settings
       BLUESKY_ENABLED: "true"
       BLUESKY_HANDLE: "sjsharks-news.bsky.social"
@@ -117,6 +119,11 @@ services:
     environment:
       # Internal API URL for server-side proxying (Docker service name)
       INTERNAL_API_URL: http://api:8000
+      # Server-side admin key forwarded to the API as X-Admin-API-Key.
+      ADMIN_API_KEY: ${ADMIN_API_KEY:?ADMIN_API_KEY is required}
+      # HTTP Basic gate for the /admin pages and /api/admin proxy routes.
+      ADMIN_PANEL_USER: "${ADMIN_PANEL_USER:-admin}"
+      ADMIN_PANEL_PASSWORD: ${ADMIN_PANEL_PASSWORD:?ADMIN_PANEL_PASSWORD is required}
     ports:
       - "3001:3000"
     depends_on:

@@ -132,7 +132,7 @@ Update this table as PRs merge.
 
 | Brief | Status | PR |
 |-------|--------|----|
-| 1 | not started | |
+| 1 | in review | _PR link pending_ (branch `improve/01-admin-auth`) |
 | 2 | not started | |
 | 3 | not started | |
 | 4 | not started | |

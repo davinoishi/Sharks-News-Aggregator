@@ -13,10 +13,22 @@ A checklist of tasks for deploying the Sharks News Aggregator to production.
 ## Security
 
 - [x] **Update CORS origins** — Set `ALLOWED_ORIGINS=*` for public API access
-- [x] **Rate limiting** — 10 submissions per IP per hour on `/submit/link`
+- [x] **Rate limiting** — proxy-aware per-client limits: `/submit/link`
+  (`SUBMISSION_RATE_LIMIT_PER_IP`/hr) plus `/metrics/pageview` and
+  `/cluster/{id}/click` (`METRICS_RATE_LIMIT_PER_MIN`). Backend keys on the real
+  client IP via `X-Forwarded-For` from trusted proxies (`TRUSTED_PROXY_IPS`).
 - [x] **Disable API documentation** — Set `docs_url=None, redoc_url=None` in FastAPI app (optional)
-- [x] **Protect admin endpoints** — Currently return 501 (not implemented)
+- [x] **Protect admin endpoints** — Every `/admin/*` route requires the
+  `require_admin` dependency (`X-Admin-API-Key` == `ADMIN_API_KEY`, constant-time
+  compare, **fail closed** when unset). The Next.js proxy injects the key
+  server-side and gates the admin page/proxy with HTTP Basic
+  (`ADMIN_PANEL_USER`/`ADMIN_PANEL_PASSWORD`). The old IP allowlist was removed.
 - [x] **Review CSP headers** — Add Content-Security-Policy if needed
+
+> **Required env (set before deploy):** `ADMIN_API_KEY`, `ADMIN_PANEL_PASSWORD`
+> (and optionally `ADMIN_PANEL_USER`, `TRUSTED_PROXY_IPS`,
+> `METRICS_RATE_LIMIT_PER_MIN`). The compose files now require `ADMIN_API_KEY`
+> and `ADMIN_PANEL_PASSWORD` to be non-empty (`${VAR:?...}`).
 
 ## Environment Configuration
 

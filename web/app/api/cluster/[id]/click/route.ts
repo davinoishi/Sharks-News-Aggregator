@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { INTERNAL_API_URL } from '../../../config';
+import { INTERNAL_API_URL, getClientIp } from '../../../config';
 
 export async function POST(
   request: NextRequest,
@@ -13,6 +13,8 @@ export async function POST(
       method: 'POST',
       headers: {
         'Accept': 'application/json',
+        // Forward the real client IP so the backend can rate-limit per user.
+        'X-Forwarded-For': getClientIp(request),
       },
     });
 
