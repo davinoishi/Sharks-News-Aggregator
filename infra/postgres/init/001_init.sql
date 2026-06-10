@@ -211,7 +211,9 @@ CREATE TABLE submissions (
     normalized_url TEXT,
     domain VARCHAR(255),
     note TEXT,
-    submitter_ip VARCHAR(45),
+    -- Stores a salted SHA-256 hex digest of the submitter IP (64 chars), not a
+    -- raw IP. See api/migrations/hash_submitter_ip.sql for existing databases.
+    submitter_ip VARCHAR(64),
     status submission_status NOT NULL DEFAULT 'received',
     raw_item_id INTEGER REFERENCES raw_items(id) ON DELETE SET NULL,
     variant_id INTEGER REFERENCES story_variants(id) ON DELETE SET NULL,
