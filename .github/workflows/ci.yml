@@ -1,0 +1,146 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      api: ${{ steps.filter.outputs.api }}
+      web: ${{ steps.filter.outputs.web }}
+      api_docker: ${{ steps.filter.outputs.api_docker }}
+      web_docker: ${{ steps.filter.outputs.web_docker }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            api:
+              - 'api/**'
+              - 'docker-compose*.yml'
+              - '.github/workflows/ci.yml'
+            web:
+              - 'web/**'
+              - 'docker-compose*.yml'
+              - '.github/workflows/ci.yml'
+            api_docker:
+              - 'api/Dockerfile'
+              - 'api/requirements*.txt'
+            web_docker:
+              - 'web/Dockerfile'
+              - 'web/package*.json'
+
+  api:
+    needs: changes
+    if: needs.changes.outputs.api == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: api/requirements-dev.txt
+      - name: Install deps (runtime + test/lint extras)
+        run: pip install -r api/requirements-dev.txt
+      - name: Ruff lint
+        run: ruff check api/
+      - name: Pytest (sqlite; tolerate "no tests collected" until brief 06)
+        run: |
+          cd api && PYTHONPATH=. pytest -q || [ $? -eq 5 ]
+
+  feed-tests:
+    # Feed query tests (brief 04) need PostgreSQL — clusters uses ARRAY columns.
+    needs: changes
+    if: needs.changes.outputs.api == 'true'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: sharks
+          POSTGRES_USER: sharks
+          POSTGRES_PASSWORD: sharks
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U sharks"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      DATABASE_URL: postgresql+psycopg://sharks:sharks@localhost:5432/sharks
+      CELERY_BROKER_URL: redis://localhost:6379/1
+      CELERY_RESULT_BACKEND: redis://localhost:6379/2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: api/requirements-dev.txt
+      - run: pip install -r api/requirements-dev.txt
+      - name: Feed query tests against Postgres
+        run: cd api && PYTHONPATH=. pytest tests/test_feed_queries.py -q
+
+  web:
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - name: Typecheck
+        run: npx tsc --noEmit
+      - name: Lint
+        run: npm run lint
+      - name: Build
+        run: npm run build
+        env:
+          INTERNAL_API_URL: http://localhost:8000
+
+  docker-build:
+    # Smoke-build the images only when their Dockerfile/deps change.
+    needs: changes
+    if: needs.changes.outputs.api_docker == 'true' || needs.changes.outputs.web_docker == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build api image
+        if: needs.changes.outputs.api_docker == 'true'
+        run: docker build ./api
+      - name: Build web image
+        if: needs.changes.outputs.web_docker == 'true'
+        run: docker build ./web
+
+  ci:
+    # Single aggregate gate — make THIS the required status check on main.
+    # Green unless a job that actually ran failed (skipped jobs are fine).
+    needs: [changes, api, feed-tests, web, docker-build]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check job results
+        run: |
+          results="${{ needs.changes.result }} ${{ needs.api.result }} ${{ needs.feed-tests.result }} ${{ needs.web.result }} ${{ needs.docker-build.result }}"
+          echo "job results: $results"
+          for r in $results; do
+            if [ "$r" = "failure" ] || [ "$r" = "cancelled" ]; then
+              echo "::error::a required CI job failed ($r)"
+              exit 1
+            fi
+          done
+          echo "all required jobs passed or were skipped"
