@@ -130,11 +130,16 @@ The full review report follows. IDs (S1, C1, …) are referenced by the briefs.
 
 Update this table as PRs merge.
 
+Security briefs 1–3 were integrated and conflict-resolved on one branch (brief S)
+and ship via the integration PR
+[#55](https://github.com/davinoishi/Sharks-News-Aggregator/pull/55), which
+**supersedes** the individual PRs #52/#53/#54.
+
 | Brief | Status | PR |
 |-------|--------|----|
-| 1 | not started | |
-| 2 | not started | |
-| 3 | not started | |
+| 1 | merged | [#52](https://github.com/davinoishi/Sharks-News-Aggregator/pull/52) via [#55](https://github.com/davinoishi/Sharks-News-Aggregator/pull/55) |
+| 2 | merged | [#53](https://github.com/davinoishi/Sharks-News-Aggregator/pull/53) via [#55](https://github.com/davinoishi/Sharks-News-Aggregator/pull/55) |
+| 3 | merged | [#54](https://github.com/davinoishi/Sharks-News-Aggregator/pull/54) via [#55](https://github.com/davinoishi/Sharks-News-Aggregator/pull/55) |
 | 4 | not started | |
 | 5 | not started | |
 | 6 | not started | |

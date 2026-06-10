@@ -27,6 +27,19 @@ class Settings(BaseSettings):
 
     # Rate limiting
     submission_rate_limit_per_ip: int = 10  # per hour
+    # Cheap per-client limit for public write/counter endpoints
+    # (/metrics/pageview, /cluster/{id}/click). Generous on purpose — the goal
+    # is stopping trivial counter spam, not precision.
+    metrics_rate_limit_per_min: int = 60
+
+    # SSRF guard for user-submitted links (see app/core/url_guard.py)
+    submission_allowed_ports: str = "80,443"
+    submission_max_redirects: int = 5
+    submission_fetch_max_bytes: int = 5_242_880  # 5 MB
+
+    # Privacy: salt used when hashing submitter IPs before storage. Set a
+    # stable, secret value in the environment (empty = unsalted, less secure).
+    ip_hash_salt: str = ""
 
     # OpenRouter LLM settings (Gemma 4 via openrouter.ai)
     openrouter_api_key: str = ""
@@ -39,8 +52,15 @@ class Settings(BaseSettings):
     llm_clustering_enabled: bool = True
 
     # Admin settings
-    admin_allowed_ips: str = "127.0.0.1,192.168.0.0/24,10.0.0.0/8"
-    admin_api_key: str = ""  # Optional for external access
+    # API-key auth injected by the Next.js proxy. If empty/unset, all admin
+    # requests are denied (fail closed). There is no IP-based fallback: behind
+    # the Next.js proxy the backend only ever sees the proxy/tunnel IP.
+    admin_api_key: str = ""
+
+    # Trusted proxies. X-Forwarded-For is honored ONLY when the direct peer is
+    # one of these networks (the Next.js container on the Docker bridge);
+    # otherwise the direct peer IP is used. Comma-separated IPs/CIDRs.
+    trusted_proxy_ips: str = "127.0.0.1,::1,172.16.0.0/12"
 
     # BlueSky posting settings
     bluesky_enabled: bool = False
