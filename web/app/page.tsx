@@ -227,6 +227,10 @@ export default function Home() {
             <Link href="/legal" className="text-blue-600 hover:underline">
               Legal
             </Link>
+            {' | '}
+            <Link href="/submit" className="text-blue-600 hover:underline">
+              Submit a link
+            </Link>
           </p>
           <p className="mb-2">
             Powered by RSS feeds from official sources and trusted media outlets.
