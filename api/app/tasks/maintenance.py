@@ -9,24 +9,6 @@ from app.tasks.celery_app import celery
 from app.core.database import SessionLocal
 
 
-@celery.task(name="app.tasks.maintenance.cleanup_expired_cache")
-def cleanup_expired_cache():
-    """
-    Clean up expired feed cache entries.
-    Runs hourly via Celery Beat.
-    """
-    db = SessionLocal()
-    try:
-        # TODO: Delete expired cache entries
-        # db.query(FeedCache).filter(FeedCache.expires_at < datetime.utcnow()).delete()
-        # db.commit()
-
-        return {"status": "pending_implementation"}
-
-    finally:
-        db.close()
-
-
 @celery.task(name="app.tasks.maintenance.purge_old_items")
 def purge_old_items():
     """

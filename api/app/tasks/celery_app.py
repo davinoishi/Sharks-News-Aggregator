@@ -30,10 +30,6 @@ celery.conf.beat_schedule = {
         "task": "app.tasks.sync_roster.sync_sharks_roster",
         "schedule": 86400.0,  # Once per day (24 hours)
     },
-    "cleanup-old-feed-cache": {
-        "task": "app.tasks.maintenance.cleanup_expired_cache",
-        "schedule": 3600.0,  # Every hour
-    },
     "purge-old-items": {
         "task": "app.tasks.maintenance.purge_old_items",
         "schedule": 86400.0,  # Once per day (24 hours)
