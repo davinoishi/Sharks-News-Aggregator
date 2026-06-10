@@ -133,7 +133,7 @@ Update this table as PRs merge.
 | Brief | Status | PR |
 |-------|--------|----|
 | 1 | not started | |
-| 2 | not started | |
+| 2 | in review | _PR link pending_ (branch `improve/02-ssrf-guard`) |
 | 3 | not started | |
 | 4 | not started | |
 | 5 | not started | |
