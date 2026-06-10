@@ -1,0 +1,156 @@
+name: Security integration verification
+
+# Runs the real Docker verification for the #52/#53/#54 security integration
+# (brief S) on GitHub's Linux runners — the maintainer's Mac does not run Docker.
+# Proves admin auth, SSRF guard, rate limiting, network isolation, security
+# headers, IP hashing, and compose fail-fast all work in a live stack.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [improve/security-integration]
+  workflow_dispatch:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install API deps (with test extras)
+        run: pip install -r api/requirements-dev.txt
+      - name: Run unit/integration tests (#52 admin auth + #53 SSRF)
+        run: cd api && PYTHONPATH=. pytest -q
+
+  docker-verify:
+    runs-on: ubuntu-latest
+    env:
+      POSTGRES_DB: sharks
+      POSTGRES_USER: sharks
+      POSTGRES_PASSWORD: ci_pg_pw
+      DATABASE_URL: postgresql+psycopg://sharks:ci_pg_pw@db:5432/sharks
+      REDIS_PASSWORD: ci_redis_pw
+      ADMIN_API_KEY: ci_admin_key_value
+      ADMIN_PANEL_USER: admin
+      ADMIN_PANEL_PASSWORD: ci_panel_pw
+      IP_HASH_SALT: ci_salt
+      OPENROUTER_API_KEY: ""
+      BLUESKY_APP_PASSWORD: ci_dummy
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compose fail-fast — missing required secrets must error
+        run: |
+          set -uo pipefail
+          for var in ADMIN_API_KEY ADMIN_PANEL_PASSWORD REDIS_PASSWORD; do
+            if env -u "$var" docker compose -f docker-compose.yml config -q 2>/dev/null; then
+              echo "::error::compose did NOT fail with $var unset (fail-fast broken)"; exit 1
+            fi
+            echo "OK: compose fails fast when $var is empty"
+          done
+
+      - name: Build and start the full stack (docker-compose.pi.yml)
+        run: docker compose -f docker-compose.pi.yml up -d --build
+
+      - name: Wait for API health
+        run: |
+          set -uo pipefail
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:8001/health >/dev/null; then
+              echo "API healthy after ${i}0s"; exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::API did not become healthy"; exit 1
+
+      - name: Services are running
+        run: |
+          docker compose -f docker-compose.pi.yml ps
+          # db + redis must be healthy (they declare healthchecks)
+          docker compose -f docker-compose.pi.yml ps db    | grep -qi healthy
+          docker compose -f docker-compose.pi.yml ps redis | grep -qi healthy
+
+      - name: Admin auth (#52)
+        run: |
+          set -uo pipefail
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8001/admin/sources)
+          [ "$code" = "403" ] || { echo "::error::no-key expected 403, got $code"; exit 1; }
+          code=$(curl -s -o /dev/null -w '%{http_code}' -H "X-Admin-API-Key: $ADMIN_API_KEY" http://localhost:8001/admin/sources)
+          [ "$code" = "200" ] || { echo "::error::with-key expected 200, got $code"; exit 1; }
+          # 403 body must not echo any IP
+          body=$(curl -s http://localhost:8001/admin/sources)
+          echo "$body" | grep -Eq '[0-9]{1,3}(\.[0-9]{1,3}){3}' && { echo "::error::403 body leaked an IP: $body"; exit 1; }
+          echo "admin auth OK (403 / 200 / no IP in body)"
+
+      - name: SSRF guard (#53)
+        run: |
+          set -uo pipefail
+          for u in "http://10.0.0.1/" "http://localhost:6379/" "http://169.254.169.254/" "http://[::1]/"; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:8001/submit/link \
+              -H 'Content-Type: application/json' -d "{\"url\":\"$u\"}")
+            [ "$code" = "422" ] || { echo "::error::SSRF $u expected 422, got $code"; exit 1; }
+            echo "blocked $u -> 422"
+          done
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:8001/submit/link \
+            -H 'Content-Type: application/json' -d '{"url":"https://example.com/"}')
+          [ "$code" = "200" ] || { echo "::error::public URL expected 200, got $code"; exit 1; }
+          echo "SSRF guard OK"
+
+      - name: Metrics rate limiting (#52)
+        run: |
+          set -uo pipefail
+          saw429=0
+          for i in $(seq 1 80); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:8001/metrics/pageview)
+            [ "$code" = "429" ] && saw429=1 && break
+          done
+          [ "$saw429" = "1" ] || { echo "::error::expected a 429 within 80 pageview bursts"; exit 1; }
+          echo "rate limiting OK (saw 429)"
+
+      - name: Network isolation (#54) — datastore ports not published
+        run: |
+          set -uo pipefail
+          for port in 5432 6379; do
+            if nc -z -w2 localhost "$port"; then
+              echo "::error::port $port is reachable from the host (should be closed)"; exit 1
+            fi
+            echo "port $port closed on host (good)"
+          done
+
+      - name: Security headers (#54)
+        run: |
+          set -uo pipefail
+          h=$(curl -sI http://localhost:3001/)
+          for header in 'content-security-policy' 'x-frame-options' 'x-content-type-options' 'referrer-policy' 'permissions-policy'; do
+            echo "$h" | grep -iq "$header" || { echo "::error::missing header: $header"; exit 1; }
+            echo "present: $header"
+          done
+
+      - name: IP hashing in DB (#54)
+        run: |
+          set -uo pipefail
+          curl -s -X POST http://localhost:8001/submit/link -H 'Content-Type: application/json' \
+            -d '{"url":"https://example.org/"}' >/dev/null
+          val=$(docker compose -f docker-compose.pi.yml exec -T db \
+            psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -t -A \
+            -c "select submitter_ip from submissions order by id desc limit 1;")
+          echo "stored submitter_ip=$val"
+          echo "$val" | grep -Eq '^[0-9a-f]{64}$' || { echo "::error::submitter_ip is not a 64-char hash"; exit 1; }
+          echo "IP hashing OK"
+
+      - name: Redis auth in worker logs
+        run: |
+          # Worker connecting with the password means no NOAUTH errors.
+          docker compose -f docker-compose.pi.yml logs worker | grep -i "NOAUTH" && \
+            { echo "::error::worker hit a Redis NOAUTH error"; exit 1; } || echo "no NOAUTH errors"
+
+      - name: Dump logs on completion
+        if: always()
+        run: docker compose -f docker-compose.pi.yml logs --tail=80 || true
+
+      - name: Tear down
+        if: always()
+        run: docker compose -f docker-compose.pi.yml down -v || true
