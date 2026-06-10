@@ -127,3 +127,26 @@ def test_successful_fetch_returns_body():
     resp = fetch_guarded("https://93.184.216.34/", client=client)
     assert resp.status_code == 200
     assert resp.text == "hello world"
+
+
+def test_gzip_response_is_decoded_once():
+    # Regression: fetch_guarded must not re-apply Content-Encoding to a body that
+    # httpx already decoded — otherwise gzip'd pages raise "incorrect header check".
+    import gzip
+
+    original = "héllo gzip wörld" * 50
+    gzipped = gzip.compress(original.encode("utf-8"))
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            headers={"Content-Encoding": "gzip", "Content-Type": "text/html; charset=utf-8"},
+            content=gzipped,
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(handler), follow_redirects=False)
+    resp = fetch_guarded("https://93.184.216.34/", client=client)
+    assert resp.status_code == 200
+    # Body reads back as the decoded text, and the stale encoding header is gone.
+    assert resp.text == original
+    assert "content-encoding" not in resp.headers

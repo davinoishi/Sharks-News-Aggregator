@@ -186,9 +186,18 @@ def fetch_guarded(
                     if len(body) > max_bytes:
                         raise UrlNotAllowed("response exceeds size cap")
 
+                # iter_bytes() yields DECODED bytes (httpx has already applied any
+                # Content-Encoding). Drop the encoding/length headers so the
+                # reconstructed response does not try to decode the body a second
+                # time — otherwise a gzip'd page raises "incorrect header check".
+                headers = [
+                    (k, v)
+                    for k, v in resp.headers.multi_items()
+                    if k.lower() not in ("content-encoding", "content-length")
+                ]
                 return httpx.Response(
                     status_code=resp.status_code,
-                    headers=resp.headers,
+                    headers=headers,
                     content=bytes(body),
                     request=resp.request,
                 )
