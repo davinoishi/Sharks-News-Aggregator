@@ -1,8 +1,20 @@
 """Tests for ingest text/feed helpers (brief 06)."""
 import time
+from datetime import timezone
 from types import SimpleNamespace
 
-from app.tasks.ingest import parse_published_date, sanitize_feed_xml, strip_html
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+from app.core.database import Base
+from app.models import IngestMethod, Source, SourceCategory
+from app.tasks.ingest import (
+    ingest_api,
+    ingest_html,
+    parse_published_date,
+    sanitize_feed_xml,
+    strip_html,
+)
 
 # --- strip_html --------------------------------------------------------------
 
@@ -63,5 +75,58 @@ def test_parse_published_falls_back_to_updated():
     assert dt is not None and dt.year == 2026 and dt.month == 1 and dt.day == 2
 
 
+def test_parse_published_is_timezone_aware():
+    # brief 07, C2: parsed dates are returned as timezone-aware UTC.
+    st = time.struct_time((2026, 6, 1, 12, 0, 0, 0, 0, -1))
+    dt = parse_published_date(SimpleNamespace(published_parsed=st))
+    assert dt.tzinfo is not None and dt.utcoffset() == timezone.utc.utcoffset(None)
+
+
 def test_parse_published_none_when_absent():
     assert parse_published_date(SimpleNamespace()) is None
+
+
+# --- unimplemented ingest methods mark the source broken (brief 07, C3) -------
+
+def _source_session():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine, tables=[Source.__table__])
+    return sessionmaker(bind=engine)()
+
+
+def _make_source(db):
+    src = Source(
+        name="HTML scrape source",
+        category=SourceCategory.OTHER,
+        ingest_method=IngestMethod.HTML,
+        base_url="https://example.com",
+        fetch_error_count=0,
+    )
+    db.add(src)
+    db.commit()
+    db.refresh(src)
+    return src
+
+
+def test_ingest_html_marks_source_broken():
+    db = _source_session()
+    try:
+        src = _make_source(db)
+        result = ingest_html(db, src)
+        assert result["status"] == "error"
+        assert "not_implemented" in result["reason"]
+        # health == "broken" once fetch_error_count >= 3 (see admin /sources)
+        assert src.fetch_error_count >= 3
+    finally:
+        db.close()
+
+
+def test_ingest_api_marks_source_broken():
+    db = _source_session()
+    try:
+        src = _make_source(db)
+        result = ingest_api(db, src)
+        assert result["status"] == "error"
+        assert src.fetch_error_count >= 3
+    finally:
+        db.close()

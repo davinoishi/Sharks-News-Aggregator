@@ -2,13 +2,13 @@
 Cluster model - represents a single real-world event/story.
 """
 import enum
-from datetime import datetime
 from typing import List
 
 from sqlalchemy import ARRAY, Column, DateTime, Enum, Integer, String, Text
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
+from app.core.datetime_utils import utcnow
 
 
 class ClusterStatus(str, enum.Enum):
@@ -68,8 +68,8 @@ class Cluster(Base):
     click_count = Column(Integer, default=0)
     game_identifier = Column(String(20), nullable=True, index=True)
     llm_summary = Column(Text, nullable=True)
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
-    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     # Relationships
     cluster_variants = relationship("ClusterVariant", back_populates="cluster", cascade="all, delete-orphan")

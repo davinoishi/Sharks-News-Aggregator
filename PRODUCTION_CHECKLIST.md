@@ -29,7 +29,8 @@ A checklist of tasks for deploying the Sharks News Aggregator to production.
   they're reachable only on the compose network. Redis requires a password
   (`REDIS_PASSWORD`, threaded into the Celery broker/result URLs).
 - [x] **Hash submitter IPs** — `/submit/link` stores a salted SHA-256 hash
-  (`IP_HASH_SALT`), never the raw IP. Run `api/migrations/hash_submitter_ip.sql`.
+  (`IP_HASH_SALT`), never the raw IP. (Schema change now handled by Alembic; the
+  original one-off SQL is in `api/migrations/legacy/hash_submitter_ip.sql`.)
 
 > **Required env (set before deploy):** `ADMIN_API_KEY`, `ADMIN_PANEL_PASSWORD`,
 > and `REDIS_PASSWORD` (URL-safe) — the compose files refuse to start if any are
@@ -43,6 +44,24 @@ A checklist of tasks for deploying the Sharks News Aggregator to production.
 - [x] **Dynamic API URL detection** — Frontend auto-detects local vs. noBGP access
 - [x] **Change default database password** — Credentials now loaded from `.env` file (not in git)
 - [ ] **Set appropriate log levels** — Reduce verbosity if needed
+
+## Database Migrations (Alembic)
+
+- [x] **Alembic adopted** — Schema changes are now managed by Alembic
+  (`api/alembic/`). The API container runs `alembic upgrade head` on startup
+  (see `api/Dockerfile` `CMD`), so deploys apply pending migrations automatically.
+- [ ] **First deploy on the existing Pi DB** — the live database predates
+  Alembic. Stamp the baseline once so Alembic doesn't try to recreate the
+  schema, then upgrade (applies the timezone-aware conversion):
+
+  ```bash
+  docker compose -f docker-compose.pi.yml exec api alembic stamp 0001_baseline
+  docker compose -f docker-compose.pi.yml exec api alembic upgrade head
+  ```
+
+  After that, the on-startup `alembic upgrade head` keeps it current. Full
+  workflow (fresh install, existing DB, creating new revisions) is in
+  [`docs/MIGRATIONS.md`](docs/MIGRATIONS.md).
 
 ## Infrastructure
 

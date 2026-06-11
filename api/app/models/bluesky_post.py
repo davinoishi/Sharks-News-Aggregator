@@ -1,13 +1,14 @@
 """
 BlueSkyPost model - tracks posts made to BlueSky.
 """
-from datetime import datetime
+
 from enum import Enum as PyEnum
 
 from sqlalchemy import Column, DateTime, Enum, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
+from app.core.datetime_utils import utcnow
 
 
 class PostStatus(str, PyEnum):
@@ -58,8 +59,8 @@ class BlueSkyPost(Base):
     error_message = Column(Text, nullable=True)
     retry_count = Column(Integer, default=0)
     posted_at = Column(DateTime(timezone=True), nullable=True)
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, index=True)
-    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=utcnow, index=True)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     # Relationships
     cluster = relationship("Cluster", backref="bluesky_posts")

@@ -1,11 +1,11 @@
 """
 SiteMetrics model - simple key-value store for site-wide metrics.
 """
-from datetime import datetime
 
 from sqlalchemy import BigInteger, Column, DateTime, Integer, String
 
 from app.core.database import Base
+from app.core.datetime_utils import utcnow
 
 
 class SiteMetrics(Base):
@@ -24,7 +24,7 @@ class SiteMetrics(Base):
     id = Column(Integer, primary_key=True, index=True)
     key = Column(String(100), unique=True, nullable=False, index=True)
     value = Column(BigInteger, default=0, nullable=False)
-    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     def __repr__(self):
         return f"<SiteMetrics(key='{self.key}', value={self.value})>"

@@ -143,6 +143,6 @@ and ship via the integration PR
 | 4 | in review | [#60](https://github.com/davinoishi/Sharks-News-Aggregator/pull/60) |
 | 5 | in review | [#61](https://github.com/davinoishi/Sharks-News-Aggregator/pull/61) |
 | 6 | in review | [#62](https://github.com/davinoishi/Sharks-News-Aggregator/pull/62) |
-| 7 | not started | |
+| 7 | in review | [#63](https://github.com/davinoishi/Sharks-News-Aggregator/pull/63) |
 | 8 | not started | |
 | 9 | not started | |

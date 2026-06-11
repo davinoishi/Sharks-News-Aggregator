@@ -1,12 +1,12 @@
 """
 CandidateSource model - proposed sources awaiting review.
 """
-from datetime import datetime
 
 from sqlalchemy import JSON, Boolean, Column, DateTime, Enum, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
+from app.core.datetime_utils import utcnow
 from app.models.source import IngestMethod, SourceCategory, SourceStatus
 
 
@@ -53,8 +53,8 @@ class CandidateSource(Base):
     review_notes = Column(Text, nullable=True)
     reviewed_at = Column(DateTime(timezone=True), nullable=True)
     reviewed_by = Column(String(255), nullable=True)
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
-    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     # Relationships
     discovered_from_submission = relationship("Submission", back_populates="candidate_sources")
@@ -90,7 +90,7 @@ class CandidateSource(Base):
 
         # Update candidate status
         self.status = SourceStatus.APPROVED
-        self.reviewed_at = datetime.utcnow()
+        self.reviewed_at = utcnow()
 
         db_session.commit()
         return source

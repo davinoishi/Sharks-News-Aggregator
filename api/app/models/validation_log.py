@@ -1,13 +1,14 @@
 """
 ValidationLog model - tracks LLM relevance validation decisions.
 """
-from datetime import datetime
+
 from enum import Enum as PyEnum
 
 from sqlalchemy import JSON, Boolean, Column, DateTime, Enum, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
+from app.core.datetime_utils import utcnow
 
 
 class ValidationMethod(str, PyEnum):
@@ -67,7 +68,7 @@ class ValidationLog(Base):
     reason = Column(Text, nullable=True)
     latency_ms = Column(Integer, nullable=True)
     error_message = Column(Text, nullable=True)
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, index=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow, index=True)
 
     # Relationships
     raw_item = relationship("RawItem", backref="validation_logs")

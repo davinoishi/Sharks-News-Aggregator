@@ -4,8 +4,9 @@ Handles RSS, HTML, and API-based ingestion.
 """
 import hashlib
 import html
+import logging
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 import feedparser
@@ -14,7 +15,10 @@ from celery import group
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
+from app.core.datetime_utils import ensure_aware, utcnow
 from app.tasks.celery_app import celery
+
+logger = logging.getLogger(__name__)
 
 
 @celery.task(name="app.tasks.ingest.ingest_all_sources", bind=True)
@@ -173,7 +177,7 @@ def ingest_rss(db: Session, source) -> dict:
                 skipped_items += 1
 
         # Update source last_fetched_at
-        source.last_fetched_at = datetime.utcnow()
+        source.last_fetched_at = utcnow()
         source.fetch_error_count = 0
         db.commit()
 
@@ -194,21 +198,37 @@ def ingest_rss(db: Session, source) -> dict:
         raise
 
 
+def _mark_source_unimplemented(db: Session, source, method: str) -> dict:
+    """Log a warning and mark the source broken for an unimplemented ingest method.
+
+    Brief 07 (C3): these methods used to silently return ``not_implemented``,
+    which read as a successful no-op. Instead we surface the misconfiguration —
+    bump the fetch error count to the "broken" threshold so the admin sources
+    view flags it (health == "broken" at >= 3 errors) and emit a warning.
+    """
+    logger.warning(
+        "Ingest method %s is not implemented for source %s (%s); marking broken",
+        method, source.id, source.name,
+    )
+    source.fetch_error_count = max((source.fetch_error_count or 0) + 1, 3)
+    db.commit()
+    return {
+        "status": "error",
+        "source_id": source.id,
+        "source_name": source.name,
+        "reason": f"ingest_method_not_implemented:{method}",
+    }
+
+
 def ingest_html(db: Session, source) -> dict:
     """
     Scrape HTML content from a source.
     Requires custom selectors per source.
 
-    Args:
-        db: Database session
-        source: Source object with base_url and metadata containing selectors
-
-    Returns:
-        Dict with ingestion results
+    Not implemented: logs a warning and marks the source broken rather than
+    silently reporting success (brief 07, C3).
     """
-    # TODO: Implement HTML scraping with BeautifulSoup
-    # This requires custom selectors per source stored in source.metadata
-    return {"status": "not_implemented"}
+    return _mark_source_unimplemented(db, source, "html")
 
 
 def ingest_api(db: Session, source) -> dict:
@@ -216,15 +236,10 @@ def ingest_api(db: Session, source) -> dict:
     Fetch content from API endpoints.
     Currently supports Reddit and potentially Twitter/YouTube APIs.
 
-    Args:
-        db: Database session
-        source: Source object with API configuration in metadata
-
-    Returns:
-        Dict with ingestion results
+    Not implemented: logs a warning and marks the source broken rather than
+    silently reporting success (brief 07, C3).
     """
-    # TODO: Implement API-based ingestion
-    return {"status": "not_implemented"}
+    return _mark_source_unimplemented(db, source, "api")
 
 
 def create_raw_item(
@@ -253,7 +268,7 @@ def create_raw_item(
 
         from app.core.config import settings
         max_age = timedelta(days=settings.max_article_age_days)
-        if datetime.utcnow() - published_at.replace(tzinfo=None) > max_age:
+        if utcnow() - ensure_aware(published_at) > max_age:
             return None
 
     # Normalize URL for deduplication
@@ -358,13 +373,15 @@ def parse_published_date(entry: dict) -> Optional[datetime]:
     Parse published date from RSS entry.
     Handles multiple date formats.
     """
-    # Try published_parsed, then updated_parsed
+    # feedparser normalizes *_parsed struct_times to UTC. We keep the existing
+    # wall-clock value and tag it UTC so the result is timezone-aware (C2);
+    # this matches what was previously stored when the container runs in UTC.
     if hasattr(entry, 'published_parsed') and entry.published_parsed:
         from time import mktime
-        return datetime.fromtimestamp(mktime(entry.published_parsed))
+        return datetime.fromtimestamp(mktime(entry.published_parsed)).replace(tzinfo=timezone.utc)
     elif hasattr(entry, 'updated_parsed') and entry.updated_parsed:
         from time import mktime
-        return datetime.fromtimestamp(mktime(entry.updated_parsed))
+        return datetime.fromtimestamp(mktime(entry.updated_parsed)).replace(tzinfo=timezone.utc)
     return None
 
 

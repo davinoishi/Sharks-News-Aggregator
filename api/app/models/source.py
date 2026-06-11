@@ -2,12 +2,12 @@
 Source model - represents ingestion sources (RSS feeds, websites, APIs).
 """
 import enum
-from datetime import datetime
 
 from sqlalchemy import JSON, Column, DateTime, Enum, Integer, String, Text
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
+from app.core.datetime_utils import utcnow
 
 
 class SourceCategory(str, enum.Enum):
@@ -64,8 +64,8 @@ class Source(Base):
     last_fetched_at = Column(DateTime(timezone=True), nullable=True)
     fetch_error_count = Column(Integer, default=0)
     extra_metadata = Column('metadata', JSON, default={})
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
-    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     # Relationships
     raw_items = relationship("RawItem", back_populates="source", cascade="all, delete-orphan")

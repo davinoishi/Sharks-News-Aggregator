@@ -1,12 +1,13 @@
 """
 Database utility functions for common operations.
 """
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import List, Optional
 
 from sqlalchemy import and_, func
 from sqlalchemy.orm import Session
 
+from app.core.datetime_utils import utcnow
 from app.models import (
     Cluster,
     ClusterEntity,
@@ -171,7 +172,7 @@ def get_candidate_clusters(
     Returns:
         List of active clusters within time window
     """
-    cutoff_time = datetime.utcnow() - time_window
+    cutoff_time = utcnow() - time_window
 
     return db.query(Cluster).filter(
         and_(
@@ -257,7 +258,7 @@ def check_submission_rate_limit(
     """
     from app.models.submission import Submission
 
-    cutoff_time = datetime.utcnow() - timedelta(hours=window_hours)
+    cutoff_time = utcnow() - timedelta(hours=window_hours)
 
     count = db.query(func.count(Submission.id)).filter(
         and_(

@@ -1,5 +1,5 @@
 """Tests for main.py parsing helpers (brief 06)."""
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from fastapi import HTTPException
@@ -13,14 +13,17 @@ def test_since_none():
 
 
 def test_since_hours():
+    # Relative shortcuts now return timezone-aware UTC datetimes (brief 07, C2).
     out = parse_since_parameter("24h")
-    delta = datetime.utcnow() - out
+    assert out.tzinfo is not None
+    delta = datetime.now(timezone.utc) - out
     assert timedelta(hours=23, minutes=59) < delta < timedelta(hours=24, minutes=1)
 
 
 def test_since_days():
     out = parse_since_parameter("7d")
-    delta = datetime.utcnow() - out
+    assert out.tzinfo is not None
+    delta = datetime.now(timezone.utc) - out
     assert timedelta(days=6, hours=23) < delta < timedelta(days=7, hours=1)
 
 
