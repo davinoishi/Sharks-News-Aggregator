@@ -8,8 +8,8 @@ Run this script to create the bluesky_posts table:
 This is an idempotent operation - safe to run multiple times.
 """
 from sqlalchemy import text
-from app.core.database import engine
 
+from app.core.database import engine
 
 MIGRATION_SQL = """
 -- Create bluesky_posts table for tracking BlueSky social media posts

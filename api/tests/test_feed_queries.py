@@ -18,11 +18,19 @@ pytestmark = pytest.mark.skipif(
 )
 
 from app.core.database import Base  # noqa: E402
-from app.models import (  # noqa: E402
-    Cluster, ClusterStatus, Tag, Entity, ClusterTag, ClusterEntity,
-)
 from app.core.queries import (  # noqa: E402
-    build_feed_query, format_cluster_for_feed, encode_cursor, decode_cursor,
+    build_feed_query,
+    decode_cursor,
+    encode_cursor,
+    format_cluster_for_feed,
+)
+from app.models import (  # noqa: E402
+    Cluster,
+    ClusterEntity,
+    ClusterStatus,
+    ClusterTag,
+    Entity,
+    Tag,
 )
 
 

@@ -1,10 +1,11 @@
 """
 Cluster model - represents a single real-world event/story.
 """
+import enum
 from datetime import datetime
 from typing import List
-import enum
-from sqlalchemy import Column, Integer, String, Enum, Text, DateTime, ARRAY
+
+from sqlalchemy import ARRAY, Column, DateTime, Enum, Integer, String, Text
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
@@ -82,6 +83,7 @@ class Cluster(Base):
     def update_source_count(self, db_session):
         """Update the source_count field based on actual variant count."""
         from sqlalchemy import func
+
         from app.models.cluster_variant import ClusterVariant
 
         count = db_session.query(func.count(ClusterVariant.id)).filter(

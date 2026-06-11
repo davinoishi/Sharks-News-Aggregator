@@ -1,15 +1,16 @@
-from fastapi import FastAPI, Depends, HTTPException, Query, Request, Header, APIRouter
-from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.orm import Session
-from sqlalchemy import func, desc
-from typing import Optional, List
-from datetime import datetime, timedelta
-from pydantic import BaseModel, HttpUrl
+import hashlib
 import ipaddress
 import secrets
 import threading
 import time
-import hashlib
+from datetime import datetime, timedelta
+from typing import List, Optional
+
+from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Query, Request
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, HttpUrl
+from sqlalchemy import desc, func
+from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.database import get_db
@@ -216,8 +217,9 @@ def health(db: Session = Depends(get_db)):
     Health check endpoint.
     Returns OK if service is running and last RSS scan time.
     """
-    from app.models import Source
     from sqlalchemy import func
+
+    from app.models import Source
 
     # Get the most recent last_fetched_at across all sources
     last_scan_at = db.query(func.max(Source.last_fetched_at)).scalar()
@@ -252,7 +254,10 @@ def get_feed(
     - List of clusters with headline, tags, source count, etc.
     """
     from app.core.queries import (
-        build_feed_query, format_cluster_for_feed, decode_cursor, encode_cursor,
+        build_feed_query,
+        decode_cursor,
+        encode_cursor,
+        format_cluster_for_feed,
     )
 
     # Parse time filter
@@ -302,8 +307,8 @@ def get_cluster(
     - All source links (variants) grouped by category
     - Tags and entities
     """
-    from app.models import Cluster, ClusterTag, ClusterEntity, Tag, Entity, ClusterStatus
     from app.core.queries import get_cluster_variants_sorted
+    from app.models import Cluster, ClusterEntity, ClusterStatus, ClusterTag, Entity, Tag
 
     # Load cluster
     cluster = db.query(Cluster).filter(
@@ -376,8 +381,8 @@ async def submit_link(
     Rate Limiting:
     - 10 submissions per IP per hour
     """
+    from app.core.url_guard import UrlNotAllowed, validate_url
     from app.models import Submission, SubmissionStatus
-    from app.core.url_guard import validate_url, UrlNotAllowed
 
     # SSRF guard (PR #53): validate before storing/queuing; generic message —
     # do not leak internal reasoning (which host/IP, why) to the submitter.
@@ -436,8 +441,9 @@ def get_stats(db: Session = Depends(get_db)):
     - Total stories tracked
     - Total active sources
     """
-    from app.models import SiteMetrics, Cluster, ClusterStatus, Source, SourceStatus
     from sqlalchemy import func
+
+    from app.models import SiteMetrics, Source, SourceStatus
 
     # Get page views from metrics table
     page_views_metric = db.query(SiteMetrics).filter(SiteMetrics.key == "page_views").first()
@@ -532,7 +538,7 @@ def list_sources(
     - Recent ingestion stats
     """
 
-    from app.models import Source, SourceStatus, RawItem
+    from app.models import RawItem, Source, SourceStatus
 
     sources = db.query(Source).order_by(Source.name).all()
 
@@ -685,6 +691,7 @@ def list_submissions(
     are not returned.
     """
     from urllib.parse import urlparse
+
     from app.models import Submission, SubmissionStatus
 
     query = db.query(Submission)
@@ -786,7 +793,7 @@ def list_validations(
     Protected by IP whitelist or API key.
     """
 
-    from app.models import ValidationLog, ValidationMethod, ValidationResult, RawItem
+    from app.models import RawItem, ValidationLog, ValidationMethod, ValidationResult
 
     # Select the joined RawItem alongside each log (was a per-log re-query, N+1).
     query = db.query(ValidationLog, RawItem).join(
@@ -906,7 +913,7 @@ def list_rejected_validations(
     Protected by IP whitelist or API key.
     """
 
-    from app.models import ValidationLog, ValidationResult, RawItem
+    from app.models import RawItem, ValidationLog, ValidationResult
 
     query = db.query(ValidationLog).join(
         RawItem, ValidationLog.raw_item_id == RawItem.id
@@ -987,7 +994,7 @@ def get_llm_evaluation_report(
     Protected by IP whitelist or API key.
     """
 
-    from app.models import ValidationLog, ValidationMethod, ValidationResult, RawItem
+    from app.models import RawItem, ValidationLog
 
     since_datetime = parse_since_parameter(since) if since else None
 

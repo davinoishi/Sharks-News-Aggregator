@@ -8,13 +8,14 @@ Usage:
 Or from Docker:
     docker-compose exec api python -m app.scripts.import_sources /app/../initial_sources.csv
 """
-import sys
 import csv
+import sys
 from pathlib import Path
+
 from sqlalchemy.exc import IntegrityError
 
 from app.core.database import SessionLocal
-from app.models import Source, SourceCategory, SourceStatus, IngestMethod
+from app.models import IngestMethod, Source, SourceCategory, SourceStatus
 
 
 def parse_ingest_method(method_str: str) -> IngestMethod:

@@ -11,7 +11,6 @@ Usage:
 from app.core.database import SessionLocal
 from app.core.db_utils import get_or_create_entity
 
-
 # Current Sharks roster (2025-26 season)
 # Update this list as roster changes
 PLAYERS = [

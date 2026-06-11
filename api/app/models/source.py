@@ -1,10 +1,10 @@
 """
 Source model - represents ingestion sources (RSS feeds, websites, APIs).
 """
-from datetime import datetime
-from typing import Optional
 import enum
-from sqlalchemy import Column, Integer, String, Enum, Text, DateTime, JSON
+from datetime import datetime
+
+from sqlalchemy import JSON, Column, DateTime, Enum, Integer, String, Text
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base

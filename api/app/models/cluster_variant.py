@@ -2,7 +2,8 @@
 ClusterVariant model - mapping table between clusters and variants.
 """
 from datetime import datetime
-from sqlalchemy import Column, Integer, ForeignKey, Numeric, DateTime, UniqueConstraint
+
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, Numeric, UniqueConstraint
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base

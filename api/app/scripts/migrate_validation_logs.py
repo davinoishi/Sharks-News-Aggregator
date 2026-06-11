@@ -8,8 +8,8 @@ Run this script to create the validation_logs table:
 This is an idempotent operation - safe to run multiple times.
 """
 from sqlalchemy import text
-from app.core.database import engine
 
+from app.core.database import engine
 
 MIGRATION_SQL = """
 -- Create validation_logs table for LLM relevance checking audit trail

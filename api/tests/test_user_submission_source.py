@@ -5,8 +5,8 @@ from sqlalchemy.orm import sessionmaker
 from app.core.database import Base
 from app.models import Source
 from app.tasks.submissions import (
-    get_or_create_user_submission_source,
     USER_SUBMISSION_SOURCE_URL,
+    get_or_create_user_submission_source,
 )
 
 

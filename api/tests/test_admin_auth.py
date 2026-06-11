@@ -6,7 +6,7 @@ from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from app.core.config import settings
-from app.main import app, require_admin, get_real_client_ip
+from app.main import app, get_real_client_ip, require_admin
 
 client = TestClient(app)
 

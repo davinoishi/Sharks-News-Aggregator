@@ -13,13 +13,14 @@ will be moved to the target cluster, and the other clusters will be deleted.
 """
 import sys
 from datetime import datetime
+
 from sqlalchemy import func
 
 from app.core.database import SessionLocal
-from app.models import Cluster, ClusterStatus
-from app.models.cluster_variant import ClusterVariant
-from app.models.cluster_tag import ClusterTag
+from app.models import Cluster
 from app.models.cluster_entity import ClusterEntity
+from app.models.cluster_tag import ClusterTag
+from app.models.cluster_variant import ClusterVariant
 
 
 def merge_clusters(cluster_ids: list[int], dry_run: bool = False):
@@ -51,7 +52,7 @@ def merge_clusters(cluster_ids: list[int], dry_run: bool = False):
         print(f"  Headline: {target.headline}")
         print(f"  Variants: {target.source_count}")
 
-        print(f"\nSource clusters (merging into target):")
+        print("\nSource clusters (merging into target):")
         total_variants = target.source_count
         for sid in source_ids:
             source = cluster_map[sid]

@@ -1,5 +1,7 @@
 # Sharks News Aggregator
 
+[![CI](https://github.com/davinoishi/Sharks-News-Aggregator/actions/workflows/ci.yml/badge.svg)](https://github.com/davinoishi/Sharks-News-Aggregator/actions/workflows/ci.yml)
+
 A comprehensive news aggregation and clustering system for San Jose Sharks hockey news. Automatically ingests news from multiple sources, enriches articles with entity extraction and tagging, clusters similar stories, and presents them through a modern web interface.
 
 ## Live Demo

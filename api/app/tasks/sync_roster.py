@@ -7,15 +7,15 @@ Includes active roster + non-roster (AHL/prospects).
 Excludes dead cap players (traded/bought out, on other teams).
 """
 import re
-import httpx
 from typing import List, Optional
+
+import httpx
 from sqlalchemy.orm import Session
 
-from app.tasks.celery_app import celery
+from app.core.config import settings
 from app.core.database import SessionLocal
 from app.core.db_utils import get_or_create_entity
-from app.core.config import settings
-
+from app.tasks.celery_app import celery
 
 CAPWAGES_URL = "https://capwages.com/teams/san_jose_sharks"
 
@@ -51,7 +51,7 @@ def sync_sharks_roster(self):
 
         db.commit()
 
-        print(f"  ✓ Roster sync complete:")
+        print("  ✓ Roster sync complete:")
         print(f"    Players synced: {len(current_roster_slugs)}")
         print(f"    Removed: {removed}")
 
@@ -212,7 +212,7 @@ def remove_departed_players(db: Session, current_roster_slugs: set) -> int:
     Returns:
         Number of entities removed
     """
-    from app.models import Entity, ClusterEntity
+    from app.models import ClusterEntity, Entity
 
     all_player_entities = db.query(Entity).filter(
         Entity.entity_type == 'player'

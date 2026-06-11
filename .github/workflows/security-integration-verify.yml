@@ -12,48 +12,9 @@ on:
     branches: [improve/security-integration]
   workflow_dispatch:
 
+# Unit/lint/feed-query tests live in ci.yml; this workflow is only the live
+# Docker stack security verification.
 jobs:
-  pytest:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Install API deps (with test extras)
-        run: pip install -r api/requirements-dev.txt
-      - name: Run unit/integration tests (sqlite; Postgres-only tests skip here)
-        run: cd api && PYTHONPATH=. pytest -q
-
-  feed-tests:
-    # Feed query tests (brief 04) need PostgreSQL — clusters uses ARRAY columns.
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_DB: sharks
-          POSTGRES_USER: sharks
-          POSTGRES_PASSWORD: sharks
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U sharks"
-          --health-interval 10s --health-timeout 5s --health-retries 5
-    env:
-      DATABASE_URL: postgresql+psycopg://sharks:sharks@localhost:5432/sharks
-      CELERY_BROKER_URL: redis://localhost:6379/1
-      CELERY_RESULT_BACKEND: redis://localhost:6379/2
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Install API deps (with test extras)
-        run: pip install -r api/requirements-dev.txt
-      - name: Run feed query tests against Postgres
-        run: cd api && PYTHONPATH=. pytest tests/test_feed_queries.py -q
-
   docker-verify:
     runs-on: ubuntu-latest
     env:

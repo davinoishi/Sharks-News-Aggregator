@@ -1,14 +1,23 @@
 """
 Database utility functions for common operations.
 """
-from typing import Optional, List
 from datetime import datetime, timedelta
+from typing import List, Optional
+
+from sqlalchemy import and_, func
 from sqlalchemy.orm import Session
-from sqlalchemy import func, and_, or_
 
 from app.models import (
-    Source, SourceStatus, Tag, Entity, Cluster, ClusterStatus,
-    StoryVariant, ClusterVariant, ClusterTag, ClusterEntity
+    Cluster,
+    ClusterEntity,
+    ClusterStatus,
+    ClusterTag,
+    ClusterVariant,
+    Entity,
+    Source,
+    SourceStatus,
+    StoryVariant,
+    Tag,
 )
 
 
