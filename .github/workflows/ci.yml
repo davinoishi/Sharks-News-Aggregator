@@ -52,12 +52,12 @@ jobs:
         run: pip install -r api/requirements-dev.txt
       - name: Ruff lint
         run: ruff check api/
-      - name: Pytest (sqlite; tolerate "no tests collected" until brief 06)
-        run: |
-          cd api && PYTHONPATH=. pytest -q || [ $? -eq 5 ]
+      - name: Pytest (sqlite; Postgres-only tests skip here)
+        run: cd api && PYTHONPATH=. pytest -q
 
-  feed-tests:
-    # Feed query tests (brief 04) need PostgreSQL — clusters uses ARRAY columns.
+  postgres-tests:
+    # DB-backed tests (clustering, feed queries) need PostgreSQL — those models
+    # use ARRAY columns SQLite can't create.
     needs: changes
     if: needs.changes.outputs.api == 'true'
     runs-on: ubuntu-latest
@@ -85,8 +85,8 @@ jobs:
           cache: pip
           cache-dependency-path: api/requirements-dev.txt
       - run: pip install -r api/requirements-dev.txt
-      - name: Feed query tests against Postgres
-        run: cd api && PYTHONPATH=. pytest tests/test_feed_queries.py -q
+      - name: Full test suite against Postgres (exercises DB-backed tests)
+        run: cd api && PYTHONPATH=. pytest -q
 
   web:
     needs: changes
@@ -129,13 +129,13 @@ jobs:
   ci:
     # Single aggregate gate — make THIS the required status check on main.
     # Green unless a job that actually ran failed (skipped jobs are fine).
-    needs: [changes, api, feed-tests, web, docker-build]
+    needs: [changes, api, postgres-tests, web, docker-build]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Check job results
         run: |
-          results="${{ needs.changes.result }} ${{ needs.api.result }} ${{ needs.feed-tests.result }} ${{ needs.web.result }} ${{ needs.docker-build.result }}"
+          results="${{ needs.changes.result }} ${{ needs.api.result }} ${{ needs.postgres-tests.result }} ${{ needs.web.result }} ${{ needs.docker-build.result }}"
           echo "job results: $results"
           for r in $results; do
             if [ "$r" = "failure" ] || [ "$r" = "cancelled" ]; then

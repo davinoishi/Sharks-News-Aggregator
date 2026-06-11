@@ -113,6 +113,15 @@ def test_unknown_slug_returns_empty_not_unfiltered(db):
     assert clusters == []
 
 
+def test_since_filter_excludes_older_clusters(db):
+    now = datetime.now(timezone.utc)
+    recent = _cluster(db, "recent", now - timedelta(hours=1))
+    _cluster(db, "old", now - timedelta(days=10))
+
+    clusters, _ = build_feed_query(db, since=now - timedelta(days=2), limit=50)
+    assert [c.id for c in clusters] == [recent.id]
+
+
 def test_keyset_pagination_walks_full_set_while_last_seen_shifts(db):
     base = datetime.now(timezone.utc)
     created = [_cluster(db, f"c{i}", base - timedelta(minutes=i)) for i in range(7)]
