@@ -12,11 +12,11 @@ The first cluster ID will be the target. All variants from other clusters
 will be moved to the target cluster, and the other clusters will be deleted.
 """
 import sys
-from datetime import datetime
 
 from sqlalchemy import func
 
 from app.core.database import SessionLocal
+from app.core.datetime_utils import utcnow
 from app.models import Cluster
 from app.models.cluster_entity import ClusterEntity
 from app.models.cluster_tag import ClusterTag
@@ -135,7 +135,7 @@ def merge_clusters(cluster_ids: list[int], dry_run: bool = False):
         target.last_seen_at = latest
         target.tokens = list(all_tokens)
         target.entities_agg = list(all_entities)
-        target.updated_at = datetime.utcnow()
+        target.updated_at = utcnow()
 
         # Keep the first available LLM summary
         if not target.llm_summary:

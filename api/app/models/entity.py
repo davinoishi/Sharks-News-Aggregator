@@ -1,12 +1,12 @@
 """
 Entity model - represents players, coaches, teams, and staff.
 """
-from datetime import datetime
 
 from sqlalchemy import JSON, Column, DateTime, Integer, String
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
+from app.core.datetime_utils import utcnow
 
 
 class Entity(Base):
@@ -29,7 +29,7 @@ class Entity(Base):
     slug = Column(String(255), nullable=False, unique=True)
     entity_type = Column(String(50), nullable=False)
     extra_metadata = Column('metadata', JSON, default={})
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
 
     # Relationships
     cluster_entities = relationship("ClusterEntity", back_populates="entity")

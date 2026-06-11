@@ -1,12 +1,12 @@
 """
 Tag model - represents story tags (News, Rumors, Injury, etc.).
 """
-from datetime import datetime
 
 from sqlalchemy import Column, DateTime, Integer, String
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
+from app.core.datetime_utils import utcnow
 
 
 class Tag(Base):
@@ -29,7 +29,7 @@ class Tag(Base):
     name = Column(String(100), nullable=False, unique=True)
     slug = Column(String(100), nullable=False, unique=True)
     display_color = Column(String(7), nullable=True)
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
 
     # Relationships
     cluster_tags = relationship("ClusterTag", back_populates="tag")

@@ -3,10 +3,11 @@ BlueSky posting tasks for Celery.
 
 Handles scheduled posting of new clusters and retrying failed posts.
 """
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from app.core.config import settings
 from app.core.database import SessionLocal
+from app.core.datetime_utils import utcnow
 from app.tasks.celery_app import celery
 
 
@@ -40,7 +41,7 @@ def post_new_clusters():
         ).order_by(BlueSkyPost.posted_at.desc()).first()
 
         if last_post and last_post.posted_at:
-            time_since_last = datetime.utcnow() - last_post.posted_at.replace(tzinfo=None)
+            time_since_last = utcnow() - last_post.posted_at
             if time_since_last < timedelta(minutes=5):
                 return {
                     "status": "rate_limited",
@@ -119,7 +120,7 @@ def post_new_clusters():
                 post_uri=result.post_uri,
                 post_cid=result.post_cid,
                 error_message=result.error,
-                posted_at=datetime.utcnow() if result.success else None
+                posted_at=utcnow() if result.success else None
             )
             db.add(post_record)
             db.commit()
@@ -234,13 +235,13 @@ def retry_failed_posts():
             # Update record
             post_record.retry_count += 1
             post_record.post_text = post_text
-            post_record.updated_at = datetime.utcnow()
+            post_record.updated_at = utcnow()
 
             if result.success:
                 post_record.status = PostStatus.POSTED
                 post_record.post_uri = result.post_uri
                 post_record.post_cid = result.post_cid
-                post_record.posted_at = datetime.utcnow()
+                post_record.posted_at = utcnow()
                 post_record.error_message = None
                 retried_count += 1
                 results.append({
@@ -359,8 +360,8 @@ def post_cluster(cluster_id: int):
             existing_post.post_cid = result.post_cid
             existing_post.error_message = result.error
             existing_post.retry_count += 1
-            existing_post.posted_at = datetime.utcnow() if result.success else None
-            existing_post.updated_at = datetime.utcnow()
+            existing_post.posted_at = utcnow() if result.success else None
+            existing_post.updated_at = utcnow()
         else:
             post_record = BlueSkyPost(
                 cluster_id=cluster.id,
@@ -369,7 +370,7 @@ def post_cluster(cluster_id: int):
                 post_uri=result.post_uri,
                 post_cid=result.post_cid,
                 error_message=result.error,
-                posted_at=datetime.utcnow() if result.success else None
+                posted_at=utcnow() if result.success else None
             )
             db.add(post_record)
 

@@ -1,12 +1,12 @@
 """
 ClusterVariant model - mapping table between clusters and variants.
 """
-from datetime import datetime
 
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, Numeric, UniqueConstraint
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
+from app.core.datetime_utils import utcnow
 
 
 class ClusterVariant(Base):
@@ -32,7 +32,7 @@ class ClusterVariant(Base):
     cluster_id = Column(Integer, ForeignKey("clusters.id", ondelete="CASCADE"), nullable=False)
     variant_id = Column(Integer, ForeignKey("story_variants.id", ondelete="CASCADE"), nullable=False)
     similarity_score = Column(Numeric(5, 3), nullable=True)
-    added_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    added_at = Column(DateTime(timezone=True), default=utcnow)
 
     # Relationships
     cluster = relationship("Cluster", back_populates="cluster_variants")

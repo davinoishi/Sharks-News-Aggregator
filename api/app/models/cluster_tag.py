@@ -1,12 +1,12 @@
 """
 ClusterTag model - mapping table between clusters and tags.
 """
-from datetime import datetime
 
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, UniqueConstraint
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
+from app.core.datetime_utils import utcnow
 
 
 class ClusterTag(Base):
@@ -29,7 +29,7 @@ class ClusterTag(Base):
     id = Column(Integer, primary_key=True, index=True)
     cluster_id = Column(Integer, ForeignKey("clusters.id", ondelete="CASCADE"), nullable=False)
     tag_id = Column(Integer, ForeignKey("tags.id", ondelete="CASCADE"), nullable=False)
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
 
     # Relationships
     cluster = relationship("Cluster", back_populates="cluster_tags")

@@ -8,6 +8,7 @@ from typing import List, Optional, Tuple
 from sqlalchemy import and_, desc, func, or_
 from sqlalchemy.orm import Session, joinedload, selectinload
 
+from app.core.datetime_utils import utcnow
 from app.models import (
     Cluster,
     ClusterEntity,
@@ -275,7 +276,7 @@ def get_recent_clusters_count(db: Session, hours: int = 24) -> int:
     Returns:
         Count of recent clusters
     """
-    cutoff = datetime.utcnow() - timedelta(hours=hours)
+    cutoff = utcnow() - timedelta(hours=hours)
 
     return db.query(func.count(Cluster.id)).filter(
         and_(

@@ -1,12 +1,12 @@
 """
 RawItem model - represents raw ingested content before processing.
 """
-from datetime import datetime
 
 from sqlalchemy import JSON, Column, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
+from app.core.datetime_utils import utcnow
 
 
 class RawItem(Base):
@@ -43,10 +43,10 @@ class RawItem(Base):
     raw_description = Column(Text, nullable=True)
     raw_content = Column(Text, nullable=True)
     published_at = Column(DateTime(timezone=True), nullable=True)
-    fetched_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    fetched_at = Column(DateTime(timezone=True), default=utcnow)
     ingest_hash = Column(String(64), nullable=True)
     extra_metadata = Column('metadata', JSON, default={})
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
 
     # Relationships
     source = relationship("Source", back_populates="raw_items")

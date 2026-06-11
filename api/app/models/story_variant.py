@@ -2,12 +2,12 @@
 StoryVariant model - represents one source's version of a story.
 """
 import enum
-from datetime import datetime
 
 from sqlalchemy import ARRAY, JSON, Column, DateTime, Enum, ForeignKey, Integer, Text
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
+from app.core.datetime_utils import utcnow
 from app.models.cluster import EventType
 
 
@@ -64,7 +64,7 @@ class StoryVariant(Base):
     source_signal = Column(Integer, default=1)
     status = Column(Enum(VariantStatus, values_callable=lambda x: [e.value for e in x]), nullable=False, default=VariantStatus.ACTIVE)
     extra_metadata = Column('metadata', JSON, default={})
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
 
     # Relationships
     raw_item = relationship("RawItem", back_populates="story_variants")

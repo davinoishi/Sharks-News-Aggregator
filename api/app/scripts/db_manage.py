@@ -14,11 +14,11 @@ Commands:
     reset       - Reset database (WARNING: deletes all data)
 """
 import sys
-from datetime import datetime, timedelta
 
 from sqlalchemy import func
 
 from app.core.database import SessionLocal
+from app.core.datetime_utils import timedelta, utcnow
 from app.models import (
     CandidateSource,
     Cluster,
@@ -65,7 +65,7 @@ def show_status():
 
         # Recent activity
         print("\nRecent Activity (last 24 hours):")
-        yesterday = datetime.utcnow() - timedelta(days=1)
+        yesterday = utcnow() - timedelta(days=1)
 
         recent_items = db.query(func.count(RawItem.id)).filter(
             RawItem.created_at >= yesterday

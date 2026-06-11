@@ -2,12 +2,12 @@
 Submission model - user-submitted links.
 """
 import enum
-from datetime import datetime
 
 from sqlalchemy import Column, DateTime, Enum, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
+from app.core.datetime_utils import utcnow
 
 
 class SubmissionStatus(str, enum.Enum):
@@ -59,7 +59,7 @@ class Submission(Base):
     variant_id = Column(Integer, ForeignKey("story_variants.id", ondelete="SET NULL"), nullable=True)
     cluster_id = Column(Integer, ForeignKey("clusters.id", ondelete="SET NULL"), nullable=True)
     rejection_reason = Column(Text, nullable=True)
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
     processed_at = Column(DateTime(timezone=True), nullable=True)
 
     # Relationships
@@ -74,4 +74,4 @@ class Submission(Base):
     def mark_processed(self, status: SubmissionStatus):
         """Mark submission as processed with given status."""
         self.status = status
-        self.processed_at = datetime.utcnow()
+        self.processed_at = utcnow()

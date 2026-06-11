@@ -1,9 +1,10 @@
 """
 Maintenance tasks for cleanup and housekeeping.
 """
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from app.core.database import SessionLocal
+from app.core.datetime_utils import utcnow
 from app.tasks.celery_app import celery
 
 
@@ -21,7 +22,7 @@ def purge_old_items():
 
     db = SessionLocal()
     try:
-        cutoff = datetime.utcnow() - timedelta(days=30)
+        cutoff = utcnow() - timedelta(days=30)
 
         # Delete old clusters (last_seen_at > 30 days ago)
         old_clusters = db.query(Cluster).filter(Cluster.last_seen_at < cutoff).all()
