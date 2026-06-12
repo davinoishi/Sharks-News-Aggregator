@@ -128,9 +128,9 @@ docker-compose exec db psql -U sharks -d sharks -c "SELECT id, name, category, s
 # Once the API is running
 curl http://localhost:8000/health
 
-# Note: There's no direct API endpoint to list sources in the public API yet,
-# but you can check the worker logs to see them being used
-docker-compose logs worker
+# Source health is available to admins at GET /admin/sources (auth required);
+# you can also check the worker logs to see sources being fetched
+docker compose logs worker
 ```
 
 ## Re-importing or Updating Sources

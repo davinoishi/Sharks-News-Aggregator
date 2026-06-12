@@ -29,9 +29,18 @@ The application runs on a **Raspberry Pi 5** (pi5-ai2) with public access via no
 
 ## Docker Containers
 
-The application runs as 6 Docker containers orchestrated by Docker Compose:
-- Development: `docker-compose.yml` (ports 3000/8000)
-- Production (Pi): `docker-compose.pi.yml` (ports 3001/8001)
+The application runs as 7 Docker containers orchestrated by Docker Compose.
+`docker-compose.yml` is the **production base**; environments are overlays:
+
+| Use | Command |
+|-----|---------|
+| Production (generic) | `docker compose up -d` |
+| Local development (hot-reload) | `docker compose -f docker-compose.yml -f docker-compose.dev.yml up` |
+| Pi (pi5-ai2, ports 3001/8001) | `docker compose -f docker-compose.yml -f docker-compose.pi.yml up -d` |
+
+The base is production-shaped (no source bind mounts, no auto-reload, plain
+`celery` workers). The dev overlay adds bind mounts + `--reload`/`watchfiles`
+and publishes Postgres/Redis on loopback. See [SETUP_GUIDE.md](SETUP_GUIDE.md).
 
 ### 1. `db` (PostgreSQL)
 - **Image:** `postgres:16`
@@ -44,7 +53,13 @@ The application runs as 6 Docker containers orchestrated by Docker Compose:
   - `clusters` - Grouped stories (same event, multiple sources)
   - `entities` - Players (synced daily from CapWages), coaches, teams
   - `tags` - Content classification (Trade, Injury, Rumors, etc.)
+  - `submissions` - User-submitted links and their processing status
+  - `candidate_sources` - New domains proposed from submissions (admin review)
+  - `validation_logs` - Per-item relevance decisions (keyword/LLM, audit trail)
   - `bluesky_posts` - BlueSky post tracking (posted, failed, skipped)
+  - `site_metrics` - Key/value counters (page views, `llm_failopen_count`, alert dedup state)
+- **Backups:** the `backup` container takes a nightly `pg_dump` to `./backups/`
+  (see [BACKUP_RESTORE.md](BACKUP_RESTORE.md)).
 
 ### 2. `redis` (Redis)
 - **Image:** `redis:7`
@@ -57,12 +72,20 @@ The application runs as 6 Docker containers orchestrated by Docker Compose:
 ### 3. `api` (FastAPI)
 - **Port:** 8000 (dev) / 8001 (Pi production)
 - **Purpose:** REST API server handling HTTP requests
-- **Entry Point:** `uvicorn app.main:app`
-- **Key Endpoints:**
-  - `GET /health` - Health check with last scan time
-  - `GET /feed` - Main news feed (filtered, paginated)
+- **Entry Point:** `uvicorn app.main:app` (a thin composition root; routes live
+  in `app/routers/`, see [File Structure](#file-structure))
+- **Public endpoints:**
+  - `GET /health` - Health check; `last_scan_at` + `degraded` flag (O3)
+  - `GET /feed` - Main news feed (filtered, keyset-paginated via `cursor`/`has_more`)
   - `GET /cluster/{id}` - Cluster details with all source links
-  - `POST /submit/link` - User link submissions
+  - `GET /entities?query=` - Entity (player) search for the filter UI
+  - `GET /rss` - RSS 2.0 feed of the latest clusters
+  - `GET /stats` - Site-wide counters
+  - `POST /submit/link` - User link submissions (SSRF-guarded, rate-limited)
+  - `POST /metrics/pageview`, `POST /cluster/{id}/click` - anonymous counters
+- **Admin endpoints** (`/admin/*`, all behind `require_admin` — API-key header
+  injected by the Next.js proxy): source health, validation logs/stats,
+  BlueSky post history, LLM health.
 
 ### 4. `worker` (Celery Worker)
 - **Purpose:** Executes async tasks (ingestion, enrichment)
@@ -72,9 +95,9 @@ The application runs as 6 Docker containers orchestrated by Docker Compose:
   - `enrich_raw_item` - Process articles, extract entities, cluster
   - `process_submission` - Handle user-submitted links
   - `sync_sharks_roster` - Sync player entities from CapWages
-  - `purge_old_items` - Remove clusters/items older than 30 days
-  - `post_new_clusters` - Post new clusters to BlueSky
-  - `retry_failed_posts` - Retry failed BlueSky posts
+  - `purge_old_items` / `cleanup_bogus_entities` - Housekeeping
+  - `monitor_pipeline_health` - Flag stale ingest / broken sources, alert (O3)
+  - `post_new_clusters` / `retry_failed_posts` - BlueSky posting
 
 ### 5. `beat` (Celery Beat)
 - **Purpose:** Schedules periodic tasks
@@ -82,20 +105,29 @@ The application runs as 6 Docker containers orchestrated by Docker Compose:
 - **Scheduled Tasks:**
   | Task | Frequency | Description |
   |------|-----------|-------------|
-  | `ingest_all_sources` | Every 10 minutes | Fetch RSS from all 24 sources |
+  | `ingest_all_sources` | Every 10 minutes | Fetch RSS from all approved sources |
   | `post_new_clusters` | Every 15 minutes | Post new clusters to BlueSky |
   | `retry_failed_posts` | Hourly | Retry failed BlueSky posts |
-  | `sync_sharks_roster` | Daily | Sync roster from CapWages (77+ players) |
-  | `cleanup_expired_cache` | Hourly | Remove expired cache entries |
+  | `monitor_pipeline_health` | Every 30 minutes | Detect stale ingest / broken sources, alert (O3) |
+  | `sync_sharks_roster` | Daily | Sync roster from CapWages (~77 players) |
   | `purge_old_items` | Daily | Remove items older than 30 days |
 
 ### 6. `web` (Next.js)
 - **Port:** 3000 (dev) / 3001 (Pi production)
-- **Purpose:** Frontend web application
+- **Purpose:** Frontend web application. The browser never talks to FastAPI
+  directly — Next.js API routes (`web/app/api/*`) proxy to the `api` container.
 - **Dynamic API Detection:** Automatically detects local vs. noBGP access
 - **Key Pages:**
-  - `/` - Main feed page with filters
-  - `/legal` - Terms and privacy policy
+  - `/` - Main feed: tag + entity filters, "Load more" pagination, clickable headlines
+  - `/submit` - Public link submission form
+  - `/admin`, `/admin/sources`, `/admin/view` - Admin views (HTTP Basic gated)
+  - `/about`, `/legal` - About + terms/privacy
+  - `/rss` - RSS 2.0 feed (proxied from the API)
+
+### 7. `backup` (Postgres)
+- **Image:** `postgres:16` (reuses the client tools)
+- **Purpose:** Nightly `pg_dump` of the database to the host-mounted `./backups/`
+  with 14-day retention. See [BACKUP_RESTORE.md](BACKUP_RESTORE.md).
 
 ---
 
@@ -176,7 +208,8 @@ The application runs as 6 Docker containers orchestrated by Docker Compose:
 
 **Function:** `ingest_all_sources()`
 - Triggered every 10 minutes by Celery Beat
-- Queries all 24 approved sources from database
+- Queries approved sources via `get_active_sources()` (the synthetic
+  "User Submissions" source is excluded — it is not a fetchable feed)
 - Spawns parallel `ingest_source()` tasks
 
 **Function:** `ingest_rss()`
@@ -185,7 +218,12 @@ The application runs as 6 Docker containers orchestrated by Docker Compose:
 - Deduplicates by URL hash
 - Triggers `enrich_raw_item()` for each new item
 
-### 2. Enrichment (`api/app/tasks/enrich.py`)
+### 2. Enrichment (`api/app/tasks/enrich.py` → `api/app/enrichment/`)
+
+`enrich.py` is a thin Celery orchestrator (brief 07); the logic lives in
+`app/enrichment/`: `entities.py` (extraction), `classify.py` (relevance +
+event/tag classification), `clustering.py` (similarity + match-or-create),
+`teams.py` (NHL opponent table).
 
 **Function:** `enrich_raw_item()`
 1. **Relevance Check** - Filters out non-Sharks content from general feeds
@@ -193,21 +231,22 @@ The application runs as 6 Docker containers orchestrated by Docker Compose:
 3. **Entity Extraction** - Finds player/coach mentions
 4. **Event Classification** - Categorizes as trade/injury/game/etc.
 5. **Clustering** - Matches to existing cluster or creates new one
-6. **Tagging** - Assigns tags (News, Rumors, Trade, etc.)
+6. **Tagging** - Assigns tags (Rumors, Trade, Injury, Game, etc.)
 
-**Function:** `check_sharks_relevance()`
-- Checks for "Sharks", "SJ Sharks", "Barracuda", "SAP Center" mentions
-- Checks for known entity mentions (players, coaches)
-- Sources can opt out via `skip_relevance_check` metadata
+**Relevance** (`enrichment/classify.py`): keyword check ("Sharks", "Barracuda",
+"SAP Center" + known player/coach entities) with optional LLM (OpenRouter)
+adjudication. On an LLM error the check **fails open to keyword matching** and
+increments the `llm_failopen_count` metric (C5). Sources can opt out via
+`skip_relevance_check` metadata.
 
-**Function:** `match_or_create_cluster()`
+**Function:** `match_or_create_cluster()` (`enrichment/clustering.py`)
 - Calculates similarity score: `S = 0.55*E + 0.35*T + 0.10*K`
   - E = Entity overlap (excluding team entities)
   - T = Token Jaccard similarity
   - K = Event type compatibility
 - Match threshold: S >= 0.62
 
-### 3. API Request Flow (`api/app/main.py`)
+### 3. API Request Flow (`api/app/main.py` + `api/app/routers/`)
 
 ```
 Browser Request
@@ -279,7 +318,7 @@ Stories are grouped when they cover the same event from multiple sources:
 ### tags
 ```sql
 - id, name, slug, display_color
-- (News, Trade, Injury, Rumors Press, Barracuda, etc.)
+- (Trade, Injury, Lineup, Recall, Waiver, Signing, Prospect, Game, Barracuda, Rumors, Opinion)
 ```
 
 ---
@@ -287,14 +326,23 @@ Stories are grouped when they cover the same event from multiple sources:
 ## Configuration
 
 ### Environment Variables
+
+See [`.env.example`](../.env.example) for the full list. Highlights:
+
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DATABASE_URL` | - | PostgreSQL connection string |
-| `CELERY_BROKER_URL` | - | Redis broker URL |
+| `DATABASE_URL` | - | PostgreSQL connection string (required) |
+| `CELERY_BROKER_URL` | - | Redis broker URL (required) |
+| `REDIS_PASSWORD` | - | Redis password (required; `--requirepass`) |
+| `ADMIN_API_KEY` | - | Admin auth key the Next.js proxy injects (required; empty ⇒ admin denied) |
+| `ADMIN_PANEL_PASSWORD` | - | HTTP Basic password gating `/admin` (required) |
 | `INGEST_INTERVAL_MINUTES` | 10 | RSS fetch frequency |
 | `MAX_ARTICLE_AGE_DAYS` | 7 | Reject articles older than this many days |
-| `ALLOWED_ORIGINS` | * (production) | CORS allowed origins |
-| `NEXT_PUBLIC_API_BASE_URL` | (auto-detected) | API URL for frontend |
+| `ALLOWED_ORIGINS` | `http://localhost:3000` | CORS allowed origins (`*` on the Pi) |
+| `PUBLIC_SITE_URL` | `http://localhost:3000` | Site URL for RSS channel metadata |
+| `LOG_LEVEL` | `INFO` | Logging verbosity (C4) |
+| `ALERT_WEBHOOK_URL` | (empty) | Webhook for degraded-pipeline alerts (O3) |
+| `OPENROUTER_API_KEY` | (empty) | Enables LLM relevance/classification |
 
 ### Configurable Thresholds (`api/app/core/config.py`)
 ```python
@@ -313,55 +361,77 @@ submission_rate_limit_per_ip = 10
 ```
 sharks-news-aggregator/
 ├── api/                      # Backend API
+│   ├── alembic/              # Database migrations (see docs/MIGRATIONS.md)
 │   └── app/
-│       ├── main.py           # FastAPI app & endpoints
+│       ├── main.py           # Thin FastAPI composition root (wires routers)
+│       ├── routers/          # Route modules: health, feed, submit, metrics, admin
+│       ├── schemas.py        # Pydantic request/response models
+│       ├── dependencies.py   # require_admin, real-client-IP, rate limits
+│       ├── utils.py          # Shared helpers (parse_since, parse_llm_approved)
 │       ├── core/
-│       │   ├── config.py     # Settings & thresholds
-│       │   ├── database.py   # DB connection
-│       │   └── queries.py    # Feed query builders
-│       ├── models/           # SQLAlchemy models
-│       │   ├── source.py
-│       │   ├── cluster.py
-│       │   ├── story_variant.py
-│       │   └── ...
+│       │   ├── config.py        # Settings & thresholds
+│       │   ├── database.py      # DB connection
+│       │   ├── queries.py       # Feed query builders
+│       │   ├── db_utils.py      # DB helpers + site-metric counters
+│       │   ├── health_checks.py # Shared pipeline-health check (O3)
+│       │   ├── logging_config.py# LOG_LEVEL-aware logging (C4)
+│       │   ├── constants.py     # Cross-module constants
+│       │   └── url_guard.py     # SSRF guard for submitted links
+│       ├── models/           # SQLAlchemy models (source, cluster, …, site_metrics)
+│       ├── enrichment/       # entities, classify, clustering, teams
 │       ├── tasks/            # Celery tasks
-│       │   ├── celery_app.py # Celery config & beat schedule
-│       │   ├── ingest.py     # RSS fetching
-│       │   ├── enrich.py     # Entity extraction & clustering
-│       │   ├── sync_roster.py # Daily roster sync from CapWages
-│       │   ├── maintenance.py # Purge old items, cache cleanup
-│       │   └── ...
-│       └── scripts/          # Management scripts
-├── web/                      # Frontend
+│       │   ├── celery_app.py    # Celery config & beat schedule
+│       │   ├── ingest.py        # RSS fetching
+│       │   ├── enrich.py        # Orchestrates app/enrichment/*
+│       │   ├── sync_roster.py   # Daily roster sync from CapWages
+│       │   ├── maintenance.py   # Purge, cleanup, pipeline-health monitor
+│       │   ├── submissions.py   # User-submitted links
+│       │   └── bluesky.py       # BlueSky posting
+│       ├── scripts/          # Management scripts
+│       └── tests/ (api/tests)# pytest suite (brief 06)
+├── web/                      # Frontend (Next.js App Router)
 │   └── app/
 │       ├── page.tsx          # Main feed page
-│       ├── legal/page.tsx    # Legal page
-│       ├── components/       # React components
-│       └── api-client.ts     # API client
+│       ├── submit/           # Public submission page
+│       ├── admin/            # Admin views (Basic-auth gated)
+│       ├── rss/route.ts      # RSS proxy
+│       ├── api/              # Server-side proxy routes → INTERNAL_API_URL
+│       └── components/       # React components
 ├── infra/
-│   └── postgres/init/        # DB initialization SQL
-├── docker-compose.yml        # Container orchestration (development)
-├── docker-compose.pi.yml     # Container orchestration (Pi production)
-└── initial_sources.csv       # Seed data for sources (24 sources)
+│   ├── postgres/init/        # DB bootstrap SQL
+│   └── backup/backup.sh      # Nightly pg_dump loop
+├── docker-compose.yml        # Production base
+├── docker-compose.dev.yml    # Dev overlay (bind mounts + hot-reload)
+├── docker-compose.pi.yml     # pi5-ai2 overlay (ports 3001/8001)
+├── .github/workflows/        # CI (lint + tests + build) and security verify
+└── initial_sources.csv       # Seed data for sources
 ```
 
 ---
 
 ## External Integrations
 
-1. **RSS Feeds** - Primary content source (24 sources via feedparser library)
+1. **RSS Feeds** - Primary content source (via the feedparser library)
 2. **CapWages** - Daily roster sync for entity database (full organization: NHL + AHL + reserves)
-3. **rss.app** - Twitter feed conversion (Friedman, LeBrun)
-4. **noBGP** - HTTPS proxy for public access to Pi-hosted services
+3. **OpenRouter** - LLM relevance/classification (Gemma), with keyword fallback
+4. **BlueSky** - Auto-posts new clusters to [@sjsharks-news.bsky.social](https://bsky.app/profile/sjsharks-news.bsky.social)
+5. **rss.app** - Twitter feed conversion (Friedman, LeBrun)
+6. **noBGP** - HTTPS proxy for public access to Pi-hosted services
 
 ---
 
 ## Security Considerations
 
-- Rate limiting on submissions (10/hour per IP)
-- CORS configured for all origins (public API)
-- No user authentication (read-only public API)
-- No cookies or tracking (privacy-respecting metrics only)
-- Relevance filtering prevents content injection from general feeds
-- HTTPS via noBGP proxy for production access
-- Auto-restart on container failure
+- **Admin auth (S1):** all `/admin/*` routes require an API key the Next.js
+  proxy injects; the `/admin` pages are additionally behind HTTP Basic. The
+  backend fails closed if `ADMIN_API_KEY` is unset.
+- **SSRF guard (S2):** user-submitted URLs are validated (scheme/host/IP,
+  redirect hops, body size) before the worker fetches them.
+- **Rate limiting (S3):** proxy-aware (real client IP via trusted
+  `X-Forwarded-For`) on `/submit/link` and the public counter endpoints.
+- **Network isolation (S4):** Postgres/Redis are not published to the host in
+  production; Redis requires a password.
+- **Hygiene (S5):** security headers in `next.config.js`, constant-time admin
+  key comparison, SHA-256-hashed submitter IPs (no raw IPs stored).
+- Relevance filtering prevents content injection from general feeds.
+- HTTPS via noBGP proxy; `restart: unless-stopped` on all containers.

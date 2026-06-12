@@ -386,7 +386,7 @@ The application is currently deployed on Raspberry Pi 5 (pi5-ai2) with:
 1. Change default database passwords in `.env`
 2. Set up proper authentication for admin endpoints
 3. ✅ Automated database backups — the `backup` service runs nightly; add an
-   off-device copy (see [docs/BACKUP_RESTORE.md](docs/BACKUP_RESTORE.md))
+   off-device copy (see [BACKUP_RESTORE.md](BACKUP_RESTORE.md))
 4. Configure monitoring/alerting: point an uptime pinger at `/health`
    (alerts on `degraded: true`) and/or set `ALERT_WEBHOOK_URL`
 5. Review and harden CSP headers
