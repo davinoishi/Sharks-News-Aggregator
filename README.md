@@ -135,7 +135,7 @@ Postgres/Redis on loopback for debugging.
 ```bash
 # Clone the repository
 git clone https://github.com/davinoishi/Sharks-News-Aggregator.git
-cd sharks-news-aggregator
+cd Sharks-News-Aggregator
 
 # Start all services with hot-reload (dev overlay)
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up
@@ -169,7 +169,7 @@ nobgp service publish --port 3001 --title "Sharks News"
 1. Clone the repository:
 ```bash
 git clone https://github.com/davinoishi/Sharks-News-Aggregator.git
-cd sharks-news-aggregator
+cd Sharks-News-Aggregator
 ```
 
 2. Start all services (dev overlay for hot-reload):
