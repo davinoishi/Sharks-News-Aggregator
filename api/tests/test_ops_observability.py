@@ -114,3 +114,54 @@ def test_pipeline_health_no_sources_is_stale(pg_db):
     # Nothing ever fetched -> treated as stale/degraded.
     assert health.ingest_stale is True
     assert health.degraded is True
+
+
+def _make_submission_source(db, **overrides):
+    from app.core.constants import (
+        USER_SUBMISSION_SOURCE_NAME,
+        USER_SUBMISSION_SOURCE_URL,
+    )
+    from app.models import IngestMethod, Source, SourceCategory, SourceStatus
+
+    kwargs = dict(
+        name=USER_SUBMISSION_SOURCE_NAME,
+        category=SourceCategory.OTHER,
+        ingest_method=IngestMethod.API,
+        base_url=USER_SUBMISSION_SOURCE_URL,
+        status=SourceStatus.APPROVED,
+        last_fetched_at=utcnow(),
+        fetch_error_count=40,
+    )
+    kwargs.update(overrides)
+    src = Source(**kwargs)
+    db.add(src)
+    db.commit()
+    return src
+
+
+# --- Synthetic "User Submissions" source is excluded (ops fix) ---------------
+
+@requires_postgres
+def test_synthetic_source_not_counted_broken(pg_db):
+    from app.core.health_checks import check_pipeline_health
+
+    # A real source keeps things fresh; only the synthetic source is "broken".
+    _make_source(pg_db)
+    _make_submission_source(pg_db)  # fetch_error_count=40
+
+    health = check_pipeline_health(pg_db)
+    assert health.broken_sources == []
+    assert health.degraded is False
+
+
+@requires_postgres
+def test_synthetic_source_excluded_from_ingestion(pg_db):
+    from app.core.db_utils import get_active_sources
+
+    real = _make_source(pg_db)
+    _make_submission_source(pg_db)
+
+    active = get_active_sources(pg_db)
+    names = {s.name for s in active}
+    assert real.name in names
+    assert "User Submissions" not in names

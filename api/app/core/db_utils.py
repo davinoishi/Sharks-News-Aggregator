@@ -8,6 +8,7 @@ from sqlalchemy import and_, func
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
+from app.core.constants import USER_SUBMISSION_SOURCE_URL
 from app.core.datetime_utils import utcnow
 from app.models import (
     Cluster,
@@ -137,11 +138,17 @@ def get_active_sources(db: Session) -> List[Source]:
     """
     Get all approved sources for ingestion.
 
+    Excludes the synthetic "User Submissions" source: it owns user-submitted
+    links and is not a fetchable feed, so the scheduled ingester must not try
+    to fetch it (the API-method stub would otherwise keep bumping its
+    ``fetch_error_count`` until it reads as "broken").
+
     Returns:
         List of approved Source objects ordered by priority
     """
     return db.query(Source).filter(
-        Source.status == SourceStatus.APPROVED
+        Source.status == SourceStatus.APPROVED,
+        Source.base_url != USER_SUBMISSION_SOURCE_URL,
     ).order_by(Source.priority.asc()).all()
 
 
