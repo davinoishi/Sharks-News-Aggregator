@@ -4,6 +4,13 @@ import './globals.css';
 export const metadata: Metadata = {
   title: 'Sharks News Aggregator',
   description: 'San Jose Sharks news and rumors in one feed',
+  alternates: {
+    types: {
+      'application/rss+xml': [
+        { url: '/rss', title: 'Sharks News Aggregator RSS' },
+      ],
+    },
+  },
   icons: {
     icon: [
       { url: '/favicon.ico', sizes: '32x32' },

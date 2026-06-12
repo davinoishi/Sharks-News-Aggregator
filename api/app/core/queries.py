@@ -2,7 +2,7 @@
 Query builder functions for feed and cluster endpoints.
 """
 import base64
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Tuple
 
 from sqlalchemy import and_, desc, func, or_
@@ -125,6 +125,51 @@ def build_feed_query(
     rows = query.limit(limit + 1).all()
     has_more = len(rows) > limit
     return rows[:limit], has_more
+
+
+_CATEGORY_RANK = {"official": 3, "press": 2, "other": 1}
+
+
+def get_top_variant_urls(db: Session, cluster_ids: List[int]) -> dict:
+    """Map each cluster id to its top-ranked variant URL.
+
+    "Top" follows the same official→press→other ordering used elsewhere
+    (:func:`get_cluster_variants_sorted`), breaking ties by most-recent
+    ``published_at``. Runs a single batched query for the whole page (no
+    per-cluster round-trips), so the feed router can expose ``top_url`` without
+    the frontend fetching cluster detail before navigating (U3).
+
+    Returns:
+        ``{cluster_id: url}`` for clusters that have at least one variant.
+    """
+    if not cluster_ids:
+        return {}
+
+    rows = (
+        db.query(
+            ClusterVariant.cluster_id,
+            StoryVariant.url,
+            Source.category,
+            StoryVariant.published_at,
+        )
+        .join(StoryVariant, ClusterVariant.variant_id == StoryVariant.id)
+        .join(Source, StoryVariant.source_id == Source.id)
+        .filter(ClusterVariant.cluster_id.in_(cluster_ids))
+        .all()
+    )
+
+    # Pick the best variant per cluster in Python: higher category rank wins,
+    # then the more recent published_at.
+    best: dict = {}  # cluster_id -> (rank, published_at, url)
+    for cluster_id, url, category, published_at in rows:
+        category_value = category.value if hasattr(category, "value") else category
+        rank = _CATEGORY_RANK.get(category_value, 0)
+        key = (rank, published_at or datetime.min.replace(tzinfo=timezone.utc))
+        current = best.get(cluster_id)
+        if current is None or key > current[0]:
+            best[cluster_id] = (key, url)
+
+    return {cluster_id: value[1] for cluster_id, value in best.items()}
 
 
 def get_cluster_with_details(db: Session, cluster_id: int) -> Optional[Cluster]:

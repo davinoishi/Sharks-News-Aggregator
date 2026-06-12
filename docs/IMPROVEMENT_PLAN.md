@@ -144,5 +144,5 @@ and ship via the integration PR
 | 5 | in review | [#61](https://github.com/davinoishi/Sharks-News-Aggregator/pull/61) |
 | 6 | in review | [#62](https://github.com/davinoishi/Sharks-News-Aggregator/pull/62) |
 | 7 | merged | [#63](https://github.com/davinoishi/Sharks-News-Aggregator/pull/63) |
-| 8 | not started | |
+| 8 | in review | |
 | 9 | not started | |

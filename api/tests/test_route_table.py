@@ -16,6 +16,8 @@ _BUILTIN_PATHS = {"/openapi.json", "/docs", "/docs/oauth2-redirect", "/redoc"}
 EXPECTED_ROUTES = {
     ("GET", "/health"),
     ("GET", "/feed"),
+    ("GET", "/entities"),
+    ("GET", "/rss"),
     ("GET", "/cluster/{cluster_id}"),
     ("POST", "/submit/link"),
     ("GET", "/stats"),
