@@ -35,6 +35,20 @@ class ClusterItem(BaseModel):
     click_count: int
     tags: List[dict]
     entities: List[dict]
+    # Top-ranked source URL (official→press→other), so the frontend can make the
+    # headline a real link without an extra round-trip (U3). None if no variants.
+    top_url: Optional[str] = None
+
+
+class EntityItem(BaseModel):
+    id: int
+    name: str
+    slug: str
+    type: str
+
+
+class EntitiesResponse(BaseModel):
+    entities: List[EntityItem]
 
 
 class FeedResponse(BaseModel):

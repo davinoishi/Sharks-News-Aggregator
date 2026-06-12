@@ -41,8 +41,9 @@ const nextConfig = {
         headers: securityHeaders,
       },
       {
-        // Never cache HTML pages — always revalidate so stale chunks never load
-        source: '/((?!_next/static|_next/image|favicon.ico).*)',
+        // Never cache HTML pages — always revalidate so stale chunks never load.
+        // /rss is excluded so its own 5-minute Cache-Control survives (U5).
+        source: '/((?!_next/static|_next/image|favicon.ico|rss).*)',
         headers: [
           {
             key: 'Cache-Control',

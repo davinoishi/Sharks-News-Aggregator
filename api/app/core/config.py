@@ -11,6 +11,11 @@ class Settings(BaseSettings):
     api_title: str = "Sharks Aggregator API"
     api_version: str = "0.1.0"
 
+    # Public-facing site URL, used for channel metadata in the published RSS
+    # feed (/rss). Item links always point at the real source URLs. Override in
+    # production via PUBLIC_SITE_URL.
+    public_site_url: str = "http://localhost:3000"
+
     # Ingestion settings
     ingest_interval_minutes: int = 10
     max_fetch_retries: int = 3

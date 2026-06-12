@@ -23,6 +23,12 @@ wheels/
 .installed.cfg
 *.egg
 
+# The Python `lib/`/`build/` rules above are unanchored and would otherwise
+# swallow the frontend source dir web/app/lib (the U6 tagColor helper lives
+# there). Re-include it.
+!web/app/lib/
+!web/app/lib/**
+
 # Node
 node_modules/
 .next/

@@ -36,6 +36,10 @@ export interface Cluster {
   click_count: number;
   tags: Tag[];
   entities: Entity[];
+  // Top-ranked source URL (official→press→other), used to make the headline a
+  // real link without fetching cluster detail. Absent if the cluster has no
+  // variants.
+  top_url?: string | null;
   variants?: StoryVariant[];
 }
 
@@ -47,8 +51,12 @@ export interface SiteStats {
 
 export interface FeedResponse {
   clusters: Cluster[];
-  cursor?: string;
+  cursor?: string | null;
   has_more: boolean;
+}
+
+export interface EntitiesResponse {
+  entities: Entity[];
 }
 
 export interface ClusterDetailResponse {

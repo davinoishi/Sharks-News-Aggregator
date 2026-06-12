@@ -6,7 +6,7 @@
  * and the backend can remain internal (no public URL needed).
  */
 
-import { FeedResponse, ClusterDetailResponse, SiteStats } from './types';
+import { FeedResponse, ClusterDetailResponse, SiteStats, EntitiesResponse } from './types';
 
 // All API calls go to our own Next.js API routes (same origin)
 const API_BASE_URL = '/api';
@@ -32,6 +32,20 @@ export class ApiClient {
 
     if (!response.ok) {
       throw new Error(`Failed to fetch feed: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  static async searchEntities(query: string): Promise<EntitiesResponse> {
+    const searchParams = new URLSearchParams();
+    if (query) searchParams.set('query', query);
+
+    const url = `${API_BASE_URL}/entities?${searchParams.toString()}`;
+    const response = await fetch(url);
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch entities: ${response.statusText}`);
     }
 
     return response.json();
