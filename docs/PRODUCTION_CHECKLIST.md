@@ -65,7 +65,7 @@ A checklist of tasks for deploying the Sharks News Aggregator to production.
 
   After that, the on-startup `alembic upgrade head` keeps it current. Full
   workflow (fresh install, existing DB, creating new revisions) is in
-  [`docs/MIGRATIONS.md`](docs/MIGRATIONS.md).
+  [`MIGRATIONS.md`](MIGRATIONS.md).
 
 ## Infrastructure
 
@@ -79,7 +79,7 @@ A checklist of tasks for deploying the Sharks News Aggregator to production.
 - [x] **Database persistence** — PostgreSQL data persisted via Docker volumes
 - [x] **Database backups** — `backup` service runs a nightly `pg_dump` to
   `./backups/` (14-day retention). Restore + off-device copy steps in
-  [`docs/BACKUP_RESTORE.md`](docs/BACKUP_RESTORE.md).
+  [`BACKUP_RESTORE.md`](BACKUP_RESTORE.md).
   - [ ] **Off-device copy** — wire up rsync/rclone to a second machine (manual)
 - [x] **Monitoring** — `/health` exposes `degraded: true` for an uptime pinger
   (UptimeRobot/healthchecks.io); the `monitor_pipeline_health` task also alerts

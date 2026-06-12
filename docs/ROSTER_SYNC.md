@@ -1,7 +1,7 @@
 # Automated Roster Sync - Sharks News Aggregator
 
-**Date:** 2026-01-24
-**Status:** Active - Syncing Daily
+The system syncs the full San Jose Sharks organization (~77 players: NHL roster
++ AHL/Barracuda + unsigned reserves) from CapWages once per day.
 
 ## Overview
 
@@ -52,15 +52,15 @@ Once synced, these players are automatically detected in news articles during th
 - "Sharks reassign Igor Chernyshov..." -> Detects Igor Chernyshov
 - "Joshua Ravensbergen signs ELC..." -> Detects Joshua Ravensbergen
 
-## Current Status
+## Typical Sync Size
 
-**Last Sync:** 2026-01-24
+A full sync covers roughly:
+- **Active Roster:** ~28 players
+- **Non-Roster (AHL/Prospects):** ~23 players
+- **Reserve List (Unsigned):** ~26 players
+- **Total:** ~77 players
 
-### Players Synced
-- **Active Roster:** 28 players
-- **Non-Roster (AHL/Prospects):** 23 players
-- **Reserve List (Unsigned):** 26 players
-- **Total:** 77 players
+(Exact counts shift as the roster changes.)
 
 ## Manual Operations
 
@@ -165,17 +165,12 @@ Section boundaries are identified by text markers:
 
 The roster sync task logs to the worker logs:
 
-**Success Example:**
+**Success Example** (per-player lines are at `DEBUG`; `LOG_LEVEL=INFO` shows the summary):
 ```
-Starting Sharks roster sync from CapWages...
-  Found 28 active + 23 non-roster + 26 reserve players
-    ✓ Logan Couture
-    ✓ Macklin Celebrini
-    ...
-    ✗ Removed departed player: Mikael Granlund
-  ✓ Roster sync complete:
-    Players synced: 77
-    Removed: 1
+... INFO  app.tasks.sync_roster: Starting Sharks roster sync from CapWages...
+... INFO  app.tasks.sync_roster:   Found 28 active + 23 non-roster + 26 reserve players
+... INFO  app.tasks.sync_roster:     ✗ Removed departed player: Mikael Granlund
+... INFO  app.tasks.sync_roster:   ✓ Roster sync complete: 77 players synced, 1 removed
 ```
 
 **Check Last Sync:**
@@ -205,7 +200,7 @@ If the sync fails with "Could not find expected section markers", the CapWages H
 
 1. Check player exists in database: `SELECT * FROM entities WHERE name ILIKE '%player_name%';`
 2. Verify entity extraction is running (check enrichment logs)
-3. Check the relevance filter keywords in `enrich.py`
+3. Check the relevance filter keywords in `app/enrichment/classify.py`
 
 ### False positive matches from former players?
 

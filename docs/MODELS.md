@@ -61,9 +61,21 @@ All SQLAlchemy models have been created to match the database schema defined in 
     - Proposed sources awaiting admin review
     - Method: `approve_and_create_source()` for approval workflow
 
-12. **`app/models/feed_cache.py`** - FeedCache
-    - Optional database-backed cache
-    - Property: `is_expired` to check validity
+12. **`app/models/validation_log.py`** - ValidationLog
+    - Audit trail of relevance decisions per raw item
+    - Enums: `ValidationMethod` (keyword/llm/skip), `ValidationResult` (approved/rejected/error)
+    - Backs `/admin/validations/*`
+
+13. **`app/models/bluesky_post.py`** - BlueSkyPost
+    - Tracks BlueSky posts per cluster
+    - Enum: `PostStatus` (posted/failed/skipped/pending)
+
+14. **`app/models/site_metrics.py`** - SiteMetrics
+    - Simple key/value counter store (page views, `llm_failopen_count`,
+      `alert_last_fired:*` dedup timestamps)
+
+> The previously-listed `feed_cache.py` / FeedCache model was removed — the
+> unused `feed_cache` table was dropped in brief 04 (P2).
 
 ## Utility Files
 
@@ -82,6 +94,10 @@ Helper functions for common database operations:
 - **`attach_variant_to_cluster()`** - Link variant to cluster
 - **`find_variant_by_url()`** - URL-based deduplication
 - **`check_submission_rate_limit()`** - Rate limiting logic
+- **`increment_site_metric()` / `get_site_metric()` / `set_site_metric()`** - Counter helpers (C5/O3)
+
+`get_active_sources()` excludes the synthetic "User Submissions" source (it is
+not a fetchable feed).
 
 ### Query Builders (`app/core/queries.py`)
 
@@ -96,6 +112,9 @@ Query functions for API endpoints:
 - **`get_cluster_variants_sorted()`** - Get variants sorted by:
   1. Source category (official → press → other)
   2. Recency (newest first)
+
+- **`get_top_variant_urls()`** - Batched top-source URL per cluster (powers
+  clickable headlines without an N+1, brief 08 U3)
 
 - **`format_cluster_for_feed()`** - Format cluster for feed API
 
@@ -204,14 +223,14 @@ All enums are defined as string enums for PostgreSQL compatibility:
 
 ```python
 from app.models import Cluster, EventType, ClusterStatus
-from datetime import datetime
+from app.core.datetime_utils import utcnow  # timezone-aware UTC (brief 07, C2)
 
 cluster = Cluster(
     headline="Sharks trade for top prospect",
     event_type=EventType.TRADE,
     status=ClusterStatus.ACTIVE,
-    first_seen_at=datetime.utcnow(),
-    last_seen_at=datetime.utcnow(),
+    first_seen_at=utcnow(),
+    last_seen_at=utcnow(),
     tokens=["sharks", "trade", "prospect"],
     entities_agg=[1, 5, 12],
     source_count=1
@@ -225,7 +244,7 @@ db.commit()
 ```python
 from app.core.db_utils import add_tags_to_cluster
 
-add_tags_to_cluster(db, cluster, ["Trade", "Rumors Press"])
+add_tags_to_cluster(db, cluster, ["Trade", "Rumors"])
 db.commit()
 ```
 
@@ -251,25 +270,12 @@ cluster = get_cluster_with_details(db, cluster_id=123)
 formatted = format_cluster_detail(db, cluster)
 ```
 
-## Next Steps
+## Schema source of truth
 
-Now that models are complete, the next tasks are:
-
-1. **Update Worker Tasks** - Replace TODO comments with actual model usage
-   - `app/tasks/ingest.py` - Use Source, RawItem models
-   - `app/tasks/enrich.py` - Use StoryVariant, Cluster models
-   - `app/tasks/submissions.py` - Use Submission, CandidateSource models
-
-2. **Update API Endpoints** - Replace placeholders with real queries
-   - `app/main.py` - Use query builders from `queries.py`
-
-3. **Create Initial Data Scripts**
-   - Script to import `initial_sources.csv` into database
-   - Script to populate entities table with Sharks roster
-
-4. **Test Database Connectivity**
-   - Run `docker-compose up` and verify all services start
-   - Test database connection from API
+Schema is managed by **Alembic** (`api/alembic/`); see
+[MIGRATIONS.md](MIGRATIONS.md). The `infra/postgres/init/` SQL still bootstraps
+a fresh database (it also creates dedup indexes, triggers, and views the ORM
+models don't express).
 
 ## File Structure
 
@@ -289,9 +295,11 @@ api/
     │   ├── cluster_entity.py        # ClusterEntity mapping
     │   ├── submission.py            # Submission model
     │   ├── candidate_source.py      # CandidateSource model
-    │   └── feed_cache.py            # FeedCache model
+    │   ├── validation_log.py        # ValidationLog model
+    │   ├── bluesky_post.py          # BlueSkyPost model
+    │   └── site_metrics.py          # SiteMetrics counter store
     └── core/
         ├── database.py              # Database connection
-        ├── db_utils.py              # Database utilities
+        ├── db_utils.py              # Database utilities + metric counters
         └── queries.py               # Query builders
 ```

@@ -128,21 +128,27 @@ The full review report follows. IDs (S1, C1, …) are referenced by the briefs.
 
 ## Status tracking
 
-Update this table as PRs merge.
+**All nine briefs are complete and merged to `main`** (2026-06-12).
 
 Security briefs 1–3 were integrated and conflict-resolved on one branch (brief S)
-and ship via the integration PR
+and shipped via the integration PR
 [#55](https://github.com/davinoishi/Sharks-News-Aggregator/pull/55), which
-**supersedes** the individual PRs #52/#53/#54.
+**superseded** the individual PRs #52/#53/#54.
 
 | Brief | Status | PR |
 |-------|--------|----|
-| 1 | merged | [#52](https://github.com/davinoishi/Sharks-News-Aggregator/pull/52) via [#55](https://github.com/davinoishi/Sharks-News-Aggregator/pull/55) |
-| 2 | merged | [#53](https://github.com/davinoishi/Sharks-News-Aggregator/pull/53) via [#55](https://github.com/davinoishi/Sharks-News-Aggregator/pull/55) |
-| 3 | merged | [#54](https://github.com/davinoishi/Sharks-News-Aggregator/pull/54) via [#55](https://github.com/davinoishi/Sharks-News-Aggregator/pull/55) |
-| 4 | in review | [#60](https://github.com/davinoishi/Sharks-News-Aggregator/pull/60) |
-| 5 | in review | [#61](https://github.com/davinoishi/Sharks-News-Aggregator/pull/61) |
-| 6 | in review | [#62](https://github.com/davinoishi/Sharks-News-Aggregator/pull/62) |
-| 7 | merged | [#63](https://github.com/davinoishi/Sharks-News-Aggregator/pull/63) |
-| 8 | in review | [#65](https://github.com/davinoishi/Sharks-News-Aggregator/pull/65) |
-| 9 | in review | [#66](https://github.com/davinoishi/Sharks-News-Aggregator/pull/66) |
+| 1 | ✅ merged | [#52](https://github.com/davinoishi/Sharks-News-Aggregator/pull/52) via [#55](https://github.com/davinoishi/Sharks-News-Aggregator/pull/55) |
+| 2 | ✅ merged | [#53](https://github.com/davinoishi/Sharks-News-Aggregator/pull/53) via [#55](https://github.com/davinoishi/Sharks-News-Aggregator/pull/55) |
+| 3 | ✅ merged | [#54](https://github.com/davinoishi/Sharks-News-Aggregator/pull/54) via [#55](https://github.com/davinoishi/Sharks-News-Aggregator/pull/55) |
+| 4 | ✅ merged | [#60](https://github.com/davinoishi/Sharks-News-Aggregator/pull/60) |
+| 5 | ✅ merged | [#61](https://github.com/davinoishi/Sharks-News-Aggregator/pull/61) |
+| 6 | ✅ merged | [#62](https://github.com/davinoishi/Sharks-News-Aggregator/pull/62) |
+| 7 | ✅ merged | [#63](https://github.com/davinoishi/Sharks-News-Aggregator/pull/63) |
+| 8 | ✅ merged | [#65](https://github.com/davinoishi/Sharks-News-Aggregator/pull/65) |
+| 9 | ✅ merged | [#66](https://github.com/davinoishi/Sharks-News-Aggregator/pull/66) |
+
+### Follow-ups after the briefs
+
+| Change | PR |
+|--------|----|
+| Exclude the synthetic "User Submissions" source from ingestion + the brief-09 health check (it was tripping `/health` → `degraded`) | [#67](https://github.com/davinoishi/Sharks-News-Aggregator/pull/67) |

@@ -6,7 +6,10 @@ A comprehensive news aggregation and clustering system for San Jose Sharks hocke
 
 ## Live Demo
 
+Deployed on a Raspberry Pi 5 (pi5-ai2), public via noBGP proxy:
+
 - **Web App**: https://x2mq74oetjlz.nobgp.com
+- **API**: https://tz2k2lxwodrv.nobgp.com (e.g. `/health`, `/feed`, `/rss`)
 - **BlueSky**: [@sjsharks-news.bsky.social](https://bsky.app/profile/sjsharks-news.bsky.social)
 
 ## Features
@@ -17,8 +20,12 @@ A comprehensive news aggregation and clustering system for San Jose Sharks hocke
 - **Smart Clustering** - Groups similar stories from different sources using entity overlap and token similarity scoring
 - **Automated Roster Sync** - Daily synchronization with CapWages to keep full organization player database current
 - **BlueSky Integration** - Automatic posting of news clusters to [@sjsharks-news.bsky.social](https://bsky.app/profile/sjsharks-news.bsky.social)
-- **Modern Web UI** - Next.js frontend with filtering, tag navigation, and responsive design
+- **LLM Enrichment** - Optional OpenRouter (Gemma) relevance/classification with keyword fallback (fails open + alerts on outage)
+- **Modern Web UI** - Next.js frontend: tag **and** player filtering, "Load more" pagination, clickable headlines, shareable filtered URLs, accessible markup
+- **Published RSS Feed** - `GET /rss` exposes the aggregated clusters as RSS 2.0
+- **Public Submissions** - `/submit` page for reader-submitted links (SSRF-guarded)
 - **Server-Side API Proxy** - Next.js API routes proxy all backend requests, eliminating CORS and exposing only the frontend URL
+- **Ops & Observability** - CI (lint + tests + Docker build), pytest suite, structured logging, nightly DB backups, and pipeline-health monitoring with webhook alerts
 
 ### Entity Detection
 Automatically detects and links:
@@ -331,13 +338,17 @@ sharks-news-aggregator/
 
 ## Documentation
 
-- **[CURRENT_STATUS.md](CURRENT_STATUS.md)** - Project completion status
-- **[FRONTEND_IMPLEMENTATION.md](FRONTEND_IMPLEMENTATION.md)** - Frontend features and usage
-- **[ROSTER_SYNC.md](ROSTER_SYNC.md)** - Automated roster sync documentation
-- **[ARCHITECTURE.md](ARCHITECTURE.md)** - System design and data flow
-- **[SETUP_GUIDE.md](SETUP_GUIDE.md)** - Detailed setup walkthrough
-- **[PRODUCTION_CHECKLIST.md](PRODUCTION_CHECKLIST.md)** - Production deployment checklist
+All docs live under [`docs/`](docs/):
+
+- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - System design, containers, data flow
+- **[docs/SETUP_GUIDE.md](docs/SETUP_GUIDE.md)** - Detailed setup walkthrough
+- **[docs/PRODUCTION_CHECKLIST.md](docs/PRODUCTION_CHECKLIST.md)** - Production deployment checklist
+- **[docs/MODELS.md](docs/MODELS.md)** - SQLAlchemy models & query builders
+- **[docs/MIGRATIONS.md](docs/MIGRATIONS.md)** - Alembic database migrations
+- **[docs/ROSTER_SYNC.md](docs/ROSTER_SYNC.md)** - Automated roster sync from CapWages
+- **[docs/IMPORT_SOURCES.md](docs/IMPORT_SOURCES.md)** - Importing sources from CSV
 - **[docs/BACKUP_RESTORE.md](docs/BACKUP_RESTORE.md)** - Postgres backup & restore
+- **[docs/IMPROVEMENT_PLAN.md](docs/IMPROVEMENT_PLAN.md)** - Codebase improvement plan & status (all 9 briefs merged)
 
 ## Operations
 
