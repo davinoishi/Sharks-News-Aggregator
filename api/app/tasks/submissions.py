@@ -197,8 +197,12 @@ def create_candidate_source(domain: str, submission_id: int):
 
 
 # Stable identity for the synthetic source that owns user-submitted links.
-USER_SUBMISSION_SOURCE_NAME = "User Submissions"
-USER_SUBMISSION_SOURCE_URL = "https://submissions.internal/"
+# Defined in app.core.constants (re-exported here for back-compat) so the core
+# helpers that must skip this source can import it without a cycle.
+from app.core.constants import (  # noqa: E402
+    USER_SUBMISSION_SOURCE_NAME,
+    USER_SUBMISSION_SOURCE_URL,
+)
 
 
 def get_or_create_user_submission_source(db: Session) -> int:

@@ -20,6 +20,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.constants import USER_SUBMISSION_SOURCE_URL
 from app.core.datetime_utils import ensure_aware, utcnow
 
 BROKEN_ERROR_THRESHOLD = 3
@@ -59,11 +60,15 @@ def check_pipeline_health(db: Session) -> PipelineHealth:
     else:
         ingest_stale = utcnow() - ensure_aware(last_scan_at) > stale_after
 
+    # Exclude the synthetic "User Submissions" source: it is not a fetchable
+    # feed, so a non-zero fetch_error_count on it is not a real outage and must
+    # not flip the pipeline to "degraded".
     broken = (
         db.query(Source)
         .filter(
             Source.status == SourceStatus.APPROVED,
             Source.fetch_error_count >= BROKEN_ERROR_THRESHOLD,
+            Source.base_url != USER_SUBMISSION_SOURCE_URL,
         )
         .order_by(Source.name)
         .all()
