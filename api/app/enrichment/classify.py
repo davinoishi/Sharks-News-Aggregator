@@ -2,15 +2,34 @@
 
 Keyword scoring with LLM (OpenRouter) orchestration and keyword fallback.
 """
+import logging
 from typing import List, Optional, Tuple
 
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.db_utils import METRIC_LLM_FAILOPEN, increment_site_metric
 from app.enrichment.entities import filter_team_entities, get_entity_names
 from app.models.validation_log import ValidationLog, ValidationMethod, ValidationResult
 from app.services.openrouter import check_relevance as llm_check_relevance
 from app.services.openrouter import classify_and_summarize as llm_classify_and_summarize
+
+logger = logging.getLogger(__name__)
+
+
+def _record_llm_failopen(db: Session, error: Optional[str]) -> None:
+    """Surface a fail-open: the LLM relevance check errored and we fell back to
+    keyword matching (brief 09, C5).
+
+    Without this, an OpenRouter outage degrades the relevance filter silently.
+    Logs at WARNING and bumps the ``llm_failopen_count`` metric so the admin
+    stats endpoint and any operator dashboards can see the LLM is down.
+    """
+    logger.warning("LLM relevance check failed open (fell back to keyword): %s", error)
+    try:
+        increment_site_metric(db, METRIC_LLM_FAILOPEN)
+    except Exception:  # pragma: no cover - metric must never break enrichment
+        logger.exception("Failed to record llm_failopen_count metric")
 
 
 def check_sharks_relevance(db: Session, title: str, entity_ids: List[int]) -> bool:
@@ -110,6 +129,7 @@ def validate_sharks_relevance(
             if llm_result.error:
                 # Log evaluation with error
                 agreement = "N/A (LLM error)"
+                _record_llm_failopen(db, llm_result.error)
             else:
                 llm_relevant = llm_result.is_relevant
                 if llm_relevant == keyword_matched:
@@ -145,6 +165,7 @@ def validate_sharks_relevance(
                 error_message=str(e)[:200],
                 reason="[EVAL MODE] LLM exception | Decision: keyword"
             )
+            _record_llm_failopen(db, str(e)[:200])
 
         return keyword_matched  # Keyword always decides in eval mode
 
@@ -169,6 +190,7 @@ def validate_sharks_relevance(
                 error_message=llm_result.error,
                 reason=f"LLM error, fell back to keyword: {llm_result.error[:100]}"
             )
+            _record_llm_failopen(db, llm_result.error)
             return keyword_matched
 
         # LLM succeeded
@@ -204,6 +226,7 @@ def validate_sharks_relevance(
             error_message=str(e)[:200],
             reason=f"Exception during LLM check, fell back to keyword: {str(e)[:100]}"
         )
+        _record_llm_failopen(db, str(e)[:200])
         return keyword_matched
 
 
@@ -323,13 +346,13 @@ def classify_article(
                 event_type = result.event_type
                 tag_names = result.tags
                 llm_summary = result.summary
-                print(f"  LLM classified: event={event_type}, tags={tag_names}, summary={llm_summary}")
+                logger.info("  LLM classified: event=%s, tags=%s, summary=%s", event_type, tag_names, llm_summary)
             else:
-                print(f"  LLM classification error: {result.error}, falling back to keywords")
+                logger.warning("  LLM classification error: %s, falling back to keywords", result.error)
                 event_type = classify_event_type_keyword(text, entity_ids)
                 tag_names = classify_tags_keyword(title, source)
         except Exception as e:
-            print(f"  LLM classification exception: {e}, falling back to keywords")
+            logger.warning("  LLM classification exception: %s, falling back to keywords", e)
             event_type = classify_event_type_keyword(text, entity_ids)
             tag_names = classify_tags_keyword(title, source)
     else:

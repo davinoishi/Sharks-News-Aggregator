@@ -6,6 +6,7 @@ Source: https://capwages.com/teams/san_jose_sharks
 Includes active roster + non-roster (AHL/prospects).
 Excludes dead cap players (traded/bought out, on other teams).
 """
+import logging
 import re
 from typing import List, Optional
 
@@ -16,6 +17,8 @@ from app.core.config import settings
 from app.core.database import SessionLocal
 from app.core.db_utils import get_or_create_entity
 from app.tasks.celery_app import celery
+
+logger = logging.getLogger(__name__)
 
 CAPWAGES_URL = "https://capwages.com/teams/san_jose_sharks"
 
@@ -34,13 +37,13 @@ def sync_sharks_roster(self):
     """
     db = SessionLocal()
     try:
-        print("Starting Sharks roster sync from CapWages...")
+        logger.info("Starting Sharks roster sync from CapWages...")
 
         # Fetch and parse roster from CapWages
         players = fetch_capwages_roster()
 
         if players is None:
-            print("  ✗ Failed to fetch roster from CapWages")
+            logger.error("  ✗ Failed to fetch roster from CapWages")
             return {"status": "error", "message": "Failed to fetch roster"}
 
         # Process players and collect slugs
@@ -51,9 +54,10 @@ def sync_sharks_roster(self):
 
         db.commit()
 
-        print("  ✓ Roster sync complete:")
-        print(f"    Players synced: {len(current_roster_slugs)}")
-        print(f"    Removed: {removed}")
+        logger.info(
+            "  ✓ Roster sync complete: %d players synced, %d removed",
+            len(current_roster_slugs), removed,
+        )
 
         return {
             "status": "success",
@@ -64,7 +68,7 @@ def sync_sharks_roster(self):
         }
 
     except Exception as exc:
-        print(f"  ✗ Error syncing roster: {exc}")
+        logger.exception("  ✗ Error syncing roster: %s", exc)
         db.rollback()
         raise
     finally:
@@ -95,7 +99,7 @@ def fetch_capwages_roster() -> Optional[List[str]]:
         non_roster_pos = html.find(">non-roster<")
 
         if dead_cap_pos == -1 or non_roster_pos == -1:
-            print("  ✗ Could not find expected section markers in CapWages HTML")
+            logger.error("  ✗ Could not find expected section markers in CapWages HTML")
             return None
 
         # Extract player links: <a href="/players/slug">LastName, FirstName</a>
@@ -128,11 +132,14 @@ def fetch_capwages_roster() -> Optional[List[str]]:
                 seen.add(name)
                 players.append(name)
 
-        print(f"  Found {len(active_players)} active + {len(non_roster_players)} non-roster + {len(reserve_players)} reserve players")
+        logger.info(
+            "  Found %d active + %d non-roster + %d reserve players",
+            len(active_players), len(non_roster_players), len(reserve_players),
+        )
         return players
 
     except Exception as e:
-        print(f"  Error fetching CapWages roster: {e}")
+        logger.error("  Error fetching CapWages roster: %s", e)
         return None
 
 
@@ -189,10 +196,10 @@ def process_players(db: Session, player_names: List[str]) -> set:
             )
             slug = Entity.make_slug(name)
             slugs.add(slug)
-            print(f"    ✓ {name}")
+            logger.debug("    ✓ %s", name)
 
         except Exception as e:
-            print(f"    ✗ Error processing {name}: {e}")
+            logger.warning("    ✗ Error processing %s: %s", name, e)
             continue
 
     return slugs
@@ -227,7 +234,7 @@ def remove_departed_players(db: Session, current_roster_slugs: set) -> int:
             ).delete()
 
             db.delete(entity)
-            print(f"    ✗ Removed departed player: {entity.name}")
+            logger.info("    ✗ Removed departed player: %s", entity.name)
             removed += 1
 
     return removed

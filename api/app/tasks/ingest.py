@@ -82,7 +82,7 @@ def ingest_source(self, source_id: int):
 
     except Exception as exc:
         # Log error and retry with exponential backoff
-        print(f"Error ingesting source {source_id}: {exc}")
+        logger.error("Error ingesting source %s: %s", source_id, exc)
         self.retry(exc=exc, countdown=60 * (2 ** self.request.retries))
     finally:
         db.close()
@@ -100,8 +100,8 @@ def ingest_rss(db: Session, source) -> dict:
         Dict with ingestion results
     """
     try:
-        print(f"Fetching RSS feed from {source.name} (ID: {source.id})")
-        print(f"  Feed URL: {source.feed_url}")
+        logger.info("Fetching RSS feed from %s (ID: %s)", source.name, source.id)
+        logger.debug("  Feed URL: %s", source.feed_url)
 
         # Fetch RSS feed content with httpx first (handles encoding better)
         # then pass to feedparser for parsing
@@ -117,34 +117,34 @@ def ingest_rss(db: Session, source) -> dict:
             response.raise_for_status()
             raw_content = response.content
             feed = feedparser.parse(raw_content)
-            print(f"  Fetched {len(raw_content)} bytes via httpx")
+            logger.debug("  Fetched %d bytes via httpx", len(raw_content))
         except httpx.HTTPError as fetch_err:
             # Fall back to feedparser's built-in fetcher
-            print(f"  httpx fetch failed ({fetch_err}), falling back to feedparser direct fetch")
+            logger.warning("  httpx fetch failed (%s), falling back to feedparser direct fetch", fetch_err)
             feed = feedparser.parse(source.feed_url)
 
         # If initial parse failed to recover entries, try sanitizing the XML
         if feed.bozo and not feed.entries and raw_content:
-            print("  Initial parse failed, attempting XML sanitization...")
+            logger.warning("  Initial parse failed, attempting XML sanitization...")
             sanitized = sanitize_feed_xml(raw_content)
             feed = feedparser.parse(sanitized)
             if feed.entries:
-                print(f"  Sanitization recovered {len(feed.entries)} entries")
+                logger.info("  Sanitization recovered %d entries", len(feed.entries))
 
         if feed.bozo:  # feedparser encountered an XML issue
             error_msg = str(feed.bozo_exception) if hasattr(feed, 'bozo_exception') else "Unknown RSS parse error"
             if not feed.entries:
                 # Only raise if feedparser couldn't recover any entries
-                print(f"  RSS parse error (fatal): {error_msg}")
+                logger.error("  RSS parse error (fatal): %s", error_msg)
                 raise Exception(f"RSS parse error: {error_msg}")
             else:
                 # Feed has minor XML issues but entries were parsed successfully
-                print(f"  RSS parse warning (recovered {len(feed.entries)} entries): {error_msg}")
+                logger.warning("  RSS parse warning (recovered %d entries): %s", len(feed.entries), error_msg)
 
         new_items = 0
         skipped_items = 0
 
-        print(f"  Found {len(feed.entries)} entries in feed")
+        logger.info("  Found %d entries in feed", len(feed.entries))
 
         for entry in feed.entries:
             entry_url = entry.get('link')
@@ -181,7 +181,7 @@ def ingest_rss(db: Session, source) -> dict:
         source.fetch_error_count = 0
         db.commit()
 
-        print(f"  ✓ Created {new_items} new items, skipped {skipped_items} duplicates")
+        logger.info("  ✓ Created %d new items, skipped %d duplicates", new_items, skipped_items)
 
         return {
             "status": "success",
@@ -192,7 +192,7 @@ def ingest_rss(db: Session, source) -> dict:
         }
 
     except Exception as e:
-        print(f"  ✗ Error: {e}")
+        logger.error("  ✗ Error ingesting %s: %s", source.name, e)
         source.fetch_error_count = (source.fetch_error_count or 0) + 1
         db.commit()
         raise
@@ -437,11 +437,11 @@ def resolve_sportspyder_url(url: str) -> Optional[dict]:
         if title:
             result["title"] = title
 
-        print(f"  SportSpyder resolved: {url} → {final_url}")
+        logger.debug("  SportSpyder resolved: %s → %s", url, final_url)
         return result
 
     except Exception as e:
-        print(f"  SportSpyder resolution failed for {url}: {e}")
+        logger.warning("  SportSpyder resolution failed for %s: %s", url, e)
         return None
 
 

@@ -1,4 +1,36 @@
-version: "3.9"
+# Production-shaped stack (brief 09, O1).
+#   - No source bind mounts and no watchfiles/--reload: the image is the
+#     deploy artifact, edits require a rebuild.
+#   - Worker/beat run plain `celery`; the API runs uvicorn without --reload.
+#   - Nightly Postgres backups via the `backup` service (O2).
+#
+# For local development, layer the dev overlay on top:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+# For the pi5-ai2 box, layer the Pi overlay:
+#   docker compose -f docker-compose.yml -f docker-compose.pi.yml up -d
+
+# Shared environment for the Python services (api/worker/beat). Compose merges
+# these via YAML anchors; per-service blocks below add what each one needs.
+x-llm-env: &llm-env
+  OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+  OPENROUTER_MODEL: ${OPENROUTER_MODEL:-google/gemma-4-26b-a4b-it:free}
+  OPENROUTER_TIMEOUT_SECONDS: ${OPENROUTER_TIMEOUT_SECONDS:-45}
+  LLM_RELEVANCE_ENABLED: ${LLM_RELEVANCE_ENABLED:-true}
+  LLM_TAGGING_ENABLED: ${LLM_TAGGING_ENABLED:-true}
+  LLM_CLUSTERING_ENABLED: ${LLM_CLUSTERING_ENABLED:-true}
+  LLM_EVALUATION_MODE: ${LLM_EVALUATION_MODE:-false}
+
+x-bluesky-env: &bluesky-env
+  BLUESKY_ENABLED: ${BLUESKY_ENABLED:-false}
+  BLUESKY_HANDLE: ${BLUESKY_HANDLE:-}
+  BLUESKY_APP_PASSWORD: ${BLUESKY_APP_PASSWORD:-}
+  BLUESKY_MIN_SOURCES: ${BLUESKY_MIN_SOURCES:-1}
+  BLUESKY_POST_INTERVAL_MINUTES: ${BLUESKY_POST_INTERVAL_MINUTES:-15}
+
+x-ops-env: &ops-env
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
+  ALERT_DEDUP_HOURS: ${ALERT_DEDUP_HOURS:-6}
 
 services:
   db:
@@ -8,9 +40,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-sharks}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
     # Not published to the host — reachable only on the compose network as db:5432.
-    # Uncomment for local debugging (loopback only):
-    # ports:
-    #   - "127.0.0.1:5432:5432"
+    # The dev overlay publishes it on loopback for local debugging.
     volumes:
       - db_data:/var/lib/postgresql/data
       - ./infra/postgres/init:/docker-entrypoint-initdb.d
@@ -27,9 +57,6 @@ services:
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
     # Not published to the host — reachable only on the compose network as redis:6379.
-    # Uncomment for local debugging (loopback only):
-    # ports:
-    #   - "127.0.0.1:6379:6379"
     healthcheck:
       test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
       interval: 10s
@@ -39,12 +66,15 @@ services:
 
   api:
     build: ./api
+    # Apply migrations, then serve WITHOUT --reload (the Dockerfile CMD enables
+    # --reload for dev; the dev overlay restores it).
+    command: ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
     environment:
+      <<: [*llm-env, *bluesky-env, *ops-env]
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
       CELERY_BROKER_URL: redis://:${REDIS_PASSWORD}@redis:6379/1
       CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD}@redis:6379/2
-      ALLOWED_ORIGINS: http://localhost:3000
-      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
       # Required: admin auth key injected by the Next.js proxy. Empty => all
       # admin requests are denied (fail closed).
       ADMIN_API_KEY: ${ADMIN_API_KEY:?ADMIN_API_KEY is required}
@@ -56,31 +86,28 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    volumes:
-      - ./api/app:/app/app
     restart: unless-stopped
 
   worker:
     build: ./api
-    command: watchfiles --filter python 'celery -A app.tasks.celery_app:celery worker --loglevel=INFO' /app/app
+    command: celery -A app.tasks.celery_app:celery worker --loglevel=INFO
     environment:
+      <<: [*llm-env, *bluesky-env, *ops-env]
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
       CELERY_BROKER_URL: redis://:${REDIS_PASSWORD}@redis:6379/1
       CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD}@redis:6379/2
-      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
-    volumes:
-      - ./api/app:/app/app
     restart: unless-stopped
 
   beat:
     build: ./api
-    command: watchfiles --filter python 'celery -A app.tasks.celery_app:celery beat --loglevel=INFO' /app/app
+    command: celery -A app.tasks.celery_app:celery beat --loglevel=INFO
     environment:
+      <<: *ops-env
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
       CELERY_BROKER_URL: redis://:${REDIS_PASSWORD}@redis:6379/1
       CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD}@redis:6379/2
@@ -89,8 +116,27 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    restart: unless-stopped
+
+  # Nightly pg_dump with 14-day retention (brief 09, O2). Writes compressed
+  # dumps to the host-mounted ./backups directory (outside the db_data volume).
+  # See docs/BACKUP_RESTORE.md for restore + off-device copy instructions.
+  backup:
+    image: postgres:16
+    environment:
+      PGHOST: db
+      PGUSER: ${POSTGRES_USER:-sharks}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      PGDATABASE: ${POSTGRES_DB:-sharks}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+      BACKUP_AT_HOUR: ${BACKUP_AT_HOUR:-3}
     volumes:
-      - ./api/app:/app/app
+      - ./backups:/backups
+      - ./infra/backup/backup.sh:/usr/local/bin/backup.sh:ro
+    entrypoint: ["sh", "/usr/local/bin/backup.sh"]
+    depends_on:
+      db:
+        condition: service_healthy
     restart: unless-stopped
 
   web:

@@ -2,6 +2,7 @@
 Submission worker tasks for processing user-submitted links.
 Handles URL validation, content fetch, and candidate source proposals.
 """
+import logging
 from typing import Optional
 from urllib.parse import urlparse
 
@@ -9,6 +10,8 @@ from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
 from app.tasks.celery_app import celery
+
+logger = logging.getLogger(__name__)
 
 
 @celery.task(name="app.tasks.submissions.process_submission", bind=True)
@@ -35,7 +38,7 @@ def process_submission(self, submission_id: int):
         if not submission:
             return {"error": "Submission not found", "submission_id": submission_id}
 
-        print(f"Processing submission {submission_id}: {submission.url}")
+        logger.info("Processing submission %s: %s", submission_id, submission.url)
 
         # Step 1: Normalize URL
         normalized_url = normalize_url(submission.url)
@@ -51,7 +54,7 @@ def process_submission(self, submission_id: int):
             submission.story_variant_id = existing_variant.id
             submission.cluster_id = existing_variant.cluster_id
             db.commit()
-            print(f"  Duplicate found: variant {existing_variant.id}")
+            logger.info("  Duplicate found: variant %s", existing_variant.id)
             return {"status": "duplicate", "variant_id": existing_variant.id}
 
         # Step 2.5: SSRF guard (defense in depth — the row may predate validation
@@ -63,7 +66,7 @@ def process_submission(self, submission_id: int):
             submission.status = SubmissionStatus.REJECTED
             submission.rejection_reason = "URL not allowed"
             db.commit()
-            print(f"  ✗ Rejected by SSRF guard: {e}")
+            logger.warning("  ✗ Rejected by SSRF guard: %s", e)
             return {"status": "rejected", "reason": "url_not_allowed"}
 
         # Step 3: Fetch metadata
@@ -73,7 +76,7 @@ def process_submission(self, submission_id: int):
             submission.status = SubmissionStatus.REJECTED
             submission.rejection_reason = f"Failed to fetch URL: {str(e)}"
             db.commit()
-            print(f"  ✗ Failed to fetch URL: {e}")
+            logger.warning("  ✗ Failed to fetch URL: %s", e)
             return {"status": "rejected", "reason": str(e)}
 
         # Step 4: Create raw_item under the dedicated "User Submissions" source.
@@ -95,7 +98,7 @@ def process_submission(self, submission_id: int):
         if not raw_item:
             submission.status = SubmissionStatus.DUPLICATE
             db.commit()
-            print("  Duplicate found during raw_item creation")
+            logger.info("  Duplicate found during raw_item creation")
             return {"status": "duplicate"}
 
         # Step 5: Trigger enrichment
@@ -111,7 +114,7 @@ def process_submission(self, submission_id: int):
         submission.raw_item_id = raw_item.id
         db.commit()
 
-        print(f"  ✓ Created raw_item {raw_item.id}, queued for enrichment")
+        logger.info("  ✓ Created raw_item %s, queued for enrichment", raw_item.id)
 
         return {
             "status": "success",
@@ -125,7 +128,7 @@ def process_submission(self, submission_id: int):
         submission.status = SubmissionStatus.REJECTED
         submission.rejection_reason = str(exc)
         db.commit()
-        print(f"  ✗ Error: {exc}")
+        logger.exception("  ✗ Error processing submission %s: %s", submission_id, exc)
         raise
     finally:
         db.close()
@@ -151,7 +154,10 @@ def create_candidate_source(domain: str, submission_id: int):
             # Increment counter
             existing.times_submitted = (existing.times_submitted or 1) + 1
             db.commit()
-            print(f"Candidate source already exists for {domain}, incremented counter to {existing.times_submitted}")
+            logger.info(
+                "Candidate source already exists for %s, incremented counter to %s",
+                domain, existing.times_submitted,
+            )
             return {"status": "already_exists", "candidate_id": existing.id}
 
         # Attempt RSS discovery
@@ -172,7 +178,10 @@ def create_candidate_source(domain: str, submission_id: int):
         db.add(candidate)
         db.commit()
 
-        print(f"Created candidate source for {domain} (RSS: {'found' if feed_url else 'not found'})")
+        logger.info(
+            "Created candidate source for %s (RSS: %s)",
+            domain, "found" if feed_url else "not found",
+        )
 
         # TODO: Send notification for review (email, webhook, etc.)
 

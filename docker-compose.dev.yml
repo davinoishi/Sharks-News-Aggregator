@@ -1,0 +1,40 @@
+# Development overlay (brief 09, O1). Layer on top of the production base:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+#
+# Adds source bind mounts + auto-reload so code edits hot-reload without a
+# rebuild, and publishes Postgres/Redis on loopback for local debugging.
+
+services:
+  db:
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  redis:
+    ports:
+      - "127.0.0.1:6379:6379"
+
+  api:
+    # Restore uvicorn --reload (the production base strips it) and mount the
+    # source so edits are picked up live.
+    command: ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"]
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
+    volumes:
+      - ./api/app:/app/app
+    ports:
+      - "8000:8000"
+
+  worker:
+    # Re-wrap the worker in watchfiles so it restarts on source changes.
+    command: watchfiles --filter python 'celery -A app.tasks.celery_app:celery worker --loglevel=INFO' /app/app
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
+    volumes:
+      - ./api/app:/app/app
+
+  beat:
+    command: watchfiles --filter python 'celery -A app.tasks.celery_app:celery beat --loglevel=INFO' /app/app
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
+    volumes:
+      - ./api/app:/app/app

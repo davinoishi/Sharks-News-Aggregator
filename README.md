@@ -104,9 +104,24 @@ The application runs on a Raspberry Pi 5 (pi5-ai2) with public access via noBGP 
 git clone https://github.com/davinoishi/Sharks-News-Aggregator.git /opt/Sharks-News-Aggregator
 cd /opt/Sharks-News-Aggregator
 
-# Start services (uses Pi-specific config with ports 3001/8001)
-docker compose -f docker-compose.pi.yml up -d
+# Start services (production base + Pi overlay: ports 3001/8001)
+docker compose -f docker-compose.yml -f docker-compose.pi.yml up -d
 ```
+
+### Compose layouts
+
+`docker-compose.yml` is **production-shaped** (no source bind mounts, no
+auto-reload, plain `celery` workers, nightly DB backups). Layer an overlay for
+other environments:
+
+| Use | Command |
+|-----|---------|
+| Production (generic) | `docker compose up -d` |
+| Local development (hot-reload) | `docker compose -f docker-compose.yml -f docker-compose.dev.yml up` |
+| Pi (pi5-ai2, ports 3001/8001) | `docker compose -f docker-compose.yml -f docker-compose.pi.yml up -d` |
+
+The dev overlay adds source bind mounts + `--reload`/`watchfiles` and publishes
+Postgres/Redis on loopback for debugging.
 
 ### Local Development
 
@@ -115,11 +130,11 @@ docker compose -f docker-compose.pi.yml up -d
 git clone https://github.com/davinoishi/Sharks-News-Aggregator.git
 cd sharks-news-aggregator
 
-# Start all services (uses default ports 3000/8000)
-docker-compose up -d
+# Start all services with hot-reload (dev overlay)
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up
 
 # Access the application
-# Frontend: http://localhost:3000
+# Frontend: http://localhost:3001
 # API Docs: http://localhost:8000/docs
 ```
 
@@ -150,20 +165,20 @@ git clone https://github.com/davinoishi/Sharks-News-Aggregator.git
 cd sharks-news-aggregator
 ```
 
-2. Start all services:
+2. Start all services (dev overlay for hot-reload):
 ```bash
-docker-compose up -d
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
 ```
 
 3. Wait for services to initialize (~30 seconds)
 
 4. Seed initial data (coaches, teams):
 ```bash
-docker-compose exec api python -m app.scripts.seed_entities
+docker compose exec api python -m app.scripts.seed_entities
 ```
 
 5. Access the application:
-- **Frontend:** http://localhost:3000
+- **Frontend:** http://localhost:3001
 - **API Docs:** http://localhost:8000/docs
 - **API:** http://localhost:8000
 
@@ -307,8 +322,10 @@ sharks-news-aggregator/
 │   │   └── api-client.ts     # API wrapper with dynamic URL detection
 │   ├── Dockerfile
 │   └── package.json
-├── docker-compose.yml        # Docker orchestration (development)
-├── docker-compose.pi.yml     # Docker orchestration (Pi production)
+├── docker-compose.yml        # Docker orchestration (production base)
+├── docker-compose.dev.yml    # Dev overlay (bind mounts + hot-reload)
+├── docker-compose.pi.yml     # pi5-ai2 overlay (ports 3001/8001)
+├── infra/backup/backup.sh    # Nightly pg_dump loop (backup service)
 └── README.md                 # This file
 ```
 
@@ -320,6 +337,19 @@ sharks-news-aggregator/
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** - System design and data flow
 - **[SETUP_GUIDE.md](SETUP_GUIDE.md)** - Detailed setup walkthrough
 - **[PRODUCTION_CHECKLIST.md](PRODUCTION_CHECKLIST.md)** - Production deployment checklist
+- **[docs/BACKUP_RESTORE.md](docs/BACKUP_RESTORE.md)** - Postgres backup & restore
+
+## Operations
+
+- **Logs:** all services log with timestamps + levels; set `LOG_LEVEL=DEBUG`
+  (default `INFO`) for verbose output.
+- **Backups:** the `backup` compose service takes a nightly `pg_dump` to
+  `./backups/` with 14-day retention. See
+  [docs/BACKUP_RESTORE.md](docs/BACKUP_RESTORE.md).
+- **Monitoring:** `GET /health` returns `degraded: true` when ingestion is stale
+  or sources are broken — point an uptime pinger (UptimeRobot, healthchecks.io)
+  at it. A Celery task also checks every ~30 min and POSTs an alert to
+  `ALERT_WEBHOOK_URL` (ntfy/Discord/Slack-style) if set.
 
 ## Development
 

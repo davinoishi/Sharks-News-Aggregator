@@ -9,6 +9,8 @@ deploy still resolve.
 The helpers are re-exported here for backwards compatibility with existing
 imports (``from app.tasks.enrich import ...``).
 """
+import logging
+
 from app.core.database import SessionLocal
 from app.core.datetime_utils import utcnow
 from app.enrichment.classify import (
@@ -45,6 +47,8 @@ from app.enrichment.entities import (
 from app.enrichment.teams import NHL_OPPONENT_TEAMS, extract_game_identifier
 from app.models.validation_log import ValidationMethod, ValidationResult
 from app.tasks.celery_app import celery
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "enrich_raw_item",
@@ -100,7 +104,7 @@ def enrich_raw_item(self, raw_item_id: int):
         if not raw_item:
             return {"error": "RawItem not found", "raw_item_id": raw_item_id}
 
-        print(f"Enriching raw item {raw_item_id}: {raw_item.raw_title[:50]}...")
+        logger.info("Enriching raw item %s: %s...", raw_item_id, (raw_item.raw_title or "")[:50])
 
         # Load source for tagging and relevance check
         source = db.query(Source).filter(Source.id == raw_item.source_id).first()
@@ -124,7 +128,7 @@ def enrich_raw_item(self, raw_item_id: int):
             )
 
             if not validation_result:
-                print(f"  ⊘ Skipped (not Sharks-relevant): {raw_item.raw_title[:50]}...")
+                logger.info("  ⊘ Skipped (not Sharks-relevant): %s...", (raw_item.raw_title or "")[:50])
                 return {
                     "status": "skipped",
                     "reason": "not_sharks_relevant",
@@ -173,7 +177,7 @@ def enrich_raw_item(self, raw_item_id: int):
         # Step 5: Match or create cluster (this also handles entity and tag associations)
         cluster_id = match_or_create_cluster(db, variant, tokens, entity_ids, event_type_str, source, tag_names)
 
-        print(f"  ✓ Created variant {variant.id}, matched to cluster {cluster_id}")
+        logger.info("  ✓ Created variant %s, matched to cluster %s", variant.id, cluster_id)
 
         return {
             "status": "success",
@@ -185,7 +189,7 @@ def enrich_raw_item(self, raw_item_id: int):
         }
 
     except Exception as exc:
-        print(f"  ✗ Error enriching raw item {raw_item_id}: {exc}")
+        logger.exception("  ✗ Error enriching raw item %s: %s", raw_item_id, exc)
         db.rollback()
         raise
     finally:
