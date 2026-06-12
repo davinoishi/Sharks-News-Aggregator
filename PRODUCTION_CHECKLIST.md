@@ -39,11 +39,15 @@ A checklist of tasks for deploying the Sharks News Aggregator to production.
 
 ## Environment Configuration
 
-- [x] **Production docker-compose** — Using `docker-compose.pi.yml` with ports 3001/8001
+- [x] **Production docker-compose** — `docker-compose.yml` is the production base
+  (no bind mounts, no auto-reload, plain `celery`); deploy on the Pi with the
+  overlay `docker compose -f docker-compose.yml -f docker-compose.pi.yml`
+  (ports 3001/8001). Local dev uses the `docker-compose.dev.yml` overlay.
 - [x] **CORS configuration** — `ALLOWED_ORIGINS=*`
 - [x] **Dynamic API URL detection** — Frontend auto-detects local vs. noBGP access
 - [x] **Change default database password** — Credentials now loaded from `.env` file (not in git)
-- [ ] **Set appropriate log levels** — Reduce verbosity if needed
+- [x] **Set appropriate log levels** — `LOG_LEVEL` env var (default `INFO`);
+  all tasks/services log with timestamps + levels via `logging`
 
 ## Database Migrations (Alembic)
 
@@ -55,8 +59,8 @@ A checklist of tasks for deploying the Sharks News Aggregator to production.
   schema, then upgrade (applies the timezone-aware conversion):
 
   ```bash
-  docker compose -f docker-compose.pi.yml exec api alembic stamp 0001_baseline
-  docker compose -f docker-compose.pi.yml exec api alembic upgrade head
+  docker compose -f docker-compose.yml -f docker-compose.pi.yml exec api alembic stamp 0001_baseline
+  docker compose -f docker-compose.yml -f docker-compose.pi.yml exec api alembic upgrade head
   ```
 
   After that, the on-startup `alembic upgrade head` keeps it current. Full
@@ -73,8 +77,13 @@ A checklist of tasks for deploying the Sharks News Aggregator to production.
   (commented loopback-only mappings remain for local debugging)
 - [x] **Auto-restart enabled** — `restart: unless-stopped` on all containers
 - [x] **Database persistence** — PostgreSQL data persisted via Docker volumes
-- [ ] **Database backups** — Set up automated PostgreSQL backups
-- [x] **Monitoring** — Set up health check monitoring (uptime monitor on `/health`)
+- [x] **Database backups** — `backup` service runs a nightly `pg_dump` to
+  `./backups/` (14-day retention). Restore + off-device copy steps in
+  [`docs/BACKUP_RESTORE.md`](docs/BACKUP_RESTORE.md).
+  - [ ] **Off-device copy** — wire up rsync/rclone to a second machine (manual)
+- [x] **Monitoring** — `/health` exposes `degraded: true` for an uptime pinger
+  (UptimeRobot/healthchecks.io); the `monitor_pipeline_health` task also alerts
+  to `ALERT_WEBHOOK_URL` on stale ingest / broken sources
 - [ ] **Log aggregation** — Consider centralizing logs
 
 ## Performance
@@ -126,34 +135,34 @@ Entities:          77+ (synced daily from CapWages)
 cd /opt/Sharks-News-Aggregator
 
 # View logs
-docker compose -f docker-compose.pi.yml logs -f worker
+docker compose -f docker-compose.yml -f docker-compose.pi.yml logs -f worker
 
 # Restart all services
-docker compose -f docker-compose.pi.yml restart
+docker compose -f docker-compose.yml -f docker-compose.pi.yml restart
 
 # Trigger manual RSS ingestion
-docker compose -f docker-compose.pi.yml exec api python -c "
+docker compose -f docker-compose.yml -f docker-compose.pi.yml exec api python -c "
 from app.tasks.ingest import ingest_all_sources
 ingest_all_sources.delay()
 "
 
 # Trigger manual roster sync
-docker compose -f docker-compose.pi.yml exec api python -c "
+docker compose -f docker-compose.yml -f docker-compose.pi.yml exec api python -c "
 from app.tasks.sync_roster import sync_sharks_roster
 sync_sharks_roster.delay()
 "
 
 # Trigger manual BlueSky posting
-docker compose -f docker-compose.pi.yml exec api python -c "
+docker compose -f docker-compose.yml -f docker-compose.pi.yml exec api python -c "
 from app.tasks.bluesky import post_new_clusters
 post_new_clusters.delay()
 "
 
 # Check cluster count
-docker compose -f docker-compose.pi.yml exec db psql -U sharks -c "SELECT COUNT(*) FROM clusters WHERE status = 'active';"
+docker compose -f docker-compose.yml -f docker-compose.pi.yml exec db psql -U sharks -c "SELECT COUNT(*) FROM clusters WHERE status = 'active';"
 
 # Check source count
-docker compose -f docker-compose.pi.yml exec db psql -U sharks -c "SELECT COUNT(*) FROM sources WHERE status = 'approved';"
+docker compose -f docker-compose.yml -f docker-compose.pi.yml exec db psql -U sharks -c "SELECT COUNT(*) FROM sources WHERE status = 'approved';"
 ```
 
 ---

@@ -67,6 +67,13 @@ class Settings(BaseSettings):
     # otherwise the direct peer IP is used. Comma-separated IPs/CIDRs.
     trusted_proxy_ips: str = "127.0.0.1,::1,172.16.0.0/12"
 
+    # Monitoring / alerting (brief 09, O3). When set, the pipeline-health task
+    # POSTs a short JSON alert to this webhook (ntfy/Discord/Slack-compatible)
+    # on a degraded condition. Empty disables outbound alerts (logs only).
+    alert_webhook_url: str = ""
+    # Alerts for the same condition are not re-fired more often than this.
+    alert_dedup_hours: int = 6
+
     # BlueSky posting settings
     bluesky_enabled: bool = False
     bluesky_handle: str = ""

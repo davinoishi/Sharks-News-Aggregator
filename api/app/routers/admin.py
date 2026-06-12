@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.datetime_utils import utcnow
+from app.core.db_utils import METRIC_LLM_FAILOPEN, get_site_metric
 from app.dependencies import require_admin
 from app.models import (
     Cluster,
@@ -318,6 +319,10 @@ def get_validation_stats(
 
     error_rate = (errors / total * 100) if total > 0 else 0.0
 
+    # Lifetime LLM fail-open count (C5). It's a running counter rather than a
+    # per-row column, so it isn't affected by the `since` window.
+    fail_open = get_site_metric(db, METRIC_LLM_FAILOPEN)
+
     return {
         "total": total,
         "approved": approved,
@@ -325,7 +330,8 @@ def get_validation_stats(
         "errors": errors,
         "by_method": by_method,
         "avg_latency_ms": round(avg_latency_result, 2) if avg_latency_result else None,
-        "error_rate": round(error_rate, 2)
+        "error_rate": round(error_rate, 2),
+        "fail_open": fail_open,
     }
 
 

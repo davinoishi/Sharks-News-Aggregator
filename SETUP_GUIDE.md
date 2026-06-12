@@ -9,10 +9,18 @@ Complete guide to get the application running from scratch.
 
 ## Deployment Options
 
-| Environment | Config File | Web Port | API Port | Use Case |
-|-------------|-------------|----------|----------|----------|
-| Development | `docker-compose.yml` | 3000 | 8000 | Local development |
-| Production (Pi) | `docker-compose.pi.yml` | 3001 | 8001 | Raspberry Pi 5 deployment |
+`docker-compose.yml` is the **production base** (no source bind mounts, no
+auto-reload, plain `celery`, nightly DB backups). Environments are overlays:
+
+| Environment | Compose command | Web Port | API Port | Use Case |
+|-------------|-----------------|----------|----------|----------|
+| Development | `-f docker-compose.yml -f docker-compose.dev.yml` | 3001 | 8000 | Local development (hot-reload) |
+| Production (generic) | `-f docker-compose.yml` | 3001 | — | Production behind a proxy |
+| Production (Pi) | `-f docker-compose.yml -f docker-compose.pi.yml` | 3001 | 8001 | Raspberry Pi 5 deployment |
+
+The dev overlay adds bind mounts + `--reload`/`watchfiles` and publishes
+Postgres/Redis on loopback. The Pi overlay publishes the API on 8001 and enables
+BlueSky posting + LLM evaluation mode.
 
 ## Production Deployment (Raspberry Pi 5)
 
@@ -29,8 +37,8 @@ The recommended deployment is on a Raspberry Pi 5 with public access via noBGP p
 git clone https://github.com/davinoishi/Sharks-News-Aggregator.git /opt/Sharks-News-Aggregator
 cd /opt/Sharks-News-Aggregator
 
-# Start services (Pi-specific config with ports 3001/8001)
-docker compose -f docker-compose.pi.yml up -d
+# Start services (production base + Pi overlay: ports 3001/8001)
+docker compose -f docker-compose.yml -f docker-compose.pi.yml up -d
 ```
 
 This starts 6 containers:
@@ -48,17 +56,18 @@ Wait ~60 seconds for all services to initialize on Pi.
 ### 1. Start the Services
 
 ```bash
-# From the project root directory
-docker-compose up -d
+# From the project root directory (dev overlay = hot-reload)
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
 ```
 
 This will start:
-- PostgreSQL database (port 5432)
-- Redis (port 6379)
+- PostgreSQL database (loopback port 5432, dev overlay only)
+- Redis (loopback port 6379, dev overlay only)
 - FastAPI API (port 8000)
 - Celery worker
 - Celery beat scheduler
-- Next.js frontend (port 3000)
+- Next.js frontend (port 3001)
+- Backup service (nightly pg_dump to ./backups)
 
 Wait ~30 seconds for all services to initialize.
 
@@ -376,8 +385,10 @@ The application is currently deployed on Raspberry Pi 5 (pi5-ai2) with:
 **Recommended for enhanced security:**
 1. Change default database passwords in `.env`
 2. Set up proper authentication for admin endpoints
-3. Set up automated database backups
-4. Configure monitoring/alerting (uptime checks on `/health`)
+3. ✅ Automated database backups — the `backup` service runs nightly; add an
+   off-device copy (see [docs/BACKUP_RESTORE.md](docs/BACKUP_RESTORE.md))
+4. Configure monitoring/alerting: point an uptime pinger at `/health`
+   (alerts on `degraded: true`) and/or set `ALERT_WEBHOOK_URL`
 5. Review and harden CSP headers
 
 ## Pi-Specific Operations
@@ -387,17 +398,17 @@ The application is currently deployed on Raspberry Pi 5 (pi5-ai2) with:
 cd /opt/Sharks-News-Aggregator
 
 # View logs
-docker compose -f docker-compose.pi.yml logs -f worker
+docker compose -f docker-compose.yml -f docker-compose.pi.yml logs -f worker
 
 # Restart services
-docker compose -f docker-compose.pi.yml restart
+docker compose -f docker-compose.yml -f docker-compose.pi.yml restart
 
 # Trigger manual ingestion
-docker compose -f docker-compose.pi.yml exec api python -c "
+docker compose -f docker-compose.yml -f docker-compose.pi.yml exec api python -c "
 from app.tasks.ingest import ingest_all_sources
 ingest_all_sources.delay()
 "
 
 # Check database
-docker compose -f docker-compose.pi.yml exec db psql -U sharks -c "SELECT COUNT(*) FROM clusters WHERE status = 'active';"
+docker compose -f docker-compose.yml -f docker-compose.pi.yml exec db psql -U sharks -c "SELECT COUNT(*) FROM clusters WHERE status = 'active';"
 ```

@@ -145,4 +145,4 @@ and ship via the integration PR
 | 6 | in review | [#62](https://github.com/davinoishi/Sharks-News-Aggregator/pull/62) |
 | 7 | merged | [#63](https://github.com/davinoishi/Sharks-News-Aggregator/pull/63) |
 | 8 | in review | [#65](https://github.com/davinoishi/Sharks-News-Aggregator/pull/65) |
-| 9 | not started | |
+| 9 | in review | branch `improve/09-ops` |

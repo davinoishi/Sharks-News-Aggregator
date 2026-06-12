@@ -13,6 +13,9 @@ class HealthResponse(BaseModel):
     ok: bool
     timestamp: datetime
     last_scan_at: Optional[datetime] = None
+    # True when the ingestion pipeline is degraded (stale ingest or broken
+    # sources). Lets an external uptime pinger alert on it (brief 09, O3).
+    degraded: bool = False
 
 
 class SubmitLinkRequest(BaseModel):
@@ -109,6 +112,10 @@ class ValidationStatsResponse(BaseModel):
     by_method: dict
     avg_latency_ms: Optional[float] = None
     error_rate: float
+    # Lifetime count of LLM relevance fail-opens (OpenRouter errored and the
+    # pipeline fell back to keyword matching). A rising value means the LLM
+    # filter is degraded (brief 09, C5).
+    fail_open: int = 0
 
 
 class LLMHealthResponse(BaseModel):

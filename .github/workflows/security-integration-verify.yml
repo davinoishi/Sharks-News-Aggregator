@@ -42,8 +42,8 @@ jobs:
             echo "OK: compose fails fast when $var is empty"
           done
 
-      - name: Build and start the full stack (docker-compose.pi.yml)
-        run: docker compose -f docker-compose.pi.yml up -d --build
+      - name: Build and start the full stack (prod base + Pi overlay)
+        run: docker compose -f docker-compose.yml -f docker-compose.pi.yml up -d --build
 
       - name: Wait for API health
         run: |
@@ -58,10 +58,10 @@ jobs:
 
       - name: Services are running
         run: |
-          docker compose -f docker-compose.pi.yml ps
+          docker compose -f docker-compose.yml -f docker-compose.pi.yml ps
           # db + redis must be healthy (they declare healthchecks)
-          docker compose -f docker-compose.pi.yml ps db    | grep -qi healthy
-          docker compose -f docker-compose.pi.yml ps redis | grep -qi healthy
+          docker compose -f docker-compose.yml -f docker-compose.pi.yml ps db    | grep -qi healthy
+          docker compose -f docker-compose.yml -f docker-compose.pi.yml ps redis | grep -qi healthy
 
       - name: Admin auth (#52)
         run: |
@@ -124,7 +124,7 @@ jobs:
           set -uo pipefail
           curl -s -X POST http://localhost:8001/submit/link -H 'Content-Type: application/json' \
             -d '{"url":"https://example.org/"}' >/dev/null
-          val=$(docker compose -f docker-compose.pi.yml exec -T db \
+          val=$(docker compose -f docker-compose.yml -f docker-compose.pi.yml exec -T db \
             psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -t -A \
             -c "select submitter_ip from submissions order by id desc limit 1;")
           echo "stored submitter_ip=$val"
@@ -134,13 +134,13 @@ jobs:
       - name: Redis auth in worker logs
         run: |
           # Worker connecting with the password means no NOAUTH errors.
-          docker compose -f docker-compose.pi.yml logs worker | grep -i "NOAUTH" && \
+          docker compose -f docker-compose.yml -f docker-compose.pi.yml logs worker | grep -i "NOAUTH" && \
             { echo "::error::worker hit a Redis NOAUTH error"; exit 1; } || echo "no NOAUTH errors"
 
       - name: Dump logs on completion
         if: always()
-        run: docker compose -f docker-compose.pi.yml logs --tail=80 || true
+        run: docker compose -f docker-compose.yml -f docker-compose.pi.yml logs --tail=80 || true
 
       - name: Tear down
         if: always()
-        run: docker compose -f docker-compose.pi.yml down -v || true
+        run: docker compose -f docker-compose.yml -f docker-compose.pi.yml down -v || true

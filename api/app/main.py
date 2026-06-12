@@ -11,6 +11,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
+from app.core.logging_config import configure_logging
 from app.dependencies import (
     enforce_metrics_rate_limit,
     get_real_client_ip,
@@ -20,6 +21,9 @@ from app.dependencies import (
 from app.routers import admin, feed, health, metrics, submit
 from app.routers.admin import list_submissions
 from app.utils import _parse_llm_approved, parse_llm_approved, parse_since_parameter
+
+# Timestamped, LOG_LEVEL-aware logging for the API process (brief 09, C4).
+configure_logging()
 
 app = FastAPI(
     title=settings.api_title,

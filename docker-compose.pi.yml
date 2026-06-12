@@ -1,143 +1,26 @@
-version: "3.9"
-
-# Pi5-ai2 specific configuration
-# - Web on port 3001 (3000 used by Open WebUI)
-# - API on port 8001
-# - Production mode (no hot-reload volumes)
-# - LLM via OpenRouter (Gemma 4), API key from .env
+# pi5-ai2 overlay (brief 09, O1). Layer on top of the production base:
+#   docker compose -f docker-compose.yml -f docker-compose.pi.yml up -d --build
+#
+# Only the Pi-specific deltas live here; everything else (no bind mounts, plain
+# celery, nightly backups) comes from docker-compose.yml.
+#   - API published on 8001 (3000/8000 are taken by Open WebUI on this box).
+#   - Permissive CORS (the site is fronted by the nobgp tunnel).
+#   - LLM shadow/evaluation mode + BlueSky posting enabled.
 
 services:
-  db:
-    image: postgres:16
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-sharks}
-      POSTGRES_USER: ${POSTGRES_USER:-sharks}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
-    # Not published to the host — reachable only on the compose network as db:5432.
-    # Uncomment for local debugging (loopback only):
-    # ports:
-    #   - "127.0.0.1:5432:5432"
-    volumes:
-      - db_data:/var/lib/postgresql/data
-      - ./infra/postgres/init:/docker-entrypoint-initdb.d
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sharks}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-
-  redis:
-    image: redis:7
-    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD is required}"]
-    environment:
-      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
-    # Not published to the host — reachable only on the compose network as redis:6379.
-    # Uncomment for local debugging (loopback only):
-    # ports:
-    #   - "127.0.0.1:6379:6379"
-    healthcheck:
-      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-
   api:
-    build: ./api
     environment:
-      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
-      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD}@redis:6379/1
-      CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD}@redis:6379/2
       ALLOWED_ORIGINS: "*"
-      # OpenRouter LLM settings (Gemma 4 via openrouter.ai)
-      OPENROUTER_API_KEY: "${OPENROUTER_API_KEY}"
-      OPENROUTER_MODEL: "${OPENROUTER_MODEL:-google/gemma-4-26b-a4b-it:free}"
-      OPENROUTER_TIMEOUT_SECONDS: "${OPENROUTER_TIMEOUT_SECONDS:-45}"
-      LLM_RELEVANCE_ENABLED: "true"
-      LLM_TAGGING_ENABLED: "true"
-      LLM_CLUSTERING_ENABLED: "true"
-      # Shadow mode: keyword decides, LLM evaluates for comparison
       LLM_EVALUATION_MODE: "true"
-      # Admin auth: API key injected by the Next.js proxy (fail closed if empty).
-      ADMIN_API_KEY: ${ADMIN_API_KEY:?ADMIN_API_KEY is required}
-      # Trust X-Forwarded-For only from the Docker bridge (the web container).
-      TRUSTED_PROXY_IPS: "${TRUSTED_PROXY_IPS:-127.0.0.1,::1,172.16.0.0/12}"
-      # Public site URL used for channel metadata in the published RSS feed.
-      PUBLIC_SITE_URL: "${PUBLIC_SITE_URL:-http://localhost:3000}"
-      # BlueSky posting settings
       BLUESKY_ENABLED: "true"
-      BLUESKY_HANDLE: "sjsharks-news.bsky.social"
-      BLUESKY_APP_PASSWORD: "${BLUESKY_APP_PASSWORD}"
+      BLUESKY_HANDLE: "${BLUESKY_HANDLE:-sjsharks-news.bsky.social}"
       BLUESKY_MIN_SOURCES: "1"
-      BLUESKY_POST_INTERVAL_MINUTES: "15"
     ports:
       - "8001:8000"
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    restart: unless-stopped
 
   worker:
-    build: ./api
-    command: celery -A app.tasks.celery_app:celery worker --loglevel=INFO
     environment:
-      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
-      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD}@redis:6379/1
-      CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD}@redis:6379/2
-      # OpenRouter LLM settings (Gemma 4 via openrouter.ai)
-      OPENROUTER_API_KEY: "${OPENROUTER_API_KEY}"
-      OPENROUTER_MODEL: "${OPENROUTER_MODEL:-google/gemma-4-26b-a4b-it:free}"
-      OPENROUTER_TIMEOUT_SECONDS: "${OPENROUTER_TIMEOUT_SECONDS:-45}"
-      LLM_RELEVANCE_ENABLED: "true"
-      LLM_TAGGING_ENABLED: "true"
-      LLM_CLUSTERING_ENABLED: "true"
-      # Shadow mode: keyword decides, LLM evaluates for comparison
       LLM_EVALUATION_MODE: "true"
-      # BlueSky posting settings
       BLUESKY_ENABLED: "true"
-      BLUESKY_HANDLE: "sjsharks-news.bsky.social"
-      BLUESKY_APP_PASSWORD: "${BLUESKY_APP_PASSWORD}"
+      BLUESKY_HANDLE: "${BLUESKY_HANDLE:-sjsharks-news.bsky.social}"
       BLUESKY_MIN_SOURCES: "1"
-      BLUESKY_POST_INTERVAL_MINUTES: "15"
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    restart: unless-stopped
-
-  beat:
-    build: ./api
-    command: celery -A app.tasks.celery_app:celery beat --loglevel=INFO
-    environment:
-      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
-      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD}@redis:6379/1
-      CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD}@redis:6379/2
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    restart: unless-stopped
-
-  web:
-    build: ./web
-    environment:
-      # Internal API URL for server-side proxying (Docker service name)
-      INTERNAL_API_URL: http://api:8000
-      # Server-side admin key forwarded to the API as X-Admin-API-Key.
-      ADMIN_API_KEY: ${ADMIN_API_KEY:?ADMIN_API_KEY is required}
-      # HTTP Basic gate for the /admin pages and /api/admin proxy routes.
-      ADMIN_PANEL_USER: "${ADMIN_PANEL_USER:-admin}"
-      ADMIN_PANEL_PASSWORD: ${ADMIN_PANEL_PASSWORD:?ADMIN_PANEL_PASSWORD is required}
-    ports:
-      - "3001:3000"
-    depends_on:
-      - api
-    restart: unless-stopped
-
-volumes:
-  db_data:

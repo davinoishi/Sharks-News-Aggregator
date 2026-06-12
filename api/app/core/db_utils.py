@@ -5,6 +5,7 @@ from datetime import timedelta
 from typing import List, Optional
 
 from sqlalchemy import and_, func
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.core.datetime_utils import utcnow
@@ -15,11 +16,61 @@ from app.models import (
     ClusterTag,
     ClusterVariant,
     Entity,
+    SiteMetrics,
     Source,
     SourceStatus,
     StoryVariant,
     Tag,
 )
+
+# Well-known SiteMetrics keys (brief 09).
+METRIC_LLM_FAILOPEN = "llm_failopen_count"
+
+
+def increment_site_metric(db: Session, key: str, amount: int = 1) -> None:
+    """Atomically add ``amount`` to the ``site_metrics`` row for ``key``.
+
+    Uses a Postgres ``INSERT ... ON CONFLICT DO UPDATE`` so concurrent Celery
+    workers can't lose increments to a read-modify-write race. Commits on
+    success. The caller's transaction state is otherwise left alone.
+    """
+    stmt = (
+        pg_insert(SiteMetrics)
+        .values(key=key, value=amount, updated_at=utcnow())
+        .on_conflict_do_update(
+            index_elements=[SiteMetrics.key],
+            set_={
+                "value": SiteMetrics.value + amount,
+                "updated_at": utcnow(),
+            },
+        )
+    )
+    db.execute(stmt)
+    db.commit()
+
+
+def get_site_metric(db: Session, key: str, default: int = 0) -> int:
+    """Return the integer value of a ``site_metrics`` row, or ``default``."""
+    metric = db.query(SiteMetrics).filter(SiteMetrics.key == key).first()
+    return metric.value if metric else default
+
+
+def set_site_metric(db: Session, key: str, value: int) -> None:
+    """Set the ``site_metrics`` row for ``key`` to an absolute ``value``.
+
+    Used for state that isn't a running counter — e.g. the unix timestamp of the
+    last alert fired for a condition (brief 09, O3). Commits on success.
+    """
+    stmt = (
+        pg_insert(SiteMetrics)
+        .values(key=key, value=value, updated_at=utcnow())
+        .on_conflict_do_update(
+            index_elements=[SiteMetrics.key],
+            set_={"value": value, "updated_at": utcnow()},
+        )
+    )
+    db.execute(stmt)
+    db.commit()
 
 
 def get_or_create_tag(db: Session, name: str, slug: str, color: Optional[str] = None) -> Tag:

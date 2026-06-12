@@ -1,4 +1,5 @@
 """Tokenization, similarity scoring, and match-or-create clustering (brief 07, Q4)."""
+import logging
 import re
 from datetime import timedelta
 from difflib import SequenceMatcher
@@ -23,6 +24,8 @@ from app.models import (
     SiteMetrics,
     Tag,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def normalize_tokens(text: str) -> List[str]:
@@ -113,7 +116,7 @@ def match_or_create_cluster(
             ).first()
 
             if game_cluster:
-                print(f"  → Game match ({game_identifier}): clustering with #{game_cluster.id}")
+                logger.debug("  → Game match (%s): clustering with #%s", game_identifier, game_cluster.id)
                 update_cluster_metadata(db, game_cluster, variant, tokens, entities, source, tag_names)
                 cluster_variant = ClusterVariant(
                     cluster_id=game_cluster.id,
@@ -135,7 +138,7 @@ def match_or_create_cluster(
 
         title_sim = title_similarity(variant_title_normalized, cluster_title_normalized)
         if title_sim >= 0.85:  # 85% title similarity = likely same article
-            print(f"  → Title match ({title_sim:.2f}): clustering with #{cluster.id}")
+            logger.debug("  → Title match (%.2f): clustering with #%s", title_sim, cluster.id)
             # Auto-match to this cluster
             update_cluster_metadata(db, cluster, variant, tokens, entities, source, tag_names)
             cluster_variant = ClusterVariant(
