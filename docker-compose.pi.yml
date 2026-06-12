@@ -63,6 +63,8 @@ services:
       ADMIN_API_KEY: ${ADMIN_API_KEY:?ADMIN_API_KEY is required}
       # Trust X-Forwarded-For only from the Docker bridge (the web container).
       TRUSTED_PROXY_IPS: "${TRUSTED_PROXY_IPS:-127.0.0.1,::1,172.16.0.0/12}"
+      # Public site URL used for channel metadata in the published RSS feed.
+      PUBLIC_SITE_URL: "${PUBLIC_SITE_URL:-http://localhost:3000}"
       # BlueSky posting settings
       BLUESKY_ENABLED: "true"
       BLUESKY_HANDLE: "sjsharks-news.bsky.social"
