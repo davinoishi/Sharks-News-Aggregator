@@ -15,6 +15,10 @@ updates:
       # Next.js major upgrades need manual review and testing
       - dependency-name: "next"
         update-types: ["version-update:semver-major"]
+      # Keep @types/node aligned to the Node 20 runtime (node:20-alpine in
+      # web/Dockerfile). Major bumps describe a newer Node and are a mismatch.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "pip"
     directory: "/api"
