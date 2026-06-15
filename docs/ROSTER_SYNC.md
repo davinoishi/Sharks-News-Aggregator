@@ -134,10 +134,27 @@ The sync is **idempotent** - running it multiple times won't create duplicates:
 
 ### Error Handling
 
-- **HTTP Failures:** Logs error and skips sync (keeps existing data)
-- **HTML Structure Changes:** Returns None if section markers not found
+- **HTTP Failures:** Logs error and skips sync (keeps existing data); fires an alert
+- **HTML Structure Changes:** Returns None if section markers not found; fires an alert
 - **Individual Player Errors:** Skips player, continues with rest
 - **Database Errors:** Rolls back transaction, logs error
+
+### Roster validation guard (R2-F2)
+
+Because `remove_departed_players()` deletes every player entity not in the parsed
+roster, a partial or broken parse could silently wipe the roster. Before any
+destructive step the sync validates the parsed size and **aborts without
+deleting** (returning `status: "aborted"` and firing an alert) when:
+
+- the roster is **below `MIN_EXPECTED_ROSTER`** (20) or **above
+  `MAX_EXPECTED_ROSTER`** (120) — the parse is implausible; or
+- it **shrank by more than `MAX_ROSTER_SHRINK_FRACTION`** (30%) versus the last
+  successful sync (tracked in `site_metrics` under `roster_sync_last_count`).
+
+Alerts go to `ALERT_WEBHOOK_URL` when configured (always logged at `ERROR`
+regardless), so a CapWages redesign surfaces immediately instead of quietly
+draining the entity table. A successful sync records its size as the new
+baseline.
 
 ## HTML Parsing Details
 
