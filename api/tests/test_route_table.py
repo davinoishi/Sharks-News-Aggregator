@@ -4,14 +4,18 @@ Freezes the set of ``(method, path)`` pairs the API exposes so a future
 refactor (splitting routers, moving endpoints) can't silently drop or rename an
 endpoint without this test failing. When you intentionally add/remove a route,
 update ``EXPECTED_ROUTES`` in the same commit.
-"""
-from fastapi.routing import APIRoute
 
+The route set is read from the OpenAPI schema rather than by walking
+``app.routes`` and isinstance-checking ``APIRoute``. FastAPI 0.137 stopped
+flattening included routers into top-level ``APIRoute`` instances (they now sit
+behind an internal ``_IncludedRouter`` wrapper), which silently emptied the old
+introspection and made every route read as "missing". ``app.openapi()["paths"]``
+is the public, version-stable view of exactly the endpoints the app serves, and
+already omits the built-in docs/openapi routes.
+"""
 from app.main import app
 
-# FastAPI's built-in docs/openapi routes are excluded — we only snapshot the
-# application's own endpoints.
-_BUILTIN_PATHS = {"/openapi.json", "/docs", "/docs/oauth2-redirect", "/redoc"}
+_HTTP_METHODS = {"GET", "POST", "PUT", "PATCH", "DELETE"}
 
 EXPECTED_ROUTES = {
     ("GET", "/health"),
@@ -42,15 +46,11 @@ EXPECTED_ROUTES = {
 
 def _actual_routes():
     routes = set()
-    for route in app.routes:
-        if not isinstance(route, APIRoute):
-            continue
-        if route.path in _BUILTIN_PATHS:
-            continue
-        for method in route.methods:
-            if method == "HEAD":
-                continue
-            routes.add((method, route.path))
+    for path, operations in app.openapi().get("paths", {}).items():
+        for method in operations:
+            method = method.upper()
+            if method in _HTTP_METHODS:
+                routes.add((method, path))
     return routes
 
 
