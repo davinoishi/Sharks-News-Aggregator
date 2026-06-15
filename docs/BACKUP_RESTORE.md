@@ -21,13 +21,36 @@ Tunable via environment (all optional):
 |----------|---------|---------|
 | `BACKUP_AT_HOUR` | `3` | Hour of day (UTC) to run the dump |
 | `BACKUP_RETENTION_DAYS` | `14` | Days of dumps to keep |
+| `BACKUP_VERIFY_WEEKDAY` | `0` | Day of week (0=Sun..6=Sat, UTC) for the weekly test-restore |
+| `ALERT_WEBHOOK_URL` | _(unset)_ | Optional webhook POSTed on backup/verify failure (shared with the O3 monitor) |
 
-## Trigger a backup on demand
+## Integrity verification (R2-O3)
+
+A dump that silently corrupts is worse than no backup — it reads as success but
+can't be restored. Two checks guard against that:
+
+- **Every run — `gzip -t`:** immediately after writing a dump, the service runs
+  `gzip -t` (CRC check). A failing archive is **deleted** and the run fails loudly
+  (ERROR log + webhook alert) so retention can't quietly fill with corrupt files.
+- **Weekly — full test-restore:** on `BACKUP_VERIFY_WEEKDAY`, after a good dump,
+  the service restores the **latest** dump into a throwaway database
+  (`sharks_backup_verify`) with `psql -v ON_ERROR_STOP=1`, runs a sanity query
+  (`SELECT count(*) FROM sources` ≥ 1), then drops the scratch DB. This proves the
+  SQL is actually restorable end-to-end, which `gzip -t` alone cannot.
+
+Failures are logged as `ERROR` (so log forwarding / the O3 monitor surfaces them)
+and, when `ALERT_WEBHOOK_URL` is set, best-effort POSTed as a JSON alert.
+
+## Trigger a backup or verification on demand
 
 ```sh
-# Runs one dump immediately, then exits (does not disturb the nightly loop).
+# Runs one dump immediately (with the gzip -t check), then exits.
 docker compose exec backup sh /usr/local/bin/backup.sh once
 ls -lh backups/
+
+# Test-restore the latest dump into a throwaway DB, then drop it. Non-zero exit
+# on any failure — handy in a smoke test or after a schema change.
+docker compose exec backup sh /usr/local/bin/backup.sh verify
 ```
 
 ## Restore

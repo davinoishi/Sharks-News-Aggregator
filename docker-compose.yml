@@ -130,6 +130,10 @@ services:
       PGDATABASE: ${POSTGRES_DB:-sharks}
       BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
       BACKUP_AT_HOUR: ${BACKUP_AT_HOUR:-3}
+      # Weekly test-restore (R2-O3): day of week (0=Sun..6=Sat, UTC).
+      BACKUP_VERIFY_WEEKDAY: ${BACKUP_VERIFY_WEEKDAY:-0}
+      # Best-effort alert on backup/verify failure (shared with the O3 monitor).
+      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
     volumes:
       - ./backups:/backups
       - ./infra/backup/backup.sh:/usr/local/bin/backup.sh:ro
