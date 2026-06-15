@@ -245,9 +245,13 @@ R2-F2 is independent.
 
 ## R2 status tracking
 
+All four R2 P0/P1 items are merged to `main` and deployed to production
+(pi5-ai2) on 2026-06-15 — verified live: migration `0003` applied, the pinned
+CORS origin echoes, and the backup `verify` test-restore passed.
+
 | ID | Pri | Status | PR |
 |----|-----|--------|----|
-| R2-F1 | P0 | implemented (branch `improve/r2-p0-ingest-and-cors`) | |
-| R2-S1 | P0 | implemented (branch `improve/r2-p0-ingest-and-cors`) | |
-| R2-O3 | P1 | not started | |
-| R2-F2 | P1 | not started | |
+| R2-F1 | P0 | merged + deployed | [#70](https://github.com/davinoishi/Sharks-News-Aggregator/pull/70) |
+| R2-S1 | P0 | merged + deployed | [#70](https://github.com/davinoishi/Sharks-News-Aggregator/pull/70) |
+| R2-O3 | P1 | merged + deployed | [#71](https://github.com/davinoishi/Sharks-News-Aggregator/pull/71) |
+| R2-F2 | P1 | merged + deployed | [#72](https://github.com/davinoishi/Sharks-News-Aggregator/pull/72) |
