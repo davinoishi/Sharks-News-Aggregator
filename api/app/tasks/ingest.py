@@ -199,21 +199,30 @@ def ingest_rss(db: Session, source) -> dict:
 
 
 def _mark_source_unimplemented(db: Session, source, method: str) -> dict:
-    """Log a warning and mark the source broken for an unimplemented ingest method.
+    """Hold a source out of scheduling because its ingest method is unimplemented.
 
-    Brief 07 (C3): these methods used to silently return ``not_implemented``,
-    which read as a successful no-op. Instead we surface the misconfiguration —
-    bump the fetch error count to the "broken" threshold so the admin sources
-    view flags it (health == "broken" at >= 3 errors) and emit a warning.
+    History: brief 07 (C3) replaced a silent ``not_implemented`` no-op with a
+    "mark broken" path (bumping ``fetch_error_count`` to the broken threshold).
+    But these sources aren't *broken* — the method is simply unsupported — so
+    that produced a permanent stream of false "broken source" alerts every cycle
+    (R2-F1). Instead we set a dedicated ``UNSUPPORTED`` status: ``get_active_sources``
+    excludes it, so the source stops being scheduled and never trips the broken
+    threshold again. ``fetch_error_count`` is intentionally left untouched.
+
+    This is the self-healing fallback; the migration flips existing rows so the
+    stub normally never runs.
     """
+    from app.models import SourceStatus
+
     logger.warning(
-        "Ingest method %s is not implemented for source %s (%s); marking broken",
+        "Ingest method %s is not implemented for source %s (%s); marking unsupported "
+        "and removing from the ingest schedule",
         method, source.id, source.name,
     )
-    source.fetch_error_count = max((source.fetch_error_count or 0) + 1, 3)
+    source.status = SourceStatus.UNSUPPORTED
     db.commit()
     return {
-        "status": "error",
+        "status": "unsupported",
         "source_id": source.id,
         "source_name": source.name,
         "reason": f"ingest_method_not_implemented:{method}",
