@@ -14,7 +14,6 @@ from app.tasks.sync_roster import (
     validate_roster_size,
 )
 
-
 # --- validate_roster_size (pure) --------------------------------------------
 
 def test_validate_accepts_plausible_roster():
