@@ -152,3 +152,102 @@ and shipped via the integration PR
 | Change | PR |
 |--------|----|
 | Exclude the synthetic "User Submissions" source from ingestion + the brief-09 health check (it was tripping `/health` → `degraded`) | [#67](https://github.com/davinoishi/Sharks-News-Aggregator/pull/67) |
+
+---
+
+# Round 2 review (external, 2026-06-15)
+
+A second full review (Kimi) of the post-brief-1–9 codebase. Strengths confirmed:
+SSRF guard, hashed-IP rate limiting, fail-closed admin auth, restricted prod CORS,
+required secrets, auto-migrations, structured logging, nightly backups, pipeline
+monitoring. The findings below are the **backlog for future tasks** — new ID
+namespace `R2-*` so they don't collide with the S/C/P/Q/U/O ids above. Priorities
+use the reviewer's matrix where given, otherwise High→P1, Medium→P2, Low→P3.
+
+## R2 priority backlog
+
+| ID | Pri | Area | Item |
+|----|-----|------|------|
+| R2-F1 | **P0** | Functionality | `ingest_html`/`ingest_api` are stubs that mark live `html`/`twitter`/`reddit` sources "broken" every cycle — false alerts. Skip or give them a distinct non-broken status. |
+| R2-S1 | **P0** | Security | `ALLOWED_ORIGINS: "*"` in `docker-compose.pi.yml` — pin to the real public origin. |
+| R2-O3 | **P1** | Operations | No backup integrity verification — add `gzip -t` per run + periodic test-restore. |
+| R2-F2 | **P1** | Functionality | CapWages scrape is brittle and silently destructive — add structural + roster-size validation before deleting entities, and alert on failure. |
+| R2-S7 | P1 | Security | BlueSky `atproto` re-authenticates on every `health_check()` — cache the session. |
+| R2-O1 | P1 | Operations | No log aggregation/forwarding off the Pi — ship logs to a central store. |
+| R2-F5 | P2 | Functionality | BlueSky posts only the oldest cluster per 15-min run — add a priority queue/batching. |
+| R2-F3 | P2 | Functionality | No dedup across `/submit/link` and scheduled ingest — check submissions vs pending/raw_items. |
+| R2-F4 | P2 | Functionality | `source_count` is incremented but never decremented after 30-day variant purge — derive by query. |
+| R2-S2 | P2 | Security | Admin API key shared between Next.js proxy and API — consider rotation / asymmetric (JWT). |
+| R2-S3 | P2 | Security | No request-body size limit on `/submit/link` — add a max length/middleware cap. |
+| R2-S4 | P2 | Security | `fetch_guarded` does not pin sockets to the validated IP (TOCTOU) — pin via httpx transport or smokescreen. |
+| R2-O4 | P2 | Operations | Redis password embedded in connection URL leaks to logs/crashes — use Redis ACLs / explicit auth. |
+| R2-O2 | P2 | Operations | Backup runs an always-on `sleep` loop, not cron — move to cron (container or host). |
+| R2-O5 | P2 | Operations | `task_time_limit=3600` too generous for RSS ingest — tighten per task type. |
+| R2-U1 | P2 | Usability | No full-text search — Postgres `tsvector` or lightweight index. |
+| R2-U2 | P2 | Usability | No dark mode — Tailwind `dark:` variants + toggle. |
+| R2-U3 | P2 | Usability | "Load more" only — add page numbers / URL-synced infinite scroll for deep links. |
+| R2-A4 | P2 | Architecture | No circuit breaker on OpenRouter calls — add one to avoid cascading failures. |
+| R2-S5 | P3 | Security | Replace custom `safeEqual` in `middleware.ts` with `crypto.timingSafeEqual`. |
+| R2-S6 | P3 | Security | Add CSP headers in `next.config.js`. |
+| R2-O6 | P3 | Operations | No `deploy.resources.limits` in compose — cap CPU/mem so a runaway worker can't starve the Pi. |
+| R2-O7 | P3 | Operations | `restart: unless-stopped` everywhere can restart-loop under disk/mem pressure — add `on-failure` + delay. |
+| R2-U4 | P3 | Usability | No keyboard shortcuts (`j/k`, `/`, `?`). |
+| R2-U5 | P3 | Usability | No PWA/offline support — service worker + manifest. |
+| R2-U6 | P3 | Usability | RSS feed lacks `<lastBuildDate>` and `<ttl>`. |
+| R2-U7 | P3 | Usability | No Open Graph / Twitter Card meta tags. |
+| R2-F6 | P3 | Functionality | `entities_agg` ARRAY duplicates the `ClusterEntity` junction — derive it to avoid drift. |
+| R2-F7 | P3 | Functionality | No dedup of BlueSky posts by content hash — re-created clusters could repost. |
+| R2-F8 | P3 | Functionality | `cleanup_bogus_entities` uses Postgres-only regex `~ '[a-zA-Z]'` — abstract for portability. |
+| R2-A1 | P3 | Architecture | Add API versioning (`/v1/...`). |
+| R2-A2 | P3 | Architecture | Consider async SQLAlchemy for the API layer. |
+| R2-A3 | P3 | Architecture | Add OpenAPI/Swagger tags. |
+| R2-A5 | P3 | Architecture | Add distributed tracing (OpenTelemetry) RSS→enrich→cluster→post. |
+
+## R2 P0/P1 implementation plan
+
+Four items. R2-F1 and R2-S1 are independent and ship first (this branch).
+R2-O3 builds on the now-merged backup service (`infra/backup/backup.sh`, brief 09).
+R2-F2 is independent.
+
+### R2-F1 (P0) — Stop unimplemented ingest methods alarming as "broken"
+
+- **Problem.** The DB seed contains sources with `ingest_method` `html`, `twitter`,
+  `reddit`. Every 10 min `ingest_all_sources` → `ingest_source`
+  (`api/app/tasks/ingest.py`) dispatches them to `ingest_html`/`ingest_api`, which
+  force `fetch_error_count >= 3`, so the admin view reports them `broken`. These are
+  not broken — the method is simply unsupported. Brief 07 (C3) deliberately replaced
+  the old silent no-op with this, so the fix adds a *distinct* state, not a revert.
+- **Approach.** Add `SourceStatus.UNSUPPORTED`; exclude it from `get_active_sources`
+  so it is never scheduled; stop bumping `fetch_error_count`; admin health reports
+  it distinctly from `broken`. Migration flips existing non-RSS-method sources.
+- **Verify.** A `ingest_method=HTML` source is not returned by `get_active_sources`,
+  never reaches the broken threshold, and shows as `unsupported` in the admin summary.
+
+### R2-S1 (P0) — Pin Pi CORS to the real public origin
+
+- **Problem.** `docker-compose.pi.yml` sets `ALLOWED_ORIGINS: "*"`, fed into
+  `CORSMiddleware` with `allow_credentials=True` — a spec-invalid, CSRF-prone combo.
+  The browser only talks to the Next.js proxy, so FastAPI needs only the public origin.
+- **Approach.** Pin to `https://wplepla23gjn.nobgp.com`; document in `.env.example`.
+- **Verify.** A foreign `Origin` gets no `Access-Control-Allow-Origin`; the real one is echoed.
+
+### R2-O3 (P1) — Backup integrity verification
+
+- Build on `infra/backup/backup.sh`: `gzip -t` per run (fail loudly on corruption) +
+  weekly test-restore into a throwaway DB with a sanity query; alert on failure.
+
+### R2-F2 (P1) — Harden CapWages roster sync
+
+- `fetch_capwages_roster` (`api/app/tasks/sync_roster.py`) keys off literal HTML
+  markers and silently returns `None` / partially parses, then `remove_departed_players`
+  wipes entities. Add structural validation + roster size-band/delta guard that aborts
+  before any deletion, and alert (reuse brief 09 alerting) instead of `print`.
+
+## R2 status tracking
+
+| ID | Pri | Status | PR |
+|----|-----|--------|----|
+| R2-F1 | P0 | implemented (branch `improve/r2-p0-ingest-and-cors`) | |
+| R2-S1 | P0 | implemented (branch `improve/r2-p0-ingest-and-cors`) | |
+| R2-O3 | P1 | not started | |
+| R2-F2 | P1 | not started | |

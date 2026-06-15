@@ -79,7 +79,11 @@ def list_sources(
     items = []
     for source in sources:
         # Determine health status
-        if source.status != SourceStatus.APPROVED:
+        if source.status == SourceStatus.UNSUPPORTED:
+            # Ingest method has no implementation; held out of scheduling on
+            # purpose. Distinct from "broken" so it doesn't raise false alerts (R2-F1).
+            health = "unsupported"
+        elif source.status != SourceStatus.APPROVED:
             health = "disabled"
         elif source.fetch_error_count and source.fetch_error_count >= 3:
             health = "broken"

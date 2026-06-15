@@ -23,6 +23,10 @@ class SourceStatus(str, enum.Enum):
     QUEUED_FOR_REVIEW = "queued_for_review"
     APPROVED = "approved"
     REJECTED = "rejected"
+    # Approved in principle but its ingest_method has no implementation
+    # (html/api/reddit/twitter). Held out of scheduling so the unimplemented
+    # stub can't keep bumping fetch_error_count and read as "broken" (R2-F1).
+    UNSUPPORTED = "unsupported"
 
 
 class IngestMethod(str, enum.Enum):

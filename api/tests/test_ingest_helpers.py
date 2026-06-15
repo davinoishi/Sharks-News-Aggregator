@@ -7,7 +7,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.core.database import Base
-from app.models import IngestMethod, Source, SourceCategory
+from app.models import IngestMethod, Source, SourceCategory, SourceStatus
 from app.tasks.ingest import (
     ingest_api,
     ingest_html,
@@ -86,7 +86,12 @@ def test_parse_published_none_when_absent():
     assert parse_published_date(SimpleNamespace()) is None
 
 
-# --- unimplemented ingest methods mark the source broken (brief 07, C3) -------
+# --- unimplemented ingest methods retire the source as unsupported (R2-F1) ----
+#
+# Earlier (brief 07, C3) these stubs forced fetch_error_count to the "broken"
+# threshold, which produced false "broken source" alerts every cycle. R2-F1
+# instead moves the source to SourceStatus.UNSUPPORTED so get_active_sources
+# stops scheduling it, and leaves fetch_error_count untouched.
 
 def _source_session():
     engine = create_engine("sqlite:///:memory:")
@@ -100,6 +105,7 @@ def _make_source(db):
         category=SourceCategory.OTHER,
         ingest_method=IngestMethod.HTML,
         base_url="https://example.com",
+        status=SourceStatus.APPROVED,
         fetch_error_count=0,
     )
     db.add(src)
@@ -108,25 +114,27 @@ def _make_source(db):
     return src
 
 
-def test_ingest_html_marks_source_broken():
+def test_ingest_html_marks_source_unsupported():
     db = _source_session()
     try:
         src = _make_source(db)
         result = ingest_html(db, src)
-        assert result["status"] == "error"
+        assert result["status"] == "unsupported"
         assert "not_implemented" in result["reason"]
-        # health == "broken" once fetch_error_count >= 3 (see admin /sources)
-        assert src.fetch_error_count >= 3
+        # Retired from scheduling, not flagged broken.
+        assert src.status == SourceStatus.UNSUPPORTED
+        assert src.fetch_error_count == 0
     finally:
         db.close()
 
 
-def test_ingest_api_marks_source_broken():
+def test_ingest_api_marks_source_unsupported():
     db = _source_session()
     try:
         src = _make_source(db)
         result = ingest_api(db, src)
-        assert result["status"] == "error"
-        assert src.fetch_error_count >= 3
+        assert result["status"] == "unsupported"
+        assert src.status == SourceStatus.UNSUPPORTED
+        assert src.fetch_error_count == 0
     finally:
         db.close()

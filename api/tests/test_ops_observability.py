@@ -165,3 +165,25 @@ def test_synthetic_source_excluded_from_ingestion(pg_db):
     names = {s.name for s in active}
     assert real.name in names
     assert "User Submissions" not in names
+
+
+@requires_postgres
+def test_unsupported_source_excluded_from_ingestion(pg_db):
+    """R2-F1: a source whose ingest method is unimplemented is held out of
+    scheduling via SourceStatus.UNSUPPORTED, so it can't keep tripping the stub."""
+    from app.core.db_utils import get_active_sources
+    from app.models import IngestMethod, SourceStatus
+
+    real = _make_source(pg_db, name="RSS feed", base_url="https://rss.example.com")
+    _make_source(
+        pg_db,
+        name="HTML scrape",
+        base_url="https://html.example.com",
+        ingest_method=IngestMethod.HTML,
+        status=SourceStatus.UNSUPPORTED,
+    )
+
+    active = get_active_sources(pg_db)
+    names = {s.name for s in active}
+    assert real.name in names
+    assert "HTML scrape" not in names

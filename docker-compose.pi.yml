@@ -4,13 +4,15 @@
 # Only the Pi-specific deltas live here; everything else (no bind mounts, plain
 # celery, nightly backups) comes from docker-compose.yml.
 #   - API published on 8001 (3000/8000 are taken by Open WebUI on this box).
-#   - Permissive CORS (the site is fronted by the nobgp tunnel).
+#   - CORS pinned to the public nobgp origin (R2-S1). The browser only ever
+#     talks to the Next.js proxy, so the API needs no broader origin allowlist.
+#     No trailing slash — it's matched against the request Origin header.
 #   - LLM shadow/evaluation mode + BlueSky posting enabled.
 
 services:
   api:
     environment:
-      ALLOWED_ORIGINS: "*"
+      ALLOWED_ORIGINS: "${ALLOWED_ORIGINS:-https://wplepla23gjn.nobgp.com}"
       LLM_EVALUATION_MODE: "true"
       BLUESKY_ENABLED: "true"
       BLUESKY_HANDLE: "${BLUESKY_HANDLE:-sjsharks-news.bsky.social}"

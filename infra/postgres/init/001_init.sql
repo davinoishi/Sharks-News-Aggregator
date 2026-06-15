@@ -7,8 +7,9 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- Source categories: official, press, other
 CREATE TYPE source_category AS ENUM ('official', 'press', 'other');
 
--- Source status lifecycle
-CREATE TYPE source_status AS ENUM ('candidate', 'queued_for_review', 'approved', 'rejected');
+-- Source status lifecycle ('unsupported' = approved but ingest method has no
+-- implementation, so it is held out of scheduling — see R2-F1)
+CREATE TYPE source_status AS ENUM ('candidate', 'queued_for_review', 'approved', 'rejected', 'unsupported');
 
 -- Ingest methods
 CREATE TYPE ingest_method AS ENUM ('rss', 'html', 'api', 'reddit', 'twitter');
