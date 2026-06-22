@@ -24,7 +24,7 @@ scikit-learn==1.9.0
 
 # Data Validation
 pydantic>=2.7,<3
-pydantic-settings>=2.14.1
+pydantic-settings>=2.14.2
 
 # Utilities
 python-dateutil==2.9.0.post0
