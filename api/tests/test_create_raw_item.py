@@ -2,7 +2,7 @@
 
 Runs on sqlite — RawItem/Source have no ARRAY columns.
 """
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from sqlalchemy import create_engine
@@ -88,3 +88,98 @@ def test_recent_article_passes_age_gate(db, source):
     recent = datetime.utcnow() - timedelta(days=1)
     item = create_raw_item(db, source.id, "https://test.example.com/new", raw_title="New", published_at=recent)
     assert item is not None
+
+
+def test_verify_age_rejects_article_with_old_true_date(db, source, monkeypatch):
+    """Feed says fresh, but the article's own metadata says it's years old."""
+    import app.tasks.ingest as ingest
+
+    old_true = datetime(2024, 6, 1, tzinfo=timezone.utc)
+    monkeypatch.setattr(ingest, "fetch_published_date", lambda url: old_true)
+
+    fresh_feed_date = datetime.utcnow() - timedelta(hours=1)
+    item = create_raw_item(
+        db, source.id, "https://test.example.com/resurfaced",
+        raw_title="Old news, fresh pubDate", published_at=fresh_feed_date,
+        verify_age=True,
+    )
+    assert item is None
+    assert db.query(RawItem).count() == 0
+
+
+def test_verify_age_accepts_article_with_recent_true_date(db, source, monkeypatch):
+    import app.tasks.ingest as ingest
+
+    recent_true = datetime.now(timezone.utc) - timedelta(hours=2)
+    monkeypatch.setattr(ingest, "fetch_published_date", lambda url: recent_true)
+
+    item = create_raw_item(
+        db, source.id, "https://test.example.com/genuinely-new",
+        raw_title="Real news", published_at=datetime.utcnow(),
+        verify_age=True,
+    )
+    assert item is not None
+    # The verified true date is stored, not the feed date. (SQLite drops tzinfo
+    # on the stored column, so coerce back to aware UTC before comparing.)
+    from app.core.datetime_utils import ensure_aware
+    assert ensure_aware(item.published_at) == recent_true
+
+
+def test_verify_age_rejects_undated_item(db, source, monkeypatch):
+    """No feed date and no page date → reject rather than defaulting to now (D)."""
+    import app.tasks.ingest as ingest
+
+    monkeypatch.setattr(ingest, "fetch_published_date", lambda url: None)
+
+    item = create_raw_item(
+        db, source.id, "https://test.example.com/undated",
+        raw_title="Undated", published_at=None, verify_age=True,
+    )
+    assert item is None
+    assert db.query(RawItem).count() == 0
+
+
+def test_verify_age_falls_back_to_feed_date_when_page_undated(db, source, monkeypatch):
+    """Page date unknown but feed date is recent → keep the item on feed date."""
+    import app.tasks.ingest as ingest
+
+    monkeypatch.setattr(ingest, "fetch_published_date", lambda url: None)
+
+    feed_date = datetime.utcnow() - timedelta(hours=3)
+    item = create_raw_item(
+        db, source.id, "https://test.example.com/feed-only",
+        raw_title="Feed dated", published_at=feed_date, verify_age=True,
+    )
+    assert item is not None
+
+
+def test_extract_published_date_from_meta_tag():
+    from app.tasks.ingest import extract_published_date
+
+    html = """
+    <html><head>
+      <meta property="article:published_time" content="2024-06-01T14:30:00Z">
+    </head><body></body></html>
+    """
+    parsed = extract_published_date(html)
+    assert parsed == datetime(2024, 6, 1, 14, 30, tzinfo=timezone.utc)
+
+
+def test_extract_published_date_from_jsonld():
+    from app.tasks.ingest import extract_published_date
+
+    html = """
+    <html><head>
+      <script type="application/ld+json">
+      {"@type": "NewsArticle", "datePublished": "2025-01-15T09:00:00-05:00"}
+      </script>
+    </head><body></body></html>
+    """
+    parsed = extract_published_date(html)
+    assert parsed == datetime(2025, 1, 15, 14, 0, tzinfo=timezone.utc)
+
+
+def test_extract_published_date_missing_returns_none():
+    from app.tasks.ingest import extract_published_date
+
+    assert extract_published_date("<html><body>no date here</body></html>") is None
