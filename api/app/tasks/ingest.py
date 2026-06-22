@@ -99,6 +99,8 @@ def ingest_rss(db: Session, source) -> dict:
     Returns:
         Dict with ingestion results
     """
+    from app.core.config import settings
+
     try:
         logger.info("Fetching RSS feed from %s (ID: %s)", source.name, source.id)
         logger.debug("  Feed URL: %s", source.feed_url)
@@ -166,6 +168,7 @@ def ingest_rss(db: Session, source) -> dict:
                 raw_title=entry_title,
                 raw_description=entry.get('summary'),
                 published_at=parse_published_date(entry),
+                verify_age=settings.verify_article_published_date,
             )
 
             if raw_item:
@@ -259,26 +262,40 @@ def create_raw_item(
     raw_description: Optional[str] = None,
     source_item_id: Optional[str] = None,
     published_at: Optional[datetime] = None,
+    verify_age: bool = False,
 ) -> Optional[object]:
     """
     Create a raw_item with idempotency checks.
 
+    Args:
+        verify_age: When True (RSS ingestion), cross-check the article's own
+            publication date against the feed-supplied one and reject items
+            whose true date is older than ``max_article_age_days`` or that have
+            no resolvable date at all. Defaults to False so other callers
+            (e.g. user submissions, which are intentionally undated) are
+            unaffected.
+
     Returns:
-        RawItem object if created, None if duplicate
+        RawItem object if created, None if duplicate, too old, or undated
+        (when ``verify_age`` is set).
     """
+    from datetime import timedelta
+
+    from app.core.config import settings
     from app.models import RawItem
 
     if not original_url:
         return None
 
-    # Reject articles older than the configured max age
-    if published_at:
-        from datetime import timedelta
+    max_age = timedelta(days=settings.max_article_age_days)
 
-        from app.core.config import settings
-        max_age = timedelta(days=settings.max_article_age_days)
-        if utcnow() - ensure_aware(published_at) > max_age:
-            return None
+    def _too_old(when: datetime) -> bool:
+        return utcnow() - ensure_aware(when) > max_age
+
+    # Fast reject: the feed itself admits the item is old. Avoids fetching the
+    # article page for items we'd discard anyway.
+    if published_at and _too_old(published_at):
+        return None
 
     # Normalize URL for deduplication
     canonical_url = normalize_url(original_url)
@@ -315,6 +332,26 @@ def create_raw_item(
 
     if existing:
         return None  # Duplicate, skip
+
+    # Authoritative age check (RSS only): the feed-supplied date can be a fresh
+    # <pubDate> on a years-old article. Resolve the article's real date from its
+    # own metadata and gate on that. Only runs for genuinely new, non-duplicate
+    # items so we don't fetch the page on every poll.
+    if verify_age:
+        true_date = fetch_published_date(canonical_url)
+        effective_date = true_date or published_at
+        if effective_date is None:
+            # Reject undated items rather than letting them default to "now" and
+            # surface at the top of the feed as if breaking (D).
+            logger.info("  ⊘ Rejected undated article (no feed or page date): %s", canonical_url)
+            return None
+        if _too_old(effective_date):
+            logger.info(
+                "  ⊘ Rejected stale article (true date %s past %d-day window): %s",
+                effective_date.date(), settings.max_article_age_days, canonical_url,
+            )
+            return None
+        published_at = effective_date
 
     # Create new raw_item
     raw_item = RawItem(
@@ -392,6 +429,133 @@ def parse_published_date(entry: dict) -> Optional[datetime]:
         from time import mktime
         return datetime.fromtimestamp(mktime(entry.updated_parsed)).replace(tzinfo=timezone.utc)
     return None
+
+
+# Meta-tag attribute/value pairs that carry a publication date, in priority
+# order. The first one that parses wins.
+_META_DATE_KEYS = (
+    ("property", "article:published_time"),
+    ("property", "og:article:published_time"),
+    ("name", "article:published_time"),
+    ("itemprop", "datePublished"),
+    ("property", "datePublished"),
+    ("name", "parsely-pub-date"),
+    ("name", "publishdate"),
+    ("name", "publish-date"),
+    ("name", "sailthru.date"),
+    ("name", "date"),
+    ("name", "DC.date.issued"),
+)
+
+
+def _parse_date_str(value: Optional[str]) -> Optional[datetime]:
+    """Parse a loosely-formatted date string into an aware UTC datetime."""
+    if not value or not value.strip():
+        return None
+    from dateutil import parser as date_parser
+    try:
+        parsed = date_parser.parse(value.strip())
+    except (ValueError, OverflowError, TypeError):
+        return None
+    return ensure_aware(parsed).astimezone(timezone.utc)
+
+
+def _date_from_jsonld(soup) -> Optional[datetime]:
+    """Pull the first ``datePublished`` out of any JSON-LD blocks on the page."""
+    import json
+
+    def walk(node):
+        if isinstance(node, dict):
+            for key in ("datePublished", "dateCreated"):
+                found = _parse_date_str(node.get(key)) if isinstance(node.get(key), str) else None
+                if found:
+                    return found
+            for child in node.values():
+                result = walk(child)
+                if result:
+                    return result
+        elif isinstance(node, list):
+            for child in node:
+                result = walk(child)
+                if result:
+                    return result
+        return None
+
+    for script in soup.find_all("script", attrs={"type": "application/ld+json"}):
+        raw = script.string or script.get_text()
+        if not raw:
+            continue
+        try:
+            data = json.loads(raw)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        found = walk(data)
+        if found:
+            return found
+    return None
+
+
+def extract_published_date(html_text: str) -> Optional[datetime]:
+    """
+    Extract an article's true publication date from its HTML.
+
+    Checks JSON-LD (``datePublished``), then a priority list of ``<meta>`` tags,
+    then a ``<time>`` element with a ``datetime`` attribute. Returns an aware UTC
+    datetime, or None if no date can be found.
+
+    Used to detect aggregator feeds that re-surface old articles with a fresh
+    ``<pubDate>``: the feed date can be days old at most under the age gate, but
+    the article's own metadata reveals its real age.
+    """
+    if not html_text:
+        return None
+
+    from bs4 import BeautifulSoup
+
+    soup = BeautifulSoup(html_text, "lxml")
+
+    jsonld_date = _date_from_jsonld(soup)
+    if jsonld_date:
+        return jsonld_date
+
+    for attr, val in _META_DATE_KEYS:
+        tag = soup.find("meta", attrs={attr: val})
+        if tag:
+            parsed = _parse_date_str(tag.get("content"))
+            if parsed:
+                return parsed
+
+    time_tag = soup.find("time", attrs={"datetime": True})
+    if time_tag:
+        parsed = _parse_date_str(time_tag.get("datetime"))
+        if parsed:
+            return parsed
+
+    return None
+
+
+def fetch_published_date(url: str) -> Optional[datetime]:
+    """
+    Fetch ``url`` and extract the article's true publication date from its HTML.
+
+    Returns None on any network/parse failure — callers treat "unknown" as a
+    soft signal and fall back to the feed-supplied date. Isolated into its own
+    function so the network call can be stubbed in tests.
+    """
+    if not url:
+        return None
+    try:
+        response = httpx.get(
+            url,
+            timeout=15.0,
+            follow_redirects=True,
+            headers={"User-Agent": "SharksNewsAggregator/1.0"},
+        )
+        response.raise_for_status()
+        return extract_published_date(response.text)
+    except (httpx.HTTPError, ValueError) as e:
+        logger.debug("  Could not fetch article date for %s: %s", url, e)
+        return None
 
 
 def strip_html(text: Optional[str]) -> Optional[str]:

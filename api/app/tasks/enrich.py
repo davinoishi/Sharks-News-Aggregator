@@ -162,7 +162,10 @@ def enrich_raw_item(self, raw_item_id: int):
             source_id=raw_item.source_id,
             title=raw_item.raw_title or "Untitled",
             url=raw_item.canonical_url,
-            published_at=raw_item.published_at or utcnow(),
+            # RSS items always carry a verified published_at by this point;
+            # undated submissions fall back to when we fetched them, never to
+            # enrich time, so they don't masquerade as fresh (D).
+            published_at=raw_item.published_at or raw_item.fetched_at or utcnow(),
             event_type=event_type_enum,
             tokens=tokens,
             entities=entity_ids,

@@ -29,6 +29,14 @@ class Settings(BaseSettings):
 
     # Ingestion age gate
     max_article_age_days: int = 7
+    # Cross-check the article's own publication date (meta tags / JSON-LD) against
+    # the feed-supplied date before ingesting. Aggregator feeds (Google Alerts,
+    # SportSpyder, …) routinely re-surface old articles with a fresh <pubDate>,
+    # which the feed-date age gate alone cannot catch. When enabled, RSS items
+    # are fetched and re-checked against their true date, and items with no
+    # resolvable date are rejected rather than defaulting to "now". Kill-switch:
+    # set VERIFY_ARTICLE_PUBLISHED_DATE=false to fall back to feed-date-only.
+    verify_article_published_date: bool = True
 
     # Rate limiting
     submission_rate_limit_per_ip: int = 10  # per hour
