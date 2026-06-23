@@ -12,6 +12,7 @@ from app.tasks.ingest import (
     ingest_api,
     ingest_html,
     parse_published_date,
+    resolve_entry_url,
     sanitize_feed_xml,
     strip_html,
 )
@@ -57,6 +58,39 @@ def test_sanitize_handles_non_utf8():
     # latin-1 'é' (0xe9) should decode and re-encode as utf-8 without raising.
     out = sanitize_feed_xml(b"caf\xe9")
     assert out.decode("utf-8") == "café"
+
+
+# --- resolve_entry_url -------------------------------------------------------
+
+def _src(base_url="https://www.nhl.com/sharks/"):
+    return SimpleNamespace(base_url=base_url)
+
+
+def test_resolve_relative_uses_feed_channel_link():
+    # The to-rss.xyz NHL.com proxy emits relative entry links; resolve them
+    # against the feed's channel <link> (the real publisher host).
+    feed = SimpleNamespace(feed={"link": "https://www.nhl.com/sharks/news/"})
+    out = resolve_entry_url(
+        "/sharks/news/sharks-re-sign-defenseman-nolan-allan", feed, _src()
+    )
+    assert out == "https://www.nhl.com/sharks/news/sharks-re-sign-defenseman-nolan-allan"
+
+
+def test_resolve_relative_falls_back_to_source_base_url():
+    feed = SimpleNamespace(feed={})
+    out = resolve_entry_url("/sharks/news/foo", feed, _src())
+    assert out == "https://www.nhl.com/sharks/news/foo"
+
+
+def test_resolve_leaves_absolute_url_untouched():
+    feed = SimpleNamespace(feed={"link": "https://www.nhl.com/sharks/news/"})
+    url = "https://example.com/article"
+    assert resolve_entry_url(url, feed, _src()) == url
+
+
+def test_resolve_passthrough_none():
+    feed = SimpleNamespace(feed={})
+    assert resolve_entry_url(None, feed, _src()) is None
 
 
 # --- parse_published_date ----------------------------------------------------
