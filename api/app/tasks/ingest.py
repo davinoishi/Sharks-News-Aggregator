@@ -149,7 +149,7 @@ def ingest_rss(db: Session, source) -> dict:
         logger.info("  Found %d entries in feed", len(feed.entries))
 
         for entry in feed.entries:
-            entry_url = entry.get('link')
+            entry_url = resolve_entry_url(entry.get('link'), feed, source)
             entry_title = strip_html(entry.get('title'))
 
             # SportSpyder pages are ad wrappers — resolve to the real article
@@ -616,6 +616,33 @@ def resolve_sportspyder_url(url: str) -> Optional[dict]:
     except Exception as e:
         logger.warning("  SportSpyder resolution failed for %s: %s", url, e)
         return None
+
+
+def resolve_entry_url(entry_url: Optional[str], feed, source) -> Optional[str]:
+    """Resolve a (possibly relative) RSS entry link to an absolute URL.
+
+    Some feeds (e.g. the to-rss.xyz NHL.com proxy) emit relative ``<link>``
+    paths like ``/sharks/news/sharks-re-sign-defenseman-nolan-allan``. Stored
+    as-is, the browser resolves these against the aggregator's own origin,
+    producing a broken link. Resolve them against the feed's declared channel
+    link, falling back to the source's base URL.
+    """
+    from urllib.parse import urljoin, urlparse
+
+    if not entry_url:
+        return entry_url
+
+    # Already absolute — leave untouched.
+    if urlparse(entry_url).netloc:
+        return entry_url
+
+    # Prefer the feed's own channel <link> (carries the real publisher host),
+    # then fall back to the source's configured base URL.
+    base = (getattr(feed, 'feed', {}) or {}).get('link') or getattr(source, 'base_url', None)
+    if base and urlparse(base).netloc:
+        return urljoin(base, entry_url)
+
+    return entry_url
 
 
 def normalize_url(url: str) -> str:
