@@ -368,6 +368,11 @@ Now that the infrastructure is set up:
   - `CLUSTER_SIMILARITY_THRESHOLD=0.62`
   - `ENTITY_OVERLAP_THRESHOLD=0.50`
   - `TOKEN_SIMILARITY_THRESHOLD=0.40`
+  - `ENTITYLESS_TOKEN_SIMILARITY_THRESHOLD=0.55`
+  - `TITLE_SIMILARITY_THRESHOLD=0.85`
+  - `TITLE_CONTAINMENT_THRESHOLD=0.90`
+  - `TITLE_JACCARD_THRESHOLD=0.55`
+  - `TITLE_MIN_SHARED_TOKENS=6`
 - **Adjust article freshness** - `MAX_ARTICLE_AGE_DAYS=7` (rejects articles older than 7 days at ingestion)
 
 ## Production Considerations

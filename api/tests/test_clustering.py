@@ -31,10 +31,10 @@ def _source(db):
     return s
 
 
-def _variant(db, source, title, published_at, event_type="signing"):
+def _variant(db, source, title, published_at, event_type="signing", url=None):
     global _n
     _n += 1
-    url = f"https://src.example.com/{_n}"
+    url = url or f"https://src.example.com/{_n}"
     raw = RawItem(source_id=source.id, original_url=url, canonical_url=url, raw_title=title)
     db.add(raw)
     db.flush()
@@ -53,8 +53,8 @@ def _variant(db, source, title, published_at, event_type="signing"):
     return v
 
 
-def _cluster(db, source, title, published_at, event_type="signing"):
-    v = _variant(db, source, title, published_at, event_type)
+def _cluster(db, source, title, published_at, event_type="signing", url=None):
+    v = _variant(db, source, title, published_at, event_type, url=url)
     return match_or_create_cluster(db, v, v.tokens, [], event_type, source, tag_names=[])
 
 
@@ -64,6 +64,60 @@ def test_same_story_two_sources_merge_into_one_cluster(pg_db):
     title = "Celebrini signs eight year extension with the Sharks"
     cid1 = _cluster(pg_db, src, title, now)
     cid2 = _cluster(pg_db, src, title, now)  # syndicated copy → title match
+    assert cid1 == cid2
+
+
+@pytest.mark.parametrize("left,right,event_type", [
+    (
+        "Sharks news: San Jose signs former Rangers defenseman to one-year, two-way contract",
+        "Sharks sign former Rangers defenseman to one-year, two-way contract - Yahoo Sports",
+        "signing",
+    ),
+    (
+        "BARRACUDA UPGRADE: Eric Comrie, Alex Barre-Boulet STRENGTHEN San Jose’s AHL PLAYOFF Push",
+        "Eric Comrie, Alex Barre-Boulet STRENGTHEN San Jose's AHL PLAYOFF Push | cbs19.tv",
+        "other",
+    ),
+])
+def test_reported_duplicate_pairs_merge_without_entities(
+    pg_db, left, right, event_type
+):
+    src = _source(pg_db)
+    now = datetime.utcnow()
+    cid1 = _cluster(pg_db, src, left, now, event_type)
+    cid2 = _cluster(pg_db, src, right, now, event_type)
+    assert cid1 == cid2
+
+
+def test_late_copies_use_publication_relative_window(pg_db):
+    src = _source(pg_db)
+    old_publication_time = datetime.utcnow() - timedelta(days=5)
+    title = "Sharks sign Libor Hajek to a one year contract"
+    cid1 = _cluster(pg_db, src, title, old_publication_time, "signing")
+    cid2 = _cluster(pg_db, src, title, old_publication_time, "signing")
+    assert cid1 == cid2
+
+
+def test_cross_domain_shared_content_uuid_merges(pg_db):
+    src = _source(pg_db)
+    now = datetime.utcnow()
+    content_id = "535-646a692c-dca4-4e11-aa72-38891f6d78af"
+    cid1 = _cluster(
+        pg_db,
+        src,
+        "Barracuda roster analysis",
+        now,
+        "other",
+        url=f"https://www.kens5.com/video/story/{content_id}",
+    )
+    cid2 = _cluster(
+        pg_db,
+        src,
+        "AHL playoff push video",
+        now,
+        "prospect",
+        url=f"https://www.fox61.com/video/story/{content_id}",
+    )
     assert cid1 == cid2
 
 

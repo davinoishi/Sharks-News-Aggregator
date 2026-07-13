@@ -25,9 +25,11 @@ from app.enrichment.classify import (
 from app.enrichment.clustering import (
     add_cluster_entity_associations,
     add_cluster_tag_associations,
+    calculate_similarity_score,
     create_cluster,
     entity_overlap_score,
     event_compatibility_score,
+    extract_syndication_key,
     get_cluster_entities,
     get_time_window_for_event,
     is_match,
@@ -37,6 +39,7 @@ from app.enrichment.clustering import (
     normalize_tokens,
     summary_similarity,
     title_similarity,
+    title_token_similarity,
     update_cluster_metadata,
 )
 from app.enrichment.entities import (
@@ -72,12 +75,15 @@ __all__ = [
     "get_cluster_entities",
     "add_cluster_entity_associations",
     "add_cluster_tag_associations",
+    "calculate_similarity_score",
     "entity_overlap_score",
     "jaccard_similarity",
     "event_compatibility_score",
+    "extract_syndication_key",
     "normalize_title_for_matching",
     "title_similarity",
     "summary_similarity",
+    "title_token_similarity",
     "is_match",
     "get_time_window_for_event",
     # teams

@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     cluster_similarity_threshold: float = 0.62
     entity_overlap_threshold: float = 0.50
     token_similarity_threshold: float = 0.40
+    entityless_token_similarity_threshold: float = 0.55
+    title_similarity_threshold: float = 0.85
+    title_containment_threshold: float = 0.90
+    title_jaccard_threshold: float = 0.55
+    title_min_shared_tokens: int = 6
 
     # Ingestion age gate
     max_article_age_days: int = 7
