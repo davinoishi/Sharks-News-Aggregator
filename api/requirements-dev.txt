@@ -1,4 +1,4 @@
 # Development/test-only dependencies (not installed in the runtime image).
 -r requirements.txt
 pytest==8.3.4
-ruff==0.15.18
+ruff==0.15.21
