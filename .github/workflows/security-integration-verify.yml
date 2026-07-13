@@ -63,6 +63,17 @@ jobs:
           docker compose -f docker-compose.yml -f docker-compose.pi.yml ps db    | grep -qi healthy
           docker compose -f docker-compose.yml -f docker-compose.pi.yml ps redis | grep -qi healthy
 
+      - name: Redis/Celery broker and result round trip
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.pi.yml exec -T api python - <<'PY'
+          from app.tasks.celery_app import celery
+
+          result = celery.send_task("app.tasks.maintenance.monitor_pipeline_health")
+          value = result.get(timeout=60)
+          assert isinstance(value, dict), f"unexpected task result: {value!r}"
+          print(f"Celery task {result.id} completed through Redis: {value}")
+          PY
+
       - name: Admin auth (#52)
         run: |
           set -uo pipefail
