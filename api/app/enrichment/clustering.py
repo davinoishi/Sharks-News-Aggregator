@@ -4,6 +4,7 @@ import re
 from datetime import timedelta
 from difflib import SequenceMatcher
 from typing import List, Optional
+from urllib.parse import urlparse
 
 from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
@@ -22,10 +23,18 @@ from app.models import (
     ClusterVariant,
     EventType,
     SiteMetrics,
+    StoryVariant,
     Tag,
 )
 
 logger = logging.getLogger(__name__)
+
+SYNDICATION_UUID_RE = re.compile(
+    r"(?<![0-9a-f])"
+    r"[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}"
+    r"(?![0-9a-f])",
+    re.IGNORECASE,
+)
 
 
 def normalize_tokens(text: str) -> List[str]:
@@ -86,14 +95,58 @@ def match_or_create_cluster(
     Returns:
         cluster_id
     """
-    # Step 1: Determine time window based on event type
-    time_window = get_time_window_for_event(event_type)
-    cutoff_time = utcnow() - time_window
+    # Step 1: Exact syndicated-content match. Regional publishers commonly
+    # expose the same wire/video asset under different hosts while retaining a
+    # shared UUID in the URL. Keep both variants, but put them on one card.
+    syndication_key = extract_syndication_key(getattr(variant, "url", ""))
+    if syndication_key:
+        identifier = syndication_key.split(":", 1)[1]
+        syndicated_cluster = (
+            db.query(Cluster)
+            .join(ClusterVariant, ClusterVariant.cluster_id == Cluster.id)
+            .join(StoryVariant, StoryVariant.id == ClusterVariant.variant_id)
+            .filter(
+                Cluster.status == ClusterStatus.ACTIVE,
+                StoryVariant.id != variant.id,
+                StoryVariant.url.ilike(f"%{identifier}%"),
+            )
+            .order_by(Cluster.last_seen_at.desc())
+            .first()
+        )
+        if syndicated_cluster:
+            logger.debug(
+                "  → Syndication match (%s): clustering with #%s",
+                syndication_key,
+                syndicated_cluster.id,
+            )
+            update_cluster_metadata(
+                db, syndicated_cluster, variant, tokens, entities, source, tag_names
+            )
+            db.add(ClusterVariant(
+                cluster_id=syndicated_cluster.id,
+                variant_id=variant.id,
+                similarity_score=1.0,
+            ))
+            variant.cluster_id = syndicated_cluster.id
+            db.commit()
+            return syndicated_cluster.id
 
-    # Step 2: Load candidate clusters within time window
+    # Step 2: Determine time window relative to the story, not worker time.
+    # A late syndicated copy of a five-day-old story should still see another
+    # copy published on the same day. Using utcnow() made accepted seven-day-old
+    # items ineligible for even an exact title comparison.
+    time_window = get_time_window_for_event(event_type)
+    variant_time = ensure_aware(variant.published_at) or utcnow()
+    window_start = variant_time - time_window
+    window_end = variant_time + time_window
+
+    # Load clusters whose observed publication interval overlaps the window.
+    # last_seen_at also keeps a still-evolving cluster eligible even when its
+    # first article is older than the event window.
     candidates = db.query(Cluster).filter(
         Cluster.status == ClusterStatus.ACTIVE,
-        Cluster.first_seen_at >= cutoff_time
+        Cluster.last_seen_at >= window_start,
+        Cluster.first_seen_at <= window_end,
     ).all()
 
     # Filter out team entities for clustering (they're too broad)
@@ -112,7 +165,8 @@ def match_or_create_cluster(
             game_cluster = db.query(Cluster).filter(
                 Cluster.status == ClusterStatus.ACTIVE,
                 Cluster.game_identifier == game_identifier,
-                Cluster.first_seen_at >= cutoff_time
+                Cluster.last_seen_at >= window_start,
+                Cluster.first_seen_at <= window_end,
             ).first()
 
             if game_cluster:
@@ -131,25 +185,47 @@ def match_or_create_cluster(
     # Step 2.5: Check for near-identical titles (syndicated content detection)
     # This catches wire service articles republished by multiple outlets
     variant_title_normalized = normalize_title_for_matching(variant.title)
+    best_title_match = None
+    best_title_rank = (0.0, 0.0, 0.0)
     for cluster in candidates:
         # Get a representative title from this cluster
         cluster_title = cluster.headline
         cluster_title_normalized = normalize_title_for_matching(cluster_title)
 
         title_sim = title_similarity(variant_title_normalized, cluster_title_normalized)
-        if title_sim >= 0.85:  # 85% title similarity = likely same article
-            logger.debug("  → Title match (%.2f): clustering with #%s", title_sim, cluster.id)
-            # Auto-match to this cluster
-            update_cluster_metadata(db, cluster, variant, tokens, entities, source, tag_names)
-            cluster_variant = ClusterVariant(
-                cluster_id=cluster.id,
-                variant_id=variant.id,
-                similarity_score=title_sim
-            )
-            db.add(cluster_variant)
-            variant.cluster_id = cluster.id
-            db.commit()
-            return cluster.id
+        title_jaccard, title_containment, shared_title_tokens = title_token_similarity(
+            variant_title_normalized, cluster_title_normalized
+        )
+        strong_containment = (
+            shared_title_tokens >= settings.title_min_shared_tokens
+            and title_containment >= settings.title_containment_threshold
+            and title_jaccard >= settings.title_jaccard_threshold
+        )
+        if title_sim >= settings.title_similarity_threshold or strong_containment:
+            rank = (max(title_sim, title_containment), title_jaccard, title_sim)
+            if rank > best_title_rank:
+                best_title_match = cluster
+                best_title_rank = rank
+
+    if best_title_match is not None:
+        title_confidence = best_title_rank[0]
+        logger.debug(
+            "  → Title match (confidence=%.2f, jaccard=%.2f): clustering with #%s",
+            title_confidence,
+            best_title_rank[1],
+            best_title_match.id,
+        )
+        update_cluster_metadata(
+            db, best_title_match, variant, tokens, entities, source, tag_names
+        )
+        db.add(ClusterVariant(
+            cluster_id=best_title_match.id,
+            variant_id=variant.id,
+            similarity_score=title_confidence,
+        ))
+        variant.cluster_id = best_title_match.id
+        db.commit()
+        return best_title_match.id
 
     # Step 3: Score similarity against each candidate
     # Use LLM summary for enhanced semantic matching when available
@@ -178,22 +254,32 @@ def match_or_create_cluster(
         K = event_compatibility_score(event_type, cluster.event_type.value)
 
         L = 0.0
-        no_entities = not clustering_entities and not cluster_clustering_entities
+        entities_comparable = bool(clustering_entities) and bool(cluster_clustering_entities)
+        llm_signal = "none"
         if has_llm_signal and cluster.llm_summary:
             L = summary_similarity(llm_summary, cluster.llm_summary)
-            if no_entities:
-                # No non-team entities on either side — shift E weight to L
-                S = 0.30 * T + 0.10 * K + 0.60 * L
-            else:
-                S = 0.35 * E + 0.20 * T + 0.10 * K + 0.35 * L
+            llm_signal = "summary_pair"
         elif has_llm_signal:
             L = summary_similarity(llm_summary, cluster.headline)
-            S = 0.45 * E + 0.25 * T + 0.10 * K + 0.20 * L
-        else:
-            S = 0.55 * E + 0.35 * T + 0.10 * K
+            llm_signal = "summary_headline"
 
-        # Check if this is a match (use clustering_entities for the gate check)
-        if is_match(E, T, S, clustering_entities, L):
+        S = calculate_similarity_score(
+            E, T, K, L,
+            entities_comparable=entities_comparable,
+            llm_signal=llm_signal,
+        )
+
+        matched = is_match(
+            E, T, S, clustering_entities, L,
+            entities_c=cluster_clustering_entities,
+        )
+        logger.debug(
+            "  → Candidate #%s: E=%.3f T=%.3f K=%.3f L=%.3f S=%.3f "
+            "entities_comparable=%s matched=%s",
+            cluster.id, E, T, K, L, S, entities_comparable, matched,
+        )
+
+        if matched:
             if S > best_score + 0.000001:
                 best_cluster = cluster
                 best_score = S
@@ -258,6 +344,40 @@ def jaccard_similarity(tokens_v: List[str], tokens_c: List[str]) -> float:
     return intersection / max(1, union)
 
 
+def calculate_similarity_score(
+    E: float,
+    T: float,
+    K: float,
+    L: float = 0.0,
+    *,
+    entities_comparable: bool,
+    llm_signal: str = "none",
+) -> float:
+    """Combine available clustering signals without penalizing missing data.
+
+    Previously, entity overlap retained 55% of the score even when one or both
+    articles had no extracted entities. In the no-LLM case that capped an
+    entity-free article at 0.45, below the 0.62 match threshold. Missing entity
+    data now shifts the decision to token/event evidence instead of acting as a
+    guaranteed negative.
+    """
+    if llm_signal == "summary_pair":
+        if entities_comparable:
+            return 0.35 * E + 0.20 * T + 0.10 * K + 0.35 * L
+        return 0.30 * T + 0.10 * K + 0.60 * L
+
+    if llm_signal == "summary_headline":
+        if entities_comparable:
+            return 0.45 * E + 0.25 * T + 0.10 * K + 0.20 * L
+        return 0.55 * T + 0.15 * K + 0.30 * L
+
+    if entities_comparable:
+        return 0.55 * E + 0.35 * T + 0.10 * K
+
+    # Renormalize the available T/K weights (0.35 + 0.10) to 1.0.
+    return (0.35 * T + 0.10 * K) / 0.45
+
+
 def event_compatibility_score(event_v: str, event_c: str) -> float:
     """
     Calculate event type compatibility score (K).
@@ -305,12 +425,22 @@ def normalize_title_for_matching(title: str) -> str:
     if not title:
         return ""
 
-    # Lowercase
-    title = title.lower()
+    # Remove a trailing publication label before lowercasing so capitalization
+    # remains available to the heuristic. Separators inside words (one-year,
+    # Barre-Boulet) are intentionally unaffected because whitespace is required.
+    suffix_match = re.search(r"\s+([-\u2013—|])\s+(.+?)\s*$", title)
+    if suffix_match:
+        separator, suffix = suffix_match.groups()
+        suffix_words = re.findall(r"[A-Za-z0-9.]+", suffix)
+        looks_like_publication = bool(suffix_words) and len(suffix_words) <= 6 and all(
+            "." in word or any(char.isupper() for char in word)
+            for word in suffix_words
+        )
+        if separator == "|" or looks_like_publication:
+            title = title[:suffix_match.start()]
 
-    # Remove common separators and everything after them (publication names)
-    # Common patterns: " - Publication", " | Publication", " – Publication"
-    title = re.split(r'\s*[-–|]\s*(?=[A-Z]|[a-z]+\.[a-z]+)', title)[0]
+    # Normalize apostrophes before punctuation removal, then lowercase.
+    title = title.replace("’", "'").replace("‘", "'").lower()
 
     # Remove punctuation
     title = re.sub(r'[^\w\s]', ' ', title)
@@ -319,6 +449,37 @@ def normalize_title_for_matching(title: str) -> str:
     title = ' '.join(title.split())
 
     return title.strip()
+
+
+def title_token_similarity(title1: str, title2: str) -> tuple[float, float, int]:
+    """Return headline token Jaccard, containment, and shared-token count.
+
+    Containment catches a syndicated title with harmless editorial framing such
+    as ``Sharks news:`` or ``BARRACUDA UPGRADE:``. The caller combines it with
+    minimum shared-token and Jaccard gates to avoid generic short-title matches.
+    """
+    tokens1 = {token for token in title1.split() if len(token) > 2}
+    tokens2 = {token for token in title2.split() if len(token) > 2}
+    if not tokens1 or not tokens2:
+        return 0.0, 0.0, 0
+
+    shared = len(tokens1 & tokens2)
+    jaccard = shared / len(tokens1 | tokens2)
+    containment = shared / min(len(tokens1), len(tokens2))
+    return jaccard, containment, shared
+
+
+def extract_syndication_key(url: str) -> Optional[str]:
+    """Extract a stable cross-domain syndicated-content key from a URL."""
+    if not url:
+        return None
+
+    # Restrict fingerprints to the path. Query strings commonly contain
+    # analytics/session UUIDs that identify a visit rather than an article.
+    match = SYNDICATION_UUID_RE.search(urlparse(url).path)
+    if not match:
+        return None
+    return f"uuid:{match.group(0).lower()}"
 
 
 def title_similarity(title1: str, title2: str) -> float:
@@ -374,20 +535,44 @@ def summary_similarity(text1: str, text2: str) -> float:
     return max(seq_score, jaccard)
 
 
-def is_match(E: float, T: float, S: float, entities_v: List[int], L: float = 0.0) -> bool:
+def is_match(
+    E: float,
+    T: float,
+    S: float,
+    entities_v: List[int],
+    L: float = 0.0,
+    entities_c: Optional[List[int]] = None,
+) -> bool:
     """
     Determine if similarity scores indicate a match.
 
     From PRD Section 8.4:
-    - Entity gate: E >= 0.50 OR (|entities(v)| == 0 AND T >= 0.40)
+    - Entity gate: E >= 0.50 when both sides have entities
+    - Missing-entity fallback: T >= 0.55 in the production matcher
     - LLM override: L >= 0.70 bypasses entity gate (high-confidence semantic match)
     - Overall score: S >= 0.62
     """
     # Entity gate
-    if len(entities_v) > 0:
+    # When both sides have entities, require entity agreement. If either side
+    # lacks entity data, fall back to the token gate rather than treating the
+    # missing extraction as evidence that the stories differ. ``None`` retains
+    # the legacy single-list behavior for external callers.
+    entities_comparable = bool(entities_v) and (
+        entities_c is None or bool(entities_c)
+    )
+    if entities_comparable:
         entity_gate = E >= settings.entity_overlap_threshold
     else:
-        entity_gate = T >= settings.token_similarity_threshold
+        token_threshold = settings.token_similarity_threshold
+        if entities_c is not None:
+            # The production matcher supplies both lists. Require stronger
+            # lexical evidence when entity comparison is unavailable; the lower
+            # legacy threshold remains for callers using the old signature.
+            token_threshold = max(
+                token_threshold,
+                settings.entityless_token_similarity_threshold,
+            )
+        entity_gate = T >= token_threshold
 
     # High-confidence LLM match can bypass the entity gate
     if L >= 0.70:
@@ -511,6 +696,16 @@ def update_cluster_metadata(db: Session, cluster, variant, tokens: List[str], en
     existing_entities = set(cluster.entities_agg or [])
     new_entities = set(entities)
     cluster.entities_agg = list(existing_entities | new_entities)
+
+    # Backfill a missing cluster summary when a later enrichment call succeeds.
+    # The old behavior permanently left the cluster without an LLM signal if
+    # OpenRouter happened to fail for the first variant.
+    variant_summary = (
+        (variant.extra_metadata or {}).get("llm_summary")
+        if hasattr(variant, "extra_metadata") else None
+    )
+    if not cluster.llm_summary and variant_summary:
+        cluster.llm_summary = variant_summary
 
     # Add new entity associations
     add_cluster_entity_associations(db, cluster, entities)

@@ -9,16 +9,19 @@ import pytest
 
 from app.core.config import settings
 from app.tasks.enrich import (
+    calculate_similarity_score,
     classify_event_type_keyword,
     count_event_keyword_matches,
     entity_overlap_score,
     event_compatibility_score,
     extract_game_identifier,
+    extract_syndication_key,
     get_time_window_for_event,
     is_match,
     jaccard_similarity,
     normalize_title_for_matching,
     title_similarity,
+    title_token_similarity,
 )
 
 # --- entity_overlap_score ----------------------------------------------------
@@ -93,6 +96,42 @@ def test_no_entities_uses_token_gate():
     assert is_match(E=0.0, T=0.3, S=0.7, entities_v=[]) is False
 
 
+def test_one_sided_entities_use_token_gate():
+    assert is_match(
+        E=0.0, T=0.6, S=0.7, entities_v=[1], entities_c=[]
+    ) is True
+
+
+def test_entityless_production_gate_requires_stronger_token_evidence():
+    assert is_match(
+        E=0.0, T=0.54, S=0.8, entities_v=[], entities_c=[]
+    ) is False
+    assert is_match(
+        E=0.0, T=0.55, S=0.8, entities_v=[], entities_c=[]
+    ) is True
+
+
+def test_entity_free_score_renormalizes_available_signals():
+    score = calculate_similarity_score(
+        E=0.0,
+        T=0.7,
+        K=1.0,
+        entities_comparable=False,
+    )
+    assert score == pytest.approx((0.35 * 0.7 + 0.10) / 0.45)
+    assert score > settings.cluster_similarity_threshold
+
+
+def test_comparable_entities_keep_original_weights():
+    score = calculate_similarity_score(
+        E=0.6,
+        T=0.5,
+        K=1.0,
+        entities_comparable=True,
+    )
+    assert score == pytest.approx(0.55 * 0.6 + 0.35 * 0.5 + 0.10)
+
+
 def test_llm_override_bypasses_entity_gate():
     assert is_match(E=0.1, T=0.1, S=0.7, entities_v=[1], L=0.75) is True
 
@@ -123,15 +162,57 @@ def test_normalize_title_lowercases_and_strips_punctuation():
     assert normalize_title_for_matching("Celebrini, Signs!") == "celebrini signs"
 
 
-@pytest.mark.xfail(
-    reason="BUG: normalize_title_for_matching lowercases before a regex that "
-    "looks for capitalized publication names, so the suffix is never stripped",
-    strict=True,
-)
 def test_normalize_title_strips_publication_suffix():
     assert normalize_title_for_matching("Farabee scores winner - Western Wheel") == (
         "farabee scores winner"
     )
+
+
+def test_normalize_title_strips_pipe_domain_suffix():
+    assert normalize_title_for_matching("Farabee scores winner | cbs19.tv") == (
+        "farabee scores winner"
+    )
+
+
+def test_normalize_title_keeps_meaningful_dash_clause():
+    assert normalize_title_for_matching("Sharks - rangers preview") == (
+        "sharks rangers preview"
+    )
+
+
+@pytest.mark.parametrize("left,right", [
+    (
+        "Sharks news: San Jose signs former Rangers defenseman to one-year, two-way contract",
+        "Sharks sign former Rangers defenseman to one-year, two-way contract - Yahoo Sports",
+    ),
+    (
+        "BARRACUDA UPGRADE: Eric Comrie, Alex Barre-Boulet STRENGTHEN San Jose’s AHL PLAYOFF Push",
+        "Eric Comrie, Alex Barre-Boulet STRENGTHEN San Jose's AHL PLAYOFF Push | cbs19.tv",
+    ),
+])
+def test_reported_syndicated_titles_clear_title_threshold(left, right):
+    norm_left = normalize_title_for_matching(left)
+    norm_right = normalize_title_for_matching(right)
+    assert title_similarity(norm_left, norm_right) >= 0.85
+
+    jaccard, containment, shared = title_token_similarity(norm_left, norm_right)
+    assert jaccard >= 0.55
+    assert containment >= 0.90
+    assert shared >= 6
+
+
+def test_extract_syndication_key_from_cross_domain_video_url():
+    url = (
+        "https://www.kens5.com/video/sports/story/"
+        "535-646a692c-dca4-4e11-aa72-38891f6d78af"
+    )
+    assert extract_syndication_key(url) == (
+        "uuid:646a692c-dca4-4e11-aa72-38891f6d78af"
+    )
+
+
+def test_extract_syndication_key_none_for_normal_article_url():
+    assert extract_syndication_key("https://example.com/sharks-story") is None
 
 
 def test_extract_game_identifier_with_opponent():
