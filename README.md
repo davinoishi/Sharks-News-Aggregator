@@ -9,7 +9,6 @@ A comprehensive news aggregation and clustering system for San Jose Sharks hocke
 Deployed on a Raspberry Pi 5 (pi5-ai2), public via noBGP proxy:
 
 - **Web App**: https://x2mq74oetjlz.nobgp.com
-- **API**: https://tz2k2lxwodrv.nobgp.com (e.g. `/health`, `/feed`, `/rss`)
 - **BlueSky**: [@sjsharks-news.bsky.social](https://bsky.app/profile/sjsharks-news.bsky.social)
 
 ## Features
