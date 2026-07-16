@@ -20,6 +20,30 @@ from app.tasks.celery_app import celery
 
 logger = logging.getLogger(__name__)
 
+# Machine-generated scoreboard pages from live-score sites (picked up by
+# Google Alerts, often for games weeks away). They carry no reporting — just a
+# score widget and a schedule — so drop them at ingest before they cluster as
+# "news". Matched case-insensitively against the entry title.
+SCOREBOARD_TITLE_MARKERS = (
+    "boxscore",
+    "box score",
+    "live score",
+    "livescore",
+    "live stream",
+    "livestream",
+    "h2h stats",
+    "head to head stats",
+)
+
+
+def is_scoreboard_stub(title: Optional[str]) -> bool:
+    """True when a feed entry title identifies an auto-generated scoreboard/
+    live-score page rather than an article."""
+    if not title:
+        return False
+    lowered = title.lower()
+    return any(marker in lowered for marker in SCOREBOARD_TITLE_MARKERS)
+
 
 @celery.task(name="app.tasks.ingest.ingest_all_sources", bind=True)
 def ingest_all_sources(self):
@@ -158,6 +182,12 @@ def ingest_rss(db: Session, source) -> dict:
                 if resolved:
                     entry_url = resolved['url']
                     entry_title = resolved.get('title', entry_title)
+
+            # Drop auto-generated scoreboard/live-score pages (no reporting)
+            if is_scoreboard_stub(entry_title):
+                logger.info("  ⊘ Skipped scoreboard stub: %s", entry_title)
+                skipped_items += 1
+                continue
 
             # Create raw_item with idempotency
             raw_item = create_raw_item(

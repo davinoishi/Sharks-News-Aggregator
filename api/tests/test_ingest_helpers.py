@@ -11,6 +11,7 @@ from app.models import IngestMethod, Source, SourceCategory, SourceStatus
 from app.tasks.ingest import (
     ingest_api,
     ingest_html,
+    is_scoreboard_stub,
     parse_published_date,
     resolve_entry_url,
     sanitize_feed_xml,
@@ -34,6 +35,32 @@ def test_strip_html_strips_whitespace():
 def test_strip_html_passthrough_none_and_empty():
     assert strip_html(None) is None
     assert strip_html("") == ""
+
+
+# --- is_scoreboard_stub ------------------------------------------------------
+
+def test_scoreboard_stub_matches_boxscore_live_score_title():
+    assert is_scoreboard_stub(
+        "Vegas Golden Knights vs. San Jose Sharks - Boxscore - Live Score - September 22, 2026"
+    )
+
+
+def test_scoreboard_stub_matches_marker_variants():
+    assert is_scoreboard_stub("Sharks vs Kings Box Score")
+    assert is_scoreboard_stub("Sharks - Golden Knights LiveScore today")
+    assert is_scoreboard_stub("Watch Sharks vs Knights Live Stream free")
+    assert is_scoreboard_stub("Sharks vs Knights H2H Stats and prediction")
+
+
+def test_scoreboard_stub_is_case_insensitive():
+    assert is_scoreboard_stub("SHARKS VS KNIGHTS LIVE SCORE")
+
+
+def test_scoreboard_stub_ignores_real_headlines():
+    assert not is_scoreboard_stub("Celebrini scores twice as Sharks beat Golden Knights")
+    assert not is_scoreboard_stub("Sharks announce 2026-27 preseason schedule")
+    assert not is_scoreboard_stub(None)
+    assert not is_scoreboard_stub("")
 
 
 # --- sanitize_feed_xml -------------------------------------------------------
