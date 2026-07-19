@@ -255,3 +255,50 @@ CORS origin echoes, and the backup `verify` test-restore passed.
 | R2-S1 | P0 | merged + deployed | [#70](https://github.com/davinoishi/Sharks-News-Aggregator/pull/70) |
 | R2-O3 | P1 | merged + deployed | [#71](https://github.com/davinoishi/Sharks-News-Aggregator/pull/71) |
 | R2-F2 | P1 | merged + deployed | [#72](https://github.com/davinoishi/Sharks-News-Aggregator/pull/72) |
+
+---
+
+# Roadmap / backlog
+
+Deferred items, specified well enough to execute later without re-research.
+
+### RM-1 — Threads accounts as sources via self-hosted RSSHub
+
+*Deferred by decision 2026-07-19 (documented, not implemented). Feasibility
+verified live that day.*
+
+- **Goal.** Ingest NHL-insider Threads accounts — first candidate
+  [@kevweekes](https://www.threads.com/@kevweekes) (Kevin Weekes posts breaking
+  news there; he has no Bluesky presence). Complements the Bluesky mirror
+  sources added 2026-07-19 (sources 30–32: notfriedgehnic / notpierrevlebrun /
+  notfrankseravalli, plain `bsky.app/profile/<handle>/rss` feeds).
+- **Why not direct.** Threads has no native RSS. Its ActivityPub/fediverse
+  sharing would be the clean path, but it is opt-in per account and
+  `@kevweekes` has it disabled (webfinger for `kevweekes@threads.net` → 404,
+  checked 2026-07-19; re-check occasionally — it's a profile toggle). The
+  official Threads API is OAuth-scoped to one's own content, not arbitrary
+  public profiles.
+- **Verified approach.** Self-hosted [RSSHub](https://docs.rsshub.app)'s
+  `/threads/:user` route returns clean RSS **unauthenticated** (verified
+  2026-07-19 against `@kevweekes`: real titles, `threads.com/t/...` links,
+  correct pubDates; feedparser handles it; items carry titles so the #99
+  title-derivation fallback isn't even needed).
+- **Implementation sketch.**
+  1. Add an `rsshub` service to the compose files (`diygod/rsshub`, multi-arch
+     incl. arm64, ~640MB image — a pull, not a build, so no eMMC build risk on
+     the Pi). Point its cache at the existing `redis` service. No public port;
+     it only needs to be reachable from the worker network.
+  2. Add sources with `ingest_method=rss`,
+     `feed_url=http://rsshub:1200/threads/<user>`,
+     `base_url=https://www.threads.com/@<user>`, category `press`, relevance
+     check ON (league-wide content; low accept ratio is expected and correct).
+  3. Candidates: `kevweekes`; check whether Chris Johnston and Darren Dreger
+     are active on Threads (neither is on Bluesky as of 2026-07).
+- **Caveats.** This is scraping Meta — same fragility class as rss.app/Nitter.
+  When Meta changes markup, the route 5xxs, `fetch_error_count` climbs, and the
+  brief-09 health check flags the source as broken (that is the desired
+  signal). Fix is usually pulling a newer RSSHub image. Weekes posts in bursts
+  (a few/month, season-heavy), so a quiet source is normal.
+- **Verify.** `curl http://rsshub:1200/threads/kevweekes` returns RSS from the
+  Pi; the source ingests without errors; a non-hockey post is dropped by the
+  relevance filter; a Sharks-relevant post lands on a card with a real title.
