@@ -39,6 +39,26 @@ SCOREBOARD_TITLE_MARKERS = (
 )
 
 
+def derive_title_from_description(description: Optional[str], max_len: int = 140) -> Optional[str]:
+    """Fallback headline for feeds whose items carry no <title>.
+
+    Bluesky profile RSS (bsky.app/profile/<handle>/rss) emits description-only
+    items; without a derived title every story card reads "Untitled" and the
+    title-similarity clustering path merges unrelated posts as identical
+    headlines. Uses the first ~max_len chars of the description, cut on a word
+    boundary.
+    """
+    if not description:
+        return None
+    text = strip_html(description) or ""
+    text = " ".join(text.split())
+    if not text:
+        return None
+    if len(text) <= max_len:
+        return text
+    return text[:max_len].rsplit(" ", 1)[0] + "…"
+
+
 def is_scoreboard_stub(title: Optional[str]) -> bool:
     """True when a feed entry title identifies an auto-generated scoreboard/
     live-score page rather than an article."""
@@ -178,6 +198,8 @@ def ingest_rss(db: Session, source) -> dict:
         for entry in feed.entries:
             entry_url = resolve_entry_url(entry.get('link'), feed, source)
             entry_title = strip_html(entry.get('title'))
+            if not entry_title:
+                entry_title = derive_title_from_description(entry.get('summary'))
 
             # SportSpyder pages are ad wrappers — resolve to the real article
             if entry_url and 'sportspyder.com' in entry_url:
