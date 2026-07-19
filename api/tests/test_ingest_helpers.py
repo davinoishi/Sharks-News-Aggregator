@@ -9,6 +9,7 @@ from sqlalchemy.orm import sessionmaker
 from app.core.database import Base
 from app.models import IngestMethod, Source, SourceCategory, SourceStatus
 from app.tasks.ingest import (
+    derive_title_from_description,
     ingest_api,
     ingest_html,
     is_scoreboard_stub,
@@ -35,6 +36,33 @@ def test_strip_html_strips_whitespace():
 def test_strip_html_passthrough_none_and_empty():
     assert strip_html(None) is None
     assert strip_html("") == ""
+
+
+# --- derive_title_from_description -------------------------------------------
+
+def test_derive_title_short_description_used_verbatim():
+    # Bluesky profile RSS items have no <title>; tweets usually fit whole.
+    assert derive_title_from_description(
+        "Connor Bedard’s new contract with #Blackhawks: 5 years x $15 million."
+    ) == "Connor Bedard’s new contract with #Blackhawks: 5 years x $15 million."
+
+
+def test_derive_title_truncates_on_word_boundary():
+    long = "word " * 60
+    title = derive_title_from_description(long)
+    assert title.endswith("…")
+    assert len(title) <= 141
+    assert not title[:-1].endswith(" ")
+
+
+def test_derive_title_strips_html_and_whitespace():
+    assert derive_title_from_description("  <b>Sharks</b>\n sign   goalie  ") == "Sharks sign goalie"
+
+
+def test_derive_title_empty_inputs():
+    assert derive_title_from_description(None) is None
+    assert derive_title_from_description("") is None
+    assert derive_title_from_description("<p> </p>") is None
 
 
 # --- is_scoreboard_stub ------------------------------------------------------
