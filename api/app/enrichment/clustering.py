@@ -14,7 +14,7 @@ from app.core.config import settings
 from app.core.datetime_utils import ensure_aware, utcnow
 from app.enrichment.classify import classify_tags_keyword
 from app.enrichment.entities import filter_team_entities
-from app.enrichment.teams import extract_game_identifier
+from app.enrichment.teams import NHL_OPPONENT_TEAMS, extract_game_identifier
 from app.models import (
     Cluster,
     ClusterEntity,
@@ -28,6 +28,31 @@ from app.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Hockey abbreviations that survive the short-token filter: outlets alternate
+# freely between "GM" and "general manager", so both are canonicalized to the
+# short form and the short form is kept as a clustering token.
+SHORT_TOKENS_KEPT = frozenset({"gm"})
+
+_GENERAL_MANAGER_RE = re.compile(r"\bgeneral manager\b")
+
+# Words that disqualify a capitalized title bigram from being treated as a
+# person name: team/city vocabulary, roles, and words routinely capitalized in
+# title-case headlines. Lowercase.
+_NAME_STOPWORDS = frozenset(
+    {
+        "san", "jose", "sharks", "barracuda", "hockey", "nhl", "ahl",
+        "the", "new", "live", "updates", "update", "score", "scores",
+        "game", "games", "recap", "preview", "report", "reports", "news",
+        "breaking", "rumors", "watch", "hire", "hires", "hired", "sign",
+        "signs", "signed", "trade", "trades", "assistant", "general",
+        "manager", "coach", "head", "captain", "goalie", "goaltender",
+        "defenseman", "forward", "center", "winger", "prospect",
+        "january", "february", "march", "april", "may", "june", "july",
+        "august", "september", "october", "november", "december",
+    }
+    | {word for keyword in NHL_OPPONENT_TEAMS for word in keyword.split()}
+)
 
 SYNDICATION_UUID_RE = re.compile(
     r"(?<![0-9a-f])"
@@ -57,12 +82,19 @@ def normalize_tokens(text: str) -> List[str]:
     text = text.lower()
     text = re.sub(r'[^\w\s]', ' ', text)
 
+    # Canonicalize spelled-out abbreviations so "General Manager" and "GM"
+    # produce the same token.
+    text = _GENERAL_MANAGER_RE.sub("gm", text)
+
     # Tokenize
     tokens = word_tokenize(text)
 
     # Remove stopwords
     stop_words = set(stopwords.words('english'))
-    tokens = [t for t in tokens if t not in stop_words and len(t) > 2]
+    tokens = [
+        t for t in tokens
+        if t not in stop_words and (len(t) > 2 or t in SHORT_TOKENS_KEPT)
+    ]
 
     # TODO: Optional stemming
     # from nltk.stem import PorterStemmer
@@ -185,27 +217,59 @@ def match_or_create_cluster(
     # Step 2.5: Check for near-identical titles (syndicated content detection)
     # This catches wire service articles republished by multiple outlets
     variant_title_normalized = normalize_title_for_matching(variant.title)
+    variant_name_keys = extract_person_name_keys(variant.title or "")
+
+    # Compare against every title already in each candidate cluster, not just
+    # the cluster's headline (its first variant's title): a rewritten headline
+    # may only resemble a variant that joined the cluster later.
+    candidate_titles: dict = {}
+    if candidates:
+        rows = (
+            db.query(ClusterVariant.cluster_id, StoryVariant.title)
+            .join(StoryVariant, StoryVariant.id == ClusterVariant.variant_id)
+            .filter(ClusterVariant.cluster_id.in_([c.id for c in candidates]))
+            .all()
+        )
+        for cluster_id, cluster_variant_title in rows:
+            if cluster_variant_title:
+                candidate_titles.setdefault(cluster_id, set()).add(cluster_variant_title)
+
     best_title_match = None
     best_title_rank = (0.0, 0.0, 0.0)
     for cluster in candidates:
-        # Get a representative title from this cluster
-        cluster_title = cluster.headline
-        cluster_title_normalized = normalize_title_for_matching(cluster_title)
+        cluster_titles = candidate_titles.get(cluster.id, set())
+        if cluster.headline:
+            cluster_titles = cluster_titles | {cluster.headline}
+        for cluster_title in cluster_titles:
+            cluster_title_normalized = normalize_title_for_matching(cluster_title)
 
-        title_sim = title_similarity(variant_title_normalized, cluster_title_normalized)
-        title_jaccard, title_containment, shared_title_tokens = title_token_similarity(
-            variant_title_normalized, cluster_title_normalized
-        )
-        strong_containment = (
-            shared_title_tokens >= settings.title_min_shared_tokens
-            and title_containment >= settings.title_containment_threshold
-            and title_jaccard >= settings.title_jaccard_threshold
-        )
-        if title_sim >= settings.title_similarity_threshold or strong_containment:
-            rank = (max(title_sim, title_containment), title_jaccard, title_sim)
-            if rank > best_title_rank:
-                best_title_match = cluster
-                best_title_rank = rank
+            title_sim = title_similarity(variant_title_normalized, cluster_title_normalized)
+            title_jaccard, title_containment, shared_title_tokens = title_token_similarity(
+                variant_title_normalized, cluster_title_normalized
+            )
+            strong_containment = (
+                shared_title_tokens >= settings.title_min_shared_tokens
+                and title_containment >= settings.title_containment_threshold
+                and title_jaccard >= settings.title_jaccard_threshold
+            )
+            # Shared person name + moderate headline overlap + compatible event
+            # types. Catches personnel stories whose subject isn't in the entity
+            # table yet ("Sharks Hire Jeff Kealty ..." vs "Assistant GM Jeff
+            # Kealty departs Predators ..."), where every other path fails.
+            name_match = False
+            if variant_name_keys:
+                cluster_name_keys = extract_person_name_keys(cluster_title or "")
+                name_match = (
+                    bool(variant_name_keys & cluster_name_keys)
+                    and shared_title_tokens >= settings.title_name_min_shared_tokens
+                    and title_jaccard >= settings.title_name_jaccard_threshold
+                    and event_compatibility_score(event_type, cluster.event_type.value) >= 0.5
+                )
+            if title_sim >= settings.title_similarity_threshold or strong_containment or name_match:
+                rank = (max(title_sim, title_containment), title_jaccard, title_sim)
+                if rank > best_title_rank:
+                    best_title_match = cluster
+                    best_title_rank = rank
 
     if best_title_match is not None:
         title_confidence = best_title_rank[0]
@@ -235,6 +299,13 @@ def match_or_create_cluster(
     best_cluster = None
     best_score = 0.0
 
+    # Suffix-stripped headline tokens: "- Yahoo Sports"-style publication
+    # labels would otherwise dilute the headline-to-headline comparison.
+    variant_title_tokens = (
+        normalize_tokens(normalize_title_for_matching(variant.title))
+        if variant.title else []
+    )
+
     for cluster in candidates:
         # Get cluster's aggregated entities and tokens
         cluster_entities = cluster.entities_agg or []
@@ -250,7 +321,15 @@ def match_or_create_cluster(
         T_pool = jaccard_similarity(tokens, cluster_tokens)
         headline_tokens = normalize_tokens(cluster.headline) if cluster.headline else []
         T_headline = jaccard_similarity(tokens, headline_tokens)
-        T = max(T_pool, T_headline)
+        # Headline-to-headline comparison: a short rewritten headline ("Sharks
+        # Hire New Assistant GM") drowns in the full token pool but still
+        # overlaps strongly with the cluster's headline alone.
+        cluster_title_tokens = (
+            normalize_tokens(normalize_title_for_matching(cluster.headline))
+            if cluster.headline else []
+        )
+        T_title = jaccard_similarity(variant_title_tokens, cluster_title_tokens)
+        T = max(T_pool, T_headline, T_title)
         K = event_compatibility_score(event_type, cluster.event_type.value)
 
         L = 0.0
@@ -403,6 +482,10 @@ def event_compatibility_score(event_v: str, event_c: str) -> float:
         ('trade', 'opinion'),
         ('opinion', 'other'),
         ('other', 'opinion'),
+        # Staff hires and roster moves are frequently classified 'signing' by
+        # one source's wording and 'other' by another's.
+        ('signing', 'other'),
+        ('other', 'signing'),
     }
 
     if (event_v, event_c) in compatible_pairs:
@@ -448,6 +531,10 @@ def normalize_title_for_matching(title: str) -> str:
     # Normalize whitespace
     title = ' '.join(title.split())
 
+    # Canonicalize spelled-out abbreviations ("general manager" → "gm") so
+    # headline wording differences don't defeat the title comparisons.
+    title = _GENERAL_MANAGER_RE.sub("gm", title)
+
     return title.strip()
 
 
@@ -458,8 +545,14 @@ def title_token_similarity(title1: str, title2: str) -> tuple[float, float, int]
     as ``Sharks news:`` or ``BARRACUDA UPGRADE:``. The caller combines it with
     minimum shared-token and Jaccard gates to avoid generic short-title matches.
     """
-    tokens1 = {token for token in title1.split() if len(token) > 2}
-    tokens2 = {token for token in title2.split() if len(token) > 2}
+    tokens1 = {
+        token for token in title1.split()
+        if len(token) > 2 or token in SHORT_TOKENS_KEPT
+    }
+    tokens2 = {
+        token for token in title2.split()
+        if len(token) > 2 or token in SHORT_TOKENS_KEPT
+    }
     if not tokens1 or not tokens2:
         return 0.0, 0.0, 0
 
@@ -467,6 +560,38 @@ def title_token_similarity(title1: str, title2: str) -> tuple[float, float, int]
     jaccard = shared / len(tokens1 | tokens2)
     containment = shared / min(len(tokens1), len(tokens2))
     return jaccard, containment, shared
+
+
+def extract_person_name_keys(title: str) -> set:
+    """Extract probable person-name bigrams from a raw (unlowercased) title.
+
+    Personnel stories often involve people who are not yet in the entity table
+    (a newly hired assistant GM, an incoming coach), which disables the entity
+    clustering path entirely. Adjacent capitalized words that aren't team/city
+    vocabulary or routine title-case headline words ("Sharks Hire ...") are a
+    strong story-identity signal for those articles.
+
+    Returns lowercase "first last" strings, e.g. {"jeff kealty"}.
+    """
+    if not title:
+        return set()
+
+    words = re.findall(r"[A-Za-z][A-Za-z'’.-]*", title)
+
+    def looks_like_name_word(word: str) -> bool:
+        # Starts uppercase and contains a lowercase letter — rejects
+        # all-caps tokens like "GM" or "AHL" and lowercase sentence words.
+        return word[0].isupper() and any(c.islower() for c in word)
+
+    keys = set()
+    for first, second in zip(words, words[1:]):
+        if not (looks_like_name_word(first) and looks_like_name_word(second)):
+            continue
+        pair = (first.strip(".").lower(), second.strip(".").lower())
+        if pair[0] in _NAME_STOPWORDS or pair[1] in _NAME_STOPWORDS:
+            continue
+        keys.add(f"{pair[0]} {pair[1]}")
+    return keys
 
 
 def extract_syndication_key(url: str) -> Optional[str]:
@@ -522,8 +647,8 @@ def summary_similarity(text1: str, text2: str) -> float:
 
     tokens1 = set(norm1.split())
     tokens2 = set(norm2.split())
-    tokens1 = {t for t in tokens1 if len(t) > 2}
-    tokens2 = {t for t in tokens2 if len(t) > 2}
+    tokens1 = {t for t in tokens1 if len(t) > 2 or t in SHORT_TOKENS_KEPT}
+    tokens2 = {t for t in tokens2 if len(t) > 2 or t in SHORT_TOKENS_KEPT}
 
     if tokens1 and tokens2:
         intersection = len(tokens1 & tokens2)

@@ -31,6 +31,9 @@ SCOREBOARD_TITLE_MARKERS = (
     "livescore",
     "live stream",
     "livestream",
+    "live updates",
+    "play-by-play",
+    "play by play",
     "h2h stats",
     "head to head stats",
 )
