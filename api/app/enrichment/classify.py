@@ -3,6 +3,7 @@
 Keyword scoring with LLM (OpenRouter) orchestration and keyword fallback.
 """
 import logging
+import re
 from typing import List, Optional, Tuple
 
 from sqlalchemy.orm import Session
@@ -15,6 +16,35 @@ from app.services.openrouter import check_relevance as llm_check_relevance
 from app.services.openrouter import classify_and_summarize as llm_classify_and_summarize
 
 logger = logging.getLogger(__name__)
+
+# Event-type keyword vocabulary. Matched as whole words: the old substring
+# matching classified any headline containing "Assistant" as a game story
+# ('assist') and anything from Predlines as a lineup story ('lines'), which
+# then blocked clustering via the event-compatibility gate. Inflected forms
+# are listed explicitly because word boundaries end stem matching.
+_EVENT_KEYWORDS = {
+    'trade': ['trade', 'trades', 'traded', 'acquire', 'acquires', 'acquired', 'dealt'],
+    'injury': ['injury', 'injuries', 'injured', 'injured reserve', 'day-to-day',
+               'out indefinitely', 'week-to-week'],
+    'lineup': ['lineup', 'lineups', 'lines', 'starting', 'scratched', 'scratch', 'scratches'],
+    'recall': ['recall', 'recalls', 'recalled', 'call up', 'calls up', 'called up',
+               'promote', 'promotes', 'promoted'],
+    'waiver': ['waiver', 'waivers', 'claim', 'claims', 'claimed'],
+    'signing': ['sign', 'signs', 'signed', 'signing', 'signings', 're-sign', 're-signs',
+                're-signed', 'contract', 'extension', 'agree to terms',
+                'hire', 'hires', 'hired', 'hiring'],
+    'prospect': ['prospect', 'prospects', 'draft', 'drafted', 'junior', 'development'],
+    'game': ['game', 'games', 'win', 'wins', 'won', 'winner', 'winning', 'loss',
+             'score', 'scores', 'scored', 'final', 'vs', 'defeat', 'defeats', 'defeated',
+             'beat', 'beats', 'period', 'goal', 'goals', 'assist', 'assists',
+             'shutout', 'overtime', 'recap'],
+    'opinion': ['think', 'believe', 'opinion', 'analysis', 'why', 'should'],
+}
+
+_EVENT_KEYWORD_PATTERNS = {
+    event_type: [re.compile(r'\b' + re.escape(keyword) + r'\b') for keyword in keywords]
+    for event_type, keywords in _EVENT_KEYWORDS.items()
+}
 
 
 def _record_llm_failopen(db: Session, error: Optional[str]) -> None:
@@ -294,22 +324,9 @@ def count_event_keyword_matches(text_lower: str) -> dict:
     Returns:
         Dict of event_type -> match count (only includes types with matches > 0)
     """
-    event_keywords = {
-        'trade': ['trade', 'traded', 'acquire', 'acquired', 'dealt'],
-        'injury': ['injury', 'injured', 'injured reserve', 'day-to-day', 'out indefinitely', 'week-to-week'],
-        'lineup': ['lineup', 'lines', 'starting', 'scratched', 'scratch'],
-        'recall': ['recall', 'recalled', 'call up', 'called up', 'promote'],
-        'waiver': ['waiver', 'waivers', 'claimed', 'claim'],
-        'signing': ['sign', 'signed', 'contract', 'extension', 'agree to terms'],
-        'prospect': ['prospect', 'draft', 'drafted', 'junior', 'development'],
-        'game': ['game', 'win', 'loss', 'score', 'final', 'vs', 'defeat', 'beat',
-                 'period', 'goal', 'assist', 'shutout', 'overtime', 'recap'],
-        'opinion': ['think', 'believe', 'opinion', 'analysis', 'why', 'should'],
-    }
-
     scores = {}
-    for event_type, keywords in event_keywords.items():
-        count = sum(1 for keyword in keywords if keyword in text_lower)
+    for event_type, patterns in _EVENT_KEYWORD_PATTERNS.items():
+        count = sum(1 for pattern in patterns if pattern.search(text_lower))
         if count > 0:
             scores[event_type] = count
 

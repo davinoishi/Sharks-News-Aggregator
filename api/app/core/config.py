@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     title_containment_threshold: float = 0.90
     title_jaccard_threshold: float = 0.55
     title_min_shared_tokens: int = 6
+    # Shared-person-name title match (personnel stories whose subject isn't an
+    # entity yet): lower bar than the syndication gates above because the name
+    # bigram itself carries most of the evidence.
+    title_name_jaccard_threshold: float = 0.40
+    title_name_min_shared_tokens: int = 4
 
     # Ingestion age gate
     max_article_age_days: int = 7

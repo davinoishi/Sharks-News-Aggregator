@@ -19,49 +19,107 @@ logger = logging.getLogger(__name__)
 _ALERT_STATE_PREFIX = "alert_last_fired:"
 
 
-@celery.task(name="app.tasks.maintenance.purge_old_items")
-def purge_old_items():
+def run_purge_old_items(db) -> dict:
     """
     Delete clusters and raw_items older than 30 days.
-    CASCADE foreign keys handle cleanup of:
+    Database CASCADE foreign keys handle cleanup of:
       - cluster_variants, cluster_tags, cluster_entities (from clusters)
       - story_variants, cluster_variants (from raw_items)
       - submissions get NULLed references
-    Runs daily via Celery Beat.
+    Raw items are bulk-deleted: ORM-level delete would try to NULL
+    story_variants.raw_item_id (not-null) instead of letting the database
+    cascade, aborting the purge with an IntegrityError.
     """
     from app.models import Cluster, RawItem
 
+    cutoff = utcnow() - timedelta(days=30)
+
+    # Delete old clusters (last_seen_at > 30 days ago)
+    old_clusters = db.query(Cluster).filter(Cluster.last_seen_at < cutoff).all()
+    clusters_deleted = len(old_clusters)
+    for cluster in old_clusters:
+        db.delete(cluster)
+    db.commit()
+
+    # Delete old raw_items (created_at > 30 days ago)
+    items_deleted = db.query(RawItem).filter(
+        RawItem.created_at < cutoff
+    ).delete(synchronize_session=False)
+    db.commit()
+
+    logger.info(
+        "Purge complete: %d clusters, %d raw_items deleted (cutoff: %s)",
+        clusters_deleted, items_deleted, cutoff,
+    )
+
+    return {
+        "status": "success",
+        "clusters_deleted": clusters_deleted,
+        "raw_items_deleted": items_deleted,
+        "cutoff": cutoff.isoformat(),
+    }
+
+
+@celery.task(name="app.tasks.maintenance.purge_old_items")
+def purge_old_items():
+    """Daily retention purge (see run_purge_old_items). Runs via Celery Beat."""
     db = SessionLocal()
     try:
-        cutoff = utcnow() - timedelta(days=30)
+        return run_purge_old_items(db)
+    finally:
+        db.close()
 
-        # Delete old clusters (last_seen_at > 30 days ago)
-        old_clusters = db.query(Cluster).filter(Cluster.last_seen_at < cutoff).all()
-        clusters_deleted = len(old_clusters)
-        for cluster in old_clusters:
-            db.delete(cluster)
-        db.commit()
 
-        # Delete old raw_items (created_at > 30 days ago)
-        # Cascades to story_variants and their cluster_variants
-        old_items = db.query(RawItem).filter(RawItem.created_at < cutoff).all()
-        items_deleted = len(old_items)
-        for item in old_items:
-            db.delete(item)
-        db.commit()
+def run_scoreboard_stub_cleanup(db) -> dict:
+    """
+    Remove already-ingested scoreboard/live-score stub pages.
 
-        logger.info(
-            "Purge complete: %d clusters, %d raw_items deleted (cutoff: %s)",
-            clusters_deleted, items_deleted, cutoff,
-        )
+    The ingest-time filter (is_scoreboard_stub) only stops new entries; items
+    ingested before a marker was added stay in the feed until the 30-day purge.
+    Deletes raw_items whose title matches a scoreboard marker (cascading to
+    story_variants and cluster_variants), then drops clusters left with no
+    variants.
+    """
+    from sqlalchemy import exists, or_
 
-        return {
-            "status": "success",
-            "clusters_deleted": clusters_deleted,
-            "raw_items_deleted": items_deleted,
-            "cutoff": cutoff.isoformat(),
-        }
+    from app.models import Cluster, ClusterVariant, RawItem
+    from app.tasks.ingest import SCOREBOARD_TITLE_MARKERS
 
+    # Bulk delete so the database-level ON DELETE CASCADE removes
+    # story_variants/cluster_variants; ORM delete would NULL the not-null
+    # raw_item_id FK instead and abort.
+    items_deleted = db.query(RawItem).filter(
+        or_(*[
+            RawItem.raw_title.ilike(f"%{marker}%")
+            for marker in SCOREBOARD_TITLE_MARKERS
+        ])
+    ).delete(synchronize_session=False)
+    db.commit()
+
+    empty_clusters = db.query(Cluster).filter(
+        ~exists().where(ClusterVariant.cluster_id == Cluster.id)
+    ).all()
+    for cluster in empty_clusters:
+        db.delete(cluster)
+    db.commit()
+
+    logger.info(
+        "Scoreboard stub cleanup: %d raw_items, %d empty clusters deleted",
+        items_deleted, len(empty_clusters),
+    )
+    return {
+        "status": "success",
+        "raw_items_deleted": items_deleted,
+        "clusters_deleted": len(empty_clusters),
+    }
+
+
+@celery.task(name="app.tasks.maintenance.cleanup_scoreboard_stubs")
+def cleanup_scoreboard_stubs():
+    """Daily self-heal: purge scoreboard stubs that predate a filter marker."""
+    db = SessionLocal()
+    try:
+        return run_scoreboard_stub_cleanup(db)
     finally:
         db.close()
 

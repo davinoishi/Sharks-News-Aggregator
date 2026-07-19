@@ -44,6 +44,10 @@ celery.conf.beat_schedule = {
         "task": "app.tasks.maintenance.purge_old_items",
         "schedule": 86400.0,  # Once per day (24 hours)
     },
+    "cleanup-scoreboard-stubs": {
+        "task": "app.tasks.maintenance.cleanup_scoreboard_stubs",
+        "schedule": 86400.0,  # Once per day (24 hours)
+    },
     "monitor-pipeline-health": {
         "task": "app.tasks.maintenance.monitor_pipeline_health",
         "schedule": 1800.0,  # Every 30 minutes (brief 09, O3)

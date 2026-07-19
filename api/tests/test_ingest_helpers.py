@@ -52,6 +52,17 @@ def test_scoreboard_stub_matches_marker_variants():
     assert is_scoreboard_stub("Sharks vs Knights H2H Stats and prediction")
 
 
+def test_scoreboard_stub_matches_live_updates_play_by_play():
+    # Auto-generated pages for games months away, surfaced by Google Alerts.
+    assert is_scoreboard_stub(
+        "Florida Panthers vs. San Jose Sharks Live Updates, Score, and Play-by-play - October 1, 2026"
+    )
+    assert is_scoreboard_stub(
+        "Colorado Avalanche vs. San Jose Sharks Live Updates, Score, and Play-by-play - March 5, 2027"
+    )
+    assert is_scoreboard_stub("Sharks vs Kings play by play and stats")
+
+
 def test_scoreboard_stub_is_case_insensitive():
     assert is_scoreboard_stub("SHARKS VS KNIGHTS LIVE SCORE")
 

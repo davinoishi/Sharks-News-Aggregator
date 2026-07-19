@@ -78,6 +78,14 @@ def test_same_story_two_sources_merge_into_one_cluster(pg_db):
         "Eric Comrie, Alex Barre-Boulet STRENGTHEN San Jose's AHL PLAYOFF Push | cbs19.tv",
         "other",
     ),
+    (
+        # Rewritten headline for the same staff hire: "GM" vs "General
+        # Manager" plus a dropped name. Merges via headline-to-headline
+        # token overlap after abbreviation canonicalization.
+        "Sharks Hire Jeff Kealty as Assistant General Manager",
+        "Sharks Hire New Assistant GM - Yahoo Sports",
+        "signing",
+    ),
 ])
 def test_reported_duplicate_pairs_merge_without_entities(
     pg_db, left, right, event_type
@@ -87,6 +95,41 @@ def test_reported_duplicate_pairs_merge_without_entities(
     cid1 = _cluster(pg_db, src, left, now, event_type)
     cid2 = _cluster(pg_db, src, right, now, event_type)
     assert cid1 == cid2
+
+
+def test_personnel_story_merges_across_event_types_via_shared_name(pg_db):
+    # "Jeff Kealty" isn't in the entity table (staff, not roster), and the two
+    # headlines disagree on event classification. The shared person-name bigram
+    # plus moderate title overlap should still put them on one card.
+    src = _source(pg_db)
+    now = datetime.utcnow()
+    cid1 = _cluster(
+        pg_db, src,
+        "Assistant GM Jeff Kealty departs Predators to pursue position with Sharks - Predlines",
+        now, "other",
+    )
+    cid2 = _cluster(
+        pg_db, src,
+        "Sharks Hire Jeff Kealty as Assistant General Manager",
+        now, "signing",
+    )
+    assert cid1 == cid2
+
+
+def test_shared_name_alone_does_not_merge_different_stories(pg_db):
+    src = _source(pg_db)
+    now = datetime.utcnow()
+    cid1 = _cluster(
+        pg_db, src,
+        "Jeff Kealty builds out Sharks scouting department with three hires",
+        now, "signing",
+    )
+    cid2 = _cluster(
+        pg_db, src,
+        "Jeff Kealty attends Predators alumni charity golf event",
+        now, "other",
+    )
+    assert cid1 != cid2
 
 
 def test_late_copies_use_publication_relative_window(pg_db):
