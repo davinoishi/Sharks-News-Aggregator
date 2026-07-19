@@ -8,10 +8,12 @@ from datetime import datetime, timedelta
 import pytest
 
 from app.models import (
+    BlueSkyPost,
     Cluster,
     ClusterVariant,
     EventType,
     IngestMethod,
+    PostStatus,
     RawItem,
     Source,
     SourceCategory,
@@ -71,6 +73,9 @@ def _seed_story(db, source, title, event_type=EventType.GAME, when=None):
     db.add(
         ClusterVariant(cluster_id=cluster.id, variant_id=variant.id, similarity_score=1.0)
     )
+    # Every cluster gets a bluesky_posts row on prod (posted or skipped).
+    # Its not-null cluster_id is what broke ORM-level cluster deletes.
+    db.add(BlueSkyPost(cluster_id=cluster.id, status=PostStatus.SKIPPED))
     db.commit()
     return raw.id, cluster.id
 

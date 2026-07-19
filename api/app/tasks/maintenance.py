@@ -34,11 +34,13 @@ def run_purge_old_items(db) -> dict:
 
     cutoff = utcnow() - timedelta(days=30)
 
-    # Delete old clusters (last_seen_at > 30 days ago)
-    old_clusters = db.query(Cluster).filter(Cluster.last_seen_at < cutoff).all()
-    clusters_deleted = len(old_clusters)
-    for cluster in old_clusters:
-        db.delete(cluster)
+    # Delete old clusters (last_seen_at > 30 days ago). Bulk delete for the
+    # same reason as raw_items below: the ORM would UPDATE the not-null
+    # bluesky_posts.cluster_id backref to NULL instead of letting the
+    # database CASCADE, aborting the purge on any cluster that was posted.
+    clusters_deleted = db.query(Cluster).filter(
+        Cluster.last_seen_at < cutoff
+    ).delete(synchronize_session=False)
     db.commit()
 
     # Delete old raw_items (created_at > 30 days ago)
@@ -96,21 +98,22 @@ def run_scoreboard_stub_cleanup(db) -> dict:
     ).delete(synchronize_session=False)
     db.commit()
 
-    empty_clusters = db.query(Cluster).filter(
+    # Bulk delete here too: ORM-level cluster deletes NULL the not-null
+    # bluesky_posts.cluster_id backref instead of letting the database
+    # CASCADE (observed on prod for 'skipped' bluesky rows on stub clusters).
+    clusters_deleted = db.query(Cluster).filter(
         ~exists().where(ClusterVariant.cluster_id == Cluster.id)
-    ).all()
-    for cluster in empty_clusters:
-        db.delete(cluster)
+    ).delete(synchronize_session=False)
     db.commit()
 
     logger.info(
         "Scoreboard stub cleanup: %d raw_items, %d empty clusters deleted",
-        items_deleted, len(empty_clusters),
+        items_deleted, clusters_deleted,
     )
     return {
         "status": "success",
         "raw_items_deleted": items_deleted,
-        "clusters_deleted": len(empty_clusters),
+        "clusters_deleted": clusters_deleted,
     }
 
 
