@@ -85,3 +85,34 @@ def test_classify_error_propagates(svc, monkeypatch):
     result = svc.classify_and_summarize("title")
     assert result.error == "timeout"
     assert result.event_type == "other"
+
+
+def test_classify_parses_low_value_flag(svc, monkeypatch):
+    monkeypatch.setattr(
+        svc,
+        "_call_chat",
+        lambda *a, **k: (
+            {"tags": ["Game"], "event_type": "game", "summary": "x", "low_value": True},
+            None,
+        ),
+    )
+    assert svc.classify_and_summarize("Watch Stars vs Sharks - Fubo").low_value is True
+
+
+def test_classify_low_value_accepts_string_and_defaults_false(svc, monkeypatch):
+    monkeypatch.setattr(
+        svc, "_call_chat",
+        lambda *a, **k: ({"tags": [], "event_type": "game", "low_value": "true"}, None),
+    )
+    assert svc.classify_and_summarize("title").low_value is True
+
+    # Absent flag (older prompt / partial response) must fail open to False.
+    monkeypatch.setattr(
+        svc, "_call_chat", lambda *a, **k: ({"tags": [], "event_type": "game"}, None)
+    )
+    assert svc.classify_and_summarize("title").low_value is False
+
+
+def test_classify_low_value_false_on_error(svc, monkeypatch):
+    monkeypatch.setattr(svc, "_call_chat", lambda *a, **k: (None, "timeout"))
+    assert svc.classify_and_summarize("title").low_value is False

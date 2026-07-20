@@ -154,10 +154,22 @@ def enrich_raw_item(self, raw_item_id: int):
             )
 
         # Step 3: Classify event type and tags (LLM with keyword fallback)
-        event_type_str, tag_names, llm_summary = classify_article(
+        event_type_str, tag_names, llm_summary, low_value = classify_article(
             db, text, entity_ids, raw_item.raw_title or "", raw_item.raw_description or "",
             source, url=raw_item.canonical_url or ""
         )
+
+        # Step 3.5: Drop machine-generated stub pages the LLM flagged
+        # (streaming promos, score widgets, odds pages). Complements the
+        # keyword filter at ingest, which only knows markers it has seen.
+        if low_value:
+            logger.info("  ⊘ Skipped (LLM flagged low-value stub): %s...", (raw_item.raw_title or "")[:50])
+            return {
+                "status": "skipped",
+                "reason": "low_value_stub",
+                "raw_item_id": raw_item_id
+            }
+
         event_type_enum = EventType[event_type_str.upper()] if event_type_str.upper() in EventType.__members__ else EventType.OTHER
 
         # Step 4: Create story_variant

@@ -85,17 +85,30 @@ def run_scoreboard_stub_cleanup(db) -> dict:
     from sqlalchemy import exists, or_
 
     from app.models import Cluster, ClusterVariant, RawItem
-    from app.tasks.ingest import SCOREBOARD_TITLE_MARKERS
+    from app.tasks.ingest import SCOREBOARD_TITLE_MARKERS, is_scoreboard_stub
+
+    # SQL prefilter (marker substrings + leading-"watch" titles for the
+    # WATCH_VS_TITLE_RE pattern), then confirm with is_scoreboard_stub so the
+    # deletion rule has a single source of truth with the ingest filter.
+    candidates = db.query(RawItem.id, RawItem.raw_title).filter(
+        or_(
+            RawItem.raw_title.ilike("watch%"),
+            *[
+                RawItem.raw_title.ilike(f"%{marker}%")
+                for marker in SCOREBOARD_TITLE_MARKERS
+            ],
+        )
+    ).all()
+    stub_ids = [item_id for item_id, title in candidates if is_scoreboard_stub(title)]
 
     # Bulk delete so the database-level ON DELETE CASCADE removes
     # story_variants/cluster_variants; ORM delete would NULL the not-null
     # raw_item_id FK instead and abort.
-    items_deleted = db.query(RawItem).filter(
-        or_(*[
-            RawItem.raw_title.ilike(f"%{marker}%")
-            for marker in SCOREBOARD_TITLE_MARKERS
-        ])
-    ).delete(synchronize_session=False)
+    items_deleted = 0
+    if stub_ids:
+        items_deleted = db.query(RawItem).filter(
+            RawItem.id.in_(stub_ids)
+        ).delete(synchronize_session=False)
     db.commit()
 
     # Bulk delete here too: ORM-level cluster deletes NULL the not-null
