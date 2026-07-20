@@ -91,6 +91,14 @@ def test_scoreboard_stub_matches_live_updates_play_by_play():
     assert is_scoreboard_stub("Sharks vs Kings play by play and stats")
 
 
+def test_scoreboard_stub_matches_streaming_promos():
+    # "Watch X vs Y" streaming-promo pages (Fubo, DirecTV, ...).
+    assert is_scoreboard_stub("Watch Dallas Stars vs San Jose Sharks - Fubo")
+    assert is_scoreboard_stub("Watch San Jose Sharks vs. Vegas Golden Knights: streaming info")
+    assert is_scoreboard_stub("Sharks vs Stars: How to Watch, TV Channel, Start Time")
+    assert is_scoreboard_stub("Where to watch Sharks-Kings tonight")
+
+
 def test_scoreboard_stub_is_case_insensitive():
     assert is_scoreboard_stub("SHARKS VS KNIGHTS LIVE SCORE")
 
@@ -98,6 +106,10 @@ def test_scoreboard_stub_is_case_insensitive():
 def test_scoreboard_stub_ignores_real_headlines():
     assert not is_scoreboard_stub("Celebrini scores twice as Sharks beat Golden Knights")
     assert not is_scoreboard_stub("Sharks announce 2026-27 preseason schedule")
+    # Leading "Watch" without a matchup is real editorial content.
+    assert not is_scoreboard_stub("Watch: Celebrini's between-the-legs goal stuns crowd")
+    # A matchup without "watch"/markers is a real preview or recap.
+    assert not is_scoreboard_stub("Sharks vs Stars: three takeaways from the shootout loss")
     assert not is_scoreboard_stub(None)
     assert not is_scoreboard_stub("")
 

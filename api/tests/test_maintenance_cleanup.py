@@ -95,6 +95,12 @@ def test_cleanup_removes_stub_items_and_their_clusters(pg_db):
         source,
         "Florida Panthers vs. San Jose Sharks Live Updates, Score, and Play-by-play - October 1, 2026",
     )
+    # Streaming-promo stub caught by the WATCH_VS_TITLE_RE pattern (no marker).
+    fubo_raw_id, fubo_cluster_id = _seed_story(
+        pg_db,
+        source,
+        "Watch Dallas Stars vs San Jose Sharks - Fubo",
+    )
     real_raw_id, real_cluster_id = _seed_story(
         pg_db,
         source,
@@ -104,10 +110,12 @@ def test_cleanup_removes_stub_items_and_their_clusters(pg_db):
 
     result = run_scoreboard_stub_cleanup(pg_db)
 
-    assert result["raw_items_deleted"] == 1
-    assert result["clusters_deleted"] == 1
+    assert result["raw_items_deleted"] == 2
+    assert result["clusters_deleted"] == 2
     assert pg_db.query(RawItem).filter(RawItem.id == stub_raw_id).first() is None
     assert pg_db.query(Cluster).filter(Cluster.id == stub_cluster_id).first() is None
+    assert pg_db.query(RawItem).filter(RawItem.id == fubo_raw_id).first() is None
+    assert pg_db.query(Cluster).filter(Cluster.id == fubo_cluster_id).first() is None
     # The legitimate article is untouched.
     assert pg_db.query(RawItem).filter(RawItem.id == real_raw_id).first() is not None
     assert pg_db.query(Cluster).filter(Cluster.id == real_cluster_id).first() is not None

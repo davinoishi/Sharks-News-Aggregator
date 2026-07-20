@@ -36,7 +36,15 @@ SCOREBOARD_TITLE_MARKERS = (
     "play by play",
     "h2h stats",
     "head to head stats",
+    "fubo",
+    "how to watch",
+    "where to watch",
 )
+
+# Streaming-promo pages titled "Watch <Team> vs <Team> ..." (Fubo, DirecTV,
+# etc.). Requires "watch" as the leading word AND a "vs" matchup so real
+# headlines like "Watch: Celebrini's hat trick" don't match.
+WATCH_VS_TITLE_RE = re.compile(r"^\s*watch\b.*\bvs\.?\b", re.IGNORECASE)
 
 
 def derive_title_from_description(description: Optional[str], max_len: int = 140) -> Optional[str]:
@@ -61,11 +69,13 @@ def derive_title_from_description(description: Optional[str], max_len: int = 140
 
 def is_scoreboard_stub(title: Optional[str]) -> bool:
     """True when a feed entry title identifies an auto-generated scoreboard/
-    live-score page rather than an article."""
+    live-score/streaming-promo page rather than an article."""
     if not title:
         return False
     lowered = title.lower()
-    return any(marker in lowered for marker in SCOREBOARD_TITLE_MARKERS)
+    if any(marker in lowered for marker in SCOREBOARD_TITLE_MARKERS):
+        return True
+    return bool(WATCH_VS_TITLE_RE.search(title))
 
 
 @celery.task(name="app.tasks.ingest.ingest_all_sources", bind=True)

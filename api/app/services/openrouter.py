@@ -58,11 +58,13 @@ Tags (assign ALL that apply):
 
 Event type (pick exactly ONE primary): trade, injury, lineup, recall, waiver, signing, prospect, game, opinion, other
 
+low_value flag: set true ONLY for machine-generated pages with no reporting — streaming/"where to watch" promos (Fubo, DirecTV, Sling, "How to Watch"), live-score/boxscore/play-by-play widgets, betting odds/prediction autopages, and bare schedule stubs. Real recaps, previews with analysis, and news are NOT low_value.
+
 Title: {title}
 Description: {description}
 Entities mentioned: {entity_names}
 
-Respond as JSON: {{"tags": ["Tag1", "Tag2"], "event_type": "game", "summary": "5-10 word factual topic using key nouns (e.g. 'Celebrini contract extension analysis')", "confidence": "HIGH"}}"""
+Respond as JSON: {{"tags": ["Tag1", "Tag2"], "event_type": "game", "summary": "5-10 word factual topic using key nouns (e.g. 'Celebrini contract extension analysis')", "low_value": false, "confidence": "HIGH"}}"""
 
 
 @dataclass
@@ -80,6 +82,10 @@ class ClassificationResult:
     tags: List[str] = field(default_factory=list)
     event_type: str = "other"
     summary: Optional[str] = None
+    # True when the LLM judged the page a machine-generated stub (streaming
+    # promo, score widget, odds page) rather than reporting. Fail-open: stays
+    # False on LLM errors so an outage never suppresses real news.
+    low_value: bool = False
     confidence: Optional[str] = None
     reason: Optional[str] = None
     error: Optional[str] = None
@@ -295,10 +301,15 @@ class OpenRouterService:
         if isinstance(summary, str):
             summary = summary[:100]
 
+        low_value = parsed.get("low_value", False)
+        if isinstance(low_value, str):
+            low_value = low_value.lower() in ("true", "yes")
+
         return ClassificationResult(
             tags=tags,
             event_type=event_type,
             summary=summary,
+            low_value=bool(low_value),
             confidence=parsed.get("confidence"),
             error=None,
             latency_ms=latency_ms,
