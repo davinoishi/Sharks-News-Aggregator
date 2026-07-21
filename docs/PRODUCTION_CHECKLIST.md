@@ -94,7 +94,7 @@ A checklist of tasks for deploying the Sharks News Aggregator to production.
 
 ## Data & Content
 
-- [x] **RSS sources configured** — 24 approved sources active
+- [x] **RSS sources configured** — 20 approved sources active
 - [x] **Entity database populated** — 77+ players synced from CapWages
 - [x] **Automated roster sync** — Daily sync keeps organization current
 - [x] **RSS ingestion working** — Every 10 minutes via Celery Beat
@@ -121,7 +121,7 @@ A checklist of tasks for deploying the Sharks News Aggregator to production.
 ## Current Database State
 
 ```
-Sources:           24 approved
+Sources:           20 approved
 Active Clusters:   182+
 Story Variants:    200+
 Tags:              12

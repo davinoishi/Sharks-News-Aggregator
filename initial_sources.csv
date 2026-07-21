@@ -15,3 +15,4 @@ Reddit - r/SanJoseSharks,https://www.reddit.com/r/SanJoseSharks/,other,3,reddit,
 Yardbarker - Sharks,https://www.yardbarker.com/nhl/teams/san_jose_sharks/121,other,3,rss,,DISABLED - no RSS feed available (removed team feeds)
 Sharks Audio Network,https://www.nhl.com/sharks/multimedia/podcasts,official,1,rss,https://sjsharks-rss.streamguys1.com/sjsharks/sharks-hockey-digest-apple-podcasts.xml,Official team podcasts (optional for MVP)
 Google Alerts - Sharks News,https://www.google.ca/alerts/,press,2,rss,https://www.google.ca/alerts/feeds/01447499290041243939/4295966570484639231,Google Alerts aggregator for 'San Jose Sharks News'
+Daily Faceoff,https://www.dailyfaceoff.com/,press,2,rss,https://www.dailyfaceoff.com/feed,League-wide NHL feed (no per-team feed) - uses relevance filter

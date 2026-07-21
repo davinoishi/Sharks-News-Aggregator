@@ -85,7 +85,7 @@ docker-compose logs api
 
 ### 3. Import Initial Sources from CSV
 
-The `initial_sources.csv` file contains pre-configured news sources (24 sources in production).
+The `initial_sources.csv` file contains the pre-configured seed news sources. Production has since grown to 20 approved sources (additional sources are added over time and managed in the `sources` table).
 
 **Dry run first (preview what will be imported):**
 
