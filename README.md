@@ -14,7 +14,7 @@ Deployed on a Raspberry Pi 5 (pi5-ai2), public via noBGP proxy:
 ## Features
 
 ### Core Functionality
-- **Multi-Source RSS Ingestion** - Aggregates news from 24+ sources including San Jose Hockey Now, Mercury News, NBC Sports, NHL.com, and more
+- **Multi-Source RSS Ingestion** - Aggregates news from 20+ sources including San Jose Hockey Now, Mercury News, NBC Sports, NHL.com, Daily Faceoff, and more
 - **Enrichment Pipeline** - Extracts entities (players, coaches), assigns tags, and classifies event types using keyword matching and NLP
 - **Smart Clustering** - Groups similar stories from different sources using entity overlap and token similarity scoring
 - **Automated Roster Sync** - Daily synchronization with CapWages to keep full organization player database current
@@ -243,7 +243,7 @@ curl "http://localhost:8000/health"
 ### Automated Tasks
 
 **RSS Ingestion** - Runs every 10 minutes (configurable)
-- Fetches new articles from all 24 sources
+- Fetches new articles from all approved sources
 - Queues them for enrichment
 - Auto-clusters similar stories
 
@@ -292,7 +292,7 @@ BLUESKY_POST_INTERVAL_MINUTES=15
 
 ### RSS Sources
 
-24 approved sources including:
+20 approved sources including:
 - San Jose Hockey Now
 - The Mercury News - Sharks
 - NBC Sports Bay Area - Sharks
@@ -301,6 +301,7 @@ BLUESKY_POST_INTERVAL_MINUTES=15
 - Blades of Teal
 - Teal Town USA
 - Pro Hockey Rumors
+- Daily Faceoff
 - Yahoo Sports - Sharks
 - SF Gate - Sharks
 - And more...
@@ -415,7 +416,7 @@ docker-compose up -d
 ## Roadmap
 
 ### Completed
-- RSS ingestion from multiple sources (24 sources)
+- RSS ingestion from multiple sources (20 approved sources)
 - Enrichment pipeline (entity extraction, tagging, event classification)
 - Story clustering with entity overlap and token similarity
 - REST API with filtering
