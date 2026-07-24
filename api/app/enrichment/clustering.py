@@ -299,6 +299,16 @@ def match_or_create_cluster(
     best_cluster = None
     best_score = 0.0
 
+    # Person-name keys drawn from the LLM summary (which the classifier is
+    # prompted to lead with the subject's full name). This bridges stories whose
+    # headline names the subject only by role — "Sharks' first-round pick
+    # finalizes plans" — to a sibling that names the person — "Keaton Verhoeff to
+    # return to North Dakota". Both summaries share "keaton verhoeff", where the
+    # title, entity, and lexical paths have nothing in common.
+    summary_name_keys = (
+        extract_person_name_keys(llm_summary or "") if has_llm_signal else set()
+    )
+
     # Suffix-stripped headline tokens: "- Yahoo Sports"-style publication
     # labels would otherwise dilute the headline-to-headline comparison.
     variant_title_tokens = (
@@ -352,13 +362,26 @@ def match_or_create_cluster(
             E, T, S, clustering_entities, L,
             entities_c=cluster_clustering_entities,
         )
-        logger.debug(
-            "  → Candidate #%s: E=%.3f T=%.3f K=%.3f L=%.3f S=%.3f "
-            "entities_comparable=%s matched=%s",
-            cluster.id, E, T, K, L, S, entities_comparable, matched,
+
+        # Shared subject name in the summaries + a compatible event type is
+        # enough on its own: the lexical/entity signals are structurally absent
+        # when one headline hides the subject behind a role. The 72h event
+        # window already scopes this to the same news cycle.
+        summary_name_match = (
+            bool(summary_name_keys)
+            and bool(cluster.llm_summary)
+            and K >= 0.5
+            and bool(summary_name_keys & extract_person_name_keys(cluster.llm_summary))
         )
 
-        if matched:
+        logger.debug(
+            "  → Candidate #%s: E=%.3f T=%.3f K=%.3f L=%.3f S=%.3f "
+            "entities_comparable=%s matched=%s summary_name_match=%s",
+            cluster.id, E, T, K, L, S, entities_comparable, matched,
+            summary_name_match,
+        )
+
+        if matched or summary_name_match:
             if S > best_score + 0.000001:
                 best_cluster = cluster
                 best_score = S

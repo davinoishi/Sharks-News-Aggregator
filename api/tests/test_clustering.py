@@ -31,7 +31,7 @@ def _source(db):
     return s
 
 
-def _variant(db, source, title, published_at, event_type="signing", url=None):
+def _variant(db, source, title, published_at, event_type="signing", url=None, llm_summary=None):
     global _n
     _n += 1
     url = url or f"https://src.example.com/{_n}"
@@ -47,14 +47,15 @@ def _variant(db, source, title, published_at, event_type="signing", url=None):
         tokens=normalize_tokens(title),
         entities=[],
         event_type=EventType(event_type),
+        extra_metadata={"llm_summary": llm_summary} if llm_summary else {},
     )
     db.add(v)
     db.flush()
     return v
 
 
-def _cluster(db, source, title, published_at, event_type="signing", url=None):
-    v = _variant(db, source, title, published_at, event_type, url=url)
+def _cluster(db, source, title, published_at, event_type="signing", url=None, llm_summary=None):
+    v = _variant(db, source, title, published_at, event_type, url=url, llm_summary=llm_summary)
     return match_or_create_cluster(db, v, v.tokens, [], event_type, source, tag_names=[])
 
 
@@ -114,6 +115,47 @@ def test_personnel_story_merges_across_event_types_via_shared_name(pg_db):
         now, "signing",
     )
     assert cid1 == cid2
+
+
+def test_role_headline_merges_with_named_sibling_via_summary(pg_db):
+    # One headline names the subject only by role ("first round draft pick");
+    # its sibling names the person. The titles and entities share nothing, but
+    # the LLM summaries both lead with the name and bridge them.
+    src = _source(pg_db)
+    now = datetime.utcnow()
+    cid1 = _cluster(
+        pg_db, src,
+        "San Jose Sharks prospect Keaton Verhoeff to return to North Dakota - Times-Standard",
+        now, "prospect",
+        llm_summary="Keaton Verhoeff returns to North Dakota",
+    )
+    cid2 = _cluster(
+        pg_db, src,
+        "San Jose Sharks' first round draft pick finalizes plans for upcoming season",
+        now, "prospect",
+        llm_summary="Keaton Verhoeff finalizes upcoming season plans",
+    )
+    assert cid1 == cid2
+
+
+def test_summary_bridge_keeps_different_people_apart(pg_db):
+    # The summary bridge must key on a shared name, not merge every prospect
+    # story from the same window.
+    src = _source(pg_db)
+    now = datetime.utcnow()
+    cid1 = _cluster(
+        pg_db, src,
+        "Sharks prospect Kasper Halttunen scores twice for London",
+        now, "prospect",
+        llm_summary="Kasper Halttunen scores twice for London Knights",
+    )
+    cid2 = _cluster(
+        pg_db, src,
+        "Sharks' first round draft pick finalizes plans for upcoming season",
+        now, "prospect",
+        llm_summary="Keaton Verhoeff finalizes upcoming season plans",
+    )
+    assert cid1 != cid2
 
 
 def test_shared_name_alone_does_not_merge_different_stories(pg_db):

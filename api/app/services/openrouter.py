@@ -64,7 +64,14 @@ Title: {title}
 Description: {description}
 Entities mentioned: {entity_names}
 
-Respond as JSON: {{"tags": ["Tag1", "Tag2"], "event_type": "game", "summary": "5-10 word factual topic using key nouns (e.g. 'Celebrini contract extension analysis')", "low_value": false, "confidence": "HIGH"}}"""
+Summary: 5-10 word factual topic using key nouns. When the article centers on
+one person, LEAD with that person's full name — even if the headline refers to
+them only by role (resolve "the first-round pick", "the new assistant GM", etc.
+to the name from the text). This lets two stories about the same person cluster
+together. E.g. 'Celebrini contract extension analysis', 'Keaton Verhoeff returns
+to North Dakota'.
+
+Respond as JSON: {{"tags": ["Tag1", "Tag2"], "event_type": "game", "summary": "Keaton Verhoeff returns to North Dakota", "low_value": false, "confidence": "HIGH"}}"""
 
 
 @dataclass

@@ -46,6 +46,14 @@ SCOREBOARD_TITLE_MARKERS = (
 # headlines like "Watch: Celebrini's hat trick" don't match.
 WATCH_VS_TITLE_RE = re.compile(r"^\s*watch\b.*\bvs\.?\b", re.IGNORECASE)
 
+# theScore/ESPN-style auto-generated matchup widgets, titled with a pipe-
+# delimited "| NHL Matchup |" cell (e.g. "San Jose Sharks vs Detroit Red Wings
+# | October 17, 2026 | NHL Matchup | theScore"). These carry only a scoreline
+# and schedule, no reporting. Match the delimited "| Matchup |" cell rather than
+# the bare word "matchup", which appears in real previews ("Sharks-Wings
+# matchup: three things to watch").
+MATCHUP_STUB_RE = re.compile(r"\|\s*(?:nhl\s+)?matchup\s*\|", re.IGNORECASE)
+
 
 def derive_title_from_description(description: Optional[str], max_len: int = 140) -> Optional[str]:
     """Fallback headline for feeds whose items carry no <title>.
@@ -74,6 +82,8 @@ def is_scoreboard_stub(title: Optional[str]) -> bool:
         return False
     lowered = title.lower()
     if any(marker in lowered for marker in SCOREBOARD_TITLE_MARKERS):
+        return True
+    if MATCHUP_STUB_RE.search(title):
         return True
     return bool(WATCH_VS_TITLE_RE.search(title))
 
