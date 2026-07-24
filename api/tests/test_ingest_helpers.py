@@ -99,6 +99,14 @@ def test_scoreboard_stub_matches_streaming_promos():
     assert is_scoreboard_stub("Where to watch Sharks-Kings tonight")
 
 
+def test_scoreboard_stub_matches_thescore_matchup_widgets():
+    # theScore/ESPN pipe-delimited "| NHL Matchup |" auto-pages.
+    assert is_scoreboard_stub(
+        "San Jose Sharks vs Detroit Red Wings | October 17, 2026 | NHL Matchup | theScore"
+    )
+    assert is_scoreboard_stub("Sharks vs Kings | Nov 3, 2026 | Matchup | theScore")
+
+
 def test_scoreboard_stub_is_case_insensitive():
     assert is_scoreboard_stub("SHARKS VS KNIGHTS LIVE SCORE")
 
@@ -110,6 +118,8 @@ def test_scoreboard_stub_ignores_real_headlines():
     assert not is_scoreboard_stub("Watch: Celebrini's between-the-legs goal stuns crowd")
     # A matchup without "watch"/markers is a real preview or recap.
     assert not is_scoreboard_stub("Sharks vs Stars: three takeaways from the shootout loss")
+    # The bare word "matchup" in editorial prose must not trip the widget rule.
+    assert not is_scoreboard_stub("Sharks-Wings matchup: three things to watch Friday")
     assert not is_scoreboard_stub(None)
     assert not is_scoreboard_stub("")
 

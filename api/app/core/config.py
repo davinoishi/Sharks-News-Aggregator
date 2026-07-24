@@ -64,9 +64,13 @@ class Settings(BaseSettings):
     # stable, secret value in the environment (empty = unsalted, less secure).
     ip_hash_salt: str = ""
 
-    # OpenRouter LLM settings (Gemma 4 via openrouter.ai)
+    # OpenRouter LLM settings (Gemini 2.0 Flash via openrouter.ai). A small paid
+    # model rather than a ":free" tier — the free tier is aggressively rate
+    # limited and fails often; classify/relevance fall back to keywords on every
+    # such failure, silently degrading the feed. Flash is cheap (~pennies/week at
+    # our volume) and reliable for the JSON classification prompt.
     openrouter_api_key: str = ""
-    openrouter_model: str = "google/gemma-4-26b-a4b-it:free"
+    openrouter_model: str = "google/gemini-2.0-flash-001"
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     openrouter_timeout_seconds: int = 45
     llm_relevance_enabled: bool = True
