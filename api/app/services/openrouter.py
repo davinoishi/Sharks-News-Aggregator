@@ -1,7 +1,7 @@
 """
 OpenRouter LLM service for article relevance, tagging, and clustering.
 
-Uses Google Gemini 2.0 Flash via OpenRouter's OpenAI-compatible API
+Uses Google Gemini 2.5 Flash Lite via OpenRouter's OpenAI-compatible API
 (configurable via OPENROUTER_MODEL).
 Falls back to keyword-based logic if the API is unavailable.
 """
