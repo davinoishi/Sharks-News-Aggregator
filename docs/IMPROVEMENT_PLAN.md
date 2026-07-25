@@ -4,8 +4,9 @@ This plan is the result of a full codebase review (2026-06-10) covering security
 correctness, performance, usability, code quality, and operations. Work is packaged
 into nine self-contained briefs in `docs/briefs/`, each scoped to a single PR.
 Later reviews and feature work append to this file; see
-[brief 10](#brief-10--mcp-interface-for-agent-access-planned-2026-07-25) for the
-current planned work.
+[brief 10](#brief-10--mcp-interface-for-agent-access-planned-2026-07-25) and
+[brief 11](#brief-11--richer-public-metrics-without-cookies-planned-2026-07-25)
+for the current planned work.
 
 **How to use:** start a fresh agent session, point it at exactly one brief file, and
 have it deliver a branch + PR against `main`. Do not combine briefs in one session.
@@ -355,6 +356,45 @@ wired only to the metrics routes (cf. R3-S2).
 | MCP-5 | Security | *(deferred, blocks MCP-4)* Bearer-token auth + Redis-backed rate limiting before anything MCP is publicly reachable. |
 
 Write tools and all `/admin/*` tools are out of scope by decision — read-only v1.
+
+---
+
+# Brief 11 — Richer public metrics, without cookies (planned, 2026-07-25)
+
+[brief-11-public-metrics.md](briefs/brief-11-public-metrics.md) — expand the
+three-figure footer strip (`web/app/page.tsx:324`) into a real set of public
+metrics while keeping the no-cookie, no-consent-banner posture.
+
+Most of the value needs **no new collection at all**: `clusters.click_count` is
+already written by `/cluster/{id}/click` and read by nothing, and
+`validation_logs`, `cluster_entities`, and `story_variants` support a
+most-mentioned-player / top-source / screened-vs-published set straight out of
+the existing schema.
+
+Ships as **two PRs, one per session**:
+
+| Phase | Scope | Items | Effort | Branch |
+|-------|-------|-------|--------|--------|
+| A | Derived stats + `/stats` caching + footer redesign. Zero new collection. | MET-1, MET-2, MET-3 | M | `improve/11a-derived-stats` |
+| B | Cookie-free collection: daily rollups, referrer hosts, filter popularity, RSS/Bluesky counts | MET-4 … MET-7 | M–L | `improve/11b-metrics-collection` |
+
+| ID | Area | Item |
+|----|------|------|
+| MET-1 | Usability | Expand `/stats`: stories 24h/7d, top story by `click_count`, most-mentioned entity, event-type breakdown, top source, screened-vs-published, median time-to-surface, entities tracked, last updated. All derived from existing tables. |
+| MET-2 | Performance | Cache `/stats` in Redis (~5 min TTL). It is called on every page load and MET-1 turns it into ~9 aggregates on a Pi. Must serve stale rather than 500 — stats are decorative and must not take the feed down. |
+| MET-3 | Usability | Two-line footer strip, null-safe, no layout shift. A dedicated `/stats` page is explicitly out of scope. |
+| MET-4 | Operations | New `metric_daily` table `(key, day, value)` — `site_metrics` has no date dimension, so "visits today" is impossible today. Lifetime counters stay as they are. |
+| MET-5 | Usability | Referrer **hosts** only, read from `document.referrer` client-side — the beacon's own `Referer` header is the site itself, so server-side reading yields 100% self-referrals. Top ~5 published only. |
+| MET-6 | Usability | Filter popularity from `tags=`/`entities=` usage on `/feed`. |
+| MET-7 | Usability | RSS subscriber estimate from feed-reader User-Agents; Bluesky follower count via the existing atproto client (reuse a cached session — cf. R2-S7). |
+
+**Privacy constraints are requirements, not guidance:** no cookies, no
+device storage of any kind, no fingerprinting, no third-party analytics, and
+**no per-visitor identifier — including hashed or daily-rotating ones.**
+Cookie-free unique visitors (the Plausible/Fathom daily-salted-IP pattern) was
+considered and **explicitly rejected**, so a later session doesn't add it as a
+helpful extra. Phase B must also update `web/app/legal/page.tsx` §6.2, which
+currently promises the policy will be updated if analytics are ever added.
 
 ---
 
