@@ -3,6 +3,9 @@
 This plan is the result of a full codebase review (2026-06-10) covering security,
 correctness, performance, usability, code quality, and operations. Work is packaged
 into nine self-contained briefs in `docs/briefs/`, each scoped to a single PR.
+Later reviews and feature work append to this file; see
+[brief 10](#brief-10--mcp-interface-for-agent-access-planned-2026-07-25) for the
+current planned work.
 
 **How to use:** start a fresh agent session, point it at exactly one brief file, and
 have it deliver a branch + PR against `main`. Do not combine briefs in one session.
@@ -183,7 +186,7 @@ use the reviewer's matrix where given, otherwise High→P1, Medium→P2, Low→P
 | R2-O4 | P2 | Operations | Redis password embedded in connection URL leaks to logs/crashes — use Redis ACLs / explicit auth. |
 | R2-O2 | P2 | Operations | Backup runs an always-on `sleep` loop, not cron — move to cron (container or host). |
 | R2-O5 | P2 | Operations | `task_time_limit=3600` too generous for RSS ingest — tighten per task type. |
-| R2-U1 | P2 | Usability | No full-text search — Postgres `tsvector` or lightweight index. |
+| R2-U1 | P2 | Usability | No full-text search — Postgres `tsvector` or lightweight index. **→ scoped in [brief 10](briefs/brief-10-mcp-interface.md), phase A.** |
 | R2-U2 | P2 | Usability | No dark mode — Tailwind `dark:` variants + toggle. |
 | R2-U3 | P2 | Usability | "Load more" only — add page numbers / URL-synced infinite scroll for deep links. |
 | R2-A4 | P2 | Architecture | No circuit breaker on OpenRouter calls — add one to avoid cascading failures. |
@@ -315,6 +318,43 @@ OpenTelemetry (R2-A5), derive `source_count` by query (R2-F4), dedup `entities_a
 
 The reviewer's own "top 3 next gaps": full-text search (already R2-U1), dark mode +
 PWA (already R2-U2 / R2-U5), and off-Pi backups + deploy pipeline (R3-O1 / R3-O3).
+
+---
+
+# Brief 10 — MCP interface for agent access (planned, 2026-07-25)
+
+[brief-10-mcp-interface.md](briefs/brief-10-mcp-interface.md) — the first brief
+written after the 01–09 set. Goal: let LLM agents fetch, search, and drill into
+the feed over the Model Context Protocol.
+
+The MCP wrapper itself is thin; the cost is in the prerequisites. Full-text
+search does not exist (**R2-U1**), and the feed response withholds fields agents
+need — `clusters.llm_summary` is never serialised, there is no public `/tags`
+route, and `/feed` cannot filter by `event_type`.
+
+Ships as **two PRs, one per session**:
+
+| Phase | Scope | Items | Effort | Branch |
+|-------|-------|-------|--------|--------|
+| A | Postgres FTS + feed ergonomics (backend only, useful on its own) | R2-U1, MCP-1 | M–L | `improve/10a-search` |
+| B | Read-only stdio MCP server (6 tools) over the Phase A surface | MCP-2, MCP-3 | M | `improve/10b-mcp` |
+| C | Remote transport + auth — **deferred, not to be built yet** | MCP-4, MCP-5 | — | — |
+
+Phase A must merge before Phase B starts. Phase C stays deferred: the API has no
+public port today (only `web` is published and tunnelled), and exposing an
+unauthenticated MCP endpoint over this data would need a real shared-state rate
+limiter — the in-memory one in `api/app/dependencies.py` is per-process and
+wired only to the metrics routes (cf. R3-S2).
+
+| ID | Area | Item |
+|----|------|------|
+| MCP-1 | Usability | Expose `llm_summary` in the feed payload; add `event_type` and `until` filters to `/feed`; route the existing `get_tag_distribution()` as `GET /tags`. |
+| MCP-2 | Feature | Read-only stdio MCP server in a standalone `mcp/` package — `search_news`, `get_feed`, `get_story`, `list_players`, `list_tags`, `get_status`. Hand-written tools, not auto-generated from `/openapi.json` (that would expose every `/admin/*` route). |
+| MCP-3 | Feature | Response budgeting — default limit 10 / cap 25, compact rendering rather than raw JSON echo. The main way an MCP server ships badly is by flooding the agent's context. |
+| MCP-4 | Architecture | *(deferred)* Remote transport — streamable-HTTP MCP on FastAPI published via noBGP, or an MCP route in Next.js reusing the proxy pattern. |
+| MCP-5 | Security | *(deferred, blocks MCP-4)* Bearer-token auth + Redis-backed rate limiting before anything MCP is publicly reachable. |
+
+Write tools and all `/admin/*` tools are out of scope by decision — read-only v1.
 
 ---
 
