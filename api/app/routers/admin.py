@@ -20,7 +20,12 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.datetime_utils import utcnow
-from app.core.db_utils import METRIC_LLM_FAILOPEN, get_site_metric
+from app.core.db_utils import (
+    METRIC_LLM_FAILOPEN,
+    METRIC_STUB_INGEST,
+    METRIC_STUB_LLM,
+    get_site_metric,
+)
 from app.dependencies import require_admin
 from app.models import (
     Cluster,
@@ -327,6 +332,14 @@ def get_validation_stats(
     # per-row column, so it isn't affected by the `since` window.
     fail_open = get_site_metric(db, METRIC_LLM_FAILOPEN)
 
+    # Same deal for the stub-filter counters: lifetime totals per layer, so we
+    # can see whether the title filters or the LLM are catching schedule/score
+    # autopages (and notice if either stops firing).
+    stubs_filtered = {
+        "ingest": get_site_metric(db, METRIC_STUB_INGEST),
+        "llm": get_site_metric(db, METRIC_STUB_LLM),
+    }
+
     return {
         "total": total,
         "approved": approved,
@@ -336,6 +349,7 @@ def get_validation_stats(
         "avg_latency_ms": round(avg_latency_result, 2) if avg_latency_result else None,
         "error_rate": round(error_rate, 2),
         "fail_open": fail_open,
+        "stubs_filtered": stubs_filtered,
     }
 
 

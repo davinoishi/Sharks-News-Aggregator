@@ -101,6 +101,19 @@ def test_cleanup_removes_stub_items_and_their_clusters(pg_db):
         source,
         "Watch Dallas Stars vs San Jose Sharks - Fubo",
     )
+    # Marker-free stubs: the theScore widget and a bare schedule page. Neither
+    # contains a marker word, so both are here to prove the SQL prefilter is
+    # wide enough to hand them to is_scoreboard_stub in the first place.
+    widget_raw_id, widget_cluster_id = _seed_story(
+        pg_db,
+        source,
+        "San Jose Sharks vs Detroit Red Wings | October 17, 2026 | NHL Matchup | theScore",
+    )
+    schedule_raw_id, schedule_cluster_id = _seed_story(
+        pg_db,
+        source,
+        "San Jose Sharks vs. Vegas Golden Knights - 2026-09-27 - TSN",
+    )
     real_raw_id, real_cluster_id = _seed_story(
         pg_db,
         source,
@@ -110,12 +123,16 @@ def test_cleanup_removes_stub_items_and_their_clusters(pg_db):
 
     result = run_scoreboard_stub_cleanup(pg_db)
 
-    assert result["raw_items_deleted"] == 2
-    assert result["clusters_deleted"] == 2
+    assert result["raw_items_deleted"] == 4
+    assert result["clusters_deleted"] == 4
     assert pg_db.query(RawItem).filter(RawItem.id == stub_raw_id).first() is None
     assert pg_db.query(Cluster).filter(Cluster.id == stub_cluster_id).first() is None
     assert pg_db.query(RawItem).filter(RawItem.id == fubo_raw_id).first() is None
     assert pg_db.query(Cluster).filter(Cluster.id == fubo_cluster_id).first() is None
+    assert pg_db.query(RawItem).filter(RawItem.id == widget_raw_id).first() is None
+    assert pg_db.query(Cluster).filter(Cluster.id == widget_cluster_id).first() is None
+    assert pg_db.query(RawItem).filter(RawItem.id == schedule_raw_id).first() is None
+    assert pg_db.query(Cluster).filter(Cluster.id == schedule_cluster_id).first() is None
     # The legitimate article is untouched.
     assert pg_db.query(RawItem).filter(RawItem.id == real_raw_id).first() is not None
     assert pg_db.query(Cluster).filter(Cluster.id == real_cluster_id).first() is not None

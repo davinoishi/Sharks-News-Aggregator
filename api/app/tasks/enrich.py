@@ -13,6 +13,7 @@ import logging
 
 from app.core.database import SessionLocal
 from app.core.datetime_utils import utcnow
+from app.core.db_utils import METRIC_STUB_LLM, increment_site_metric
 from app.enrichment.classify import (
     check_sharks_relevance,
     classify_article,
@@ -164,6 +165,10 @@ def enrich_raw_item(self, raw_item_id: int):
         # keyword filter at ingest, which only knows markers it has seen.
         if low_value:
             logger.info("  ⊘ Skipped (LLM flagged low-value stub): %s...", (raw_item.raw_title or "")[:50])
+            try:
+                increment_site_metric(db, METRIC_STUB_LLM)
+            except Exception:  # pragma: no cover - metrics must never break enrichment
+                logger.exception("Failed to record %s metric", METRIC_STUB_LLM)
             return {
                 "status": "skipped",
                 "reason": "low_value_stub",

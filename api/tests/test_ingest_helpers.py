@@ -12,6 +12,7 @@ from app.tasks.ingest import (
     derive_title_from_description,
     ingest_api,
     ingest_html,
+    is_schedule_stub,
     is_scoreboard_stub,
     parse_published_date,
     resolve_entry_url,
@@ -109,6 +110,34 @@ def test_scoreboard_stub_matches_thescore_matchup_widgets():
 
 def test_scoreboard_stub_is_case_insensitive():
     assert is_scoreboard_stub("SHARKS VS KNIGHTS LIVE SCORE")
+
+
+def test_scoreboard_stub_matches_bare_schedule_pages():
+    # No marker words at all — the title is only teams, a date, and the
+    # publisher. Structure is the only tell.
+    assert is_scoreboard_stub("San Jose Sharks vs. Vegas Golden Knights - 2026-09-27 - TSN")
+    assert is_scoreboard_stub("San Jose Sharks at Anaheim Ducks - October 17, 2026")
+    assert is_scoreboard_stub("Sharks vs Kings | Nov 3, 2026 | Sportsnet")
+    assert is_scoreboard_stub("NHL: San Jose Sharks vs Utah - 11/3/2026 - ESPN")
+    assert is_scoreboard_stub("Sharks vs. Blues - Sat, Dec 5 - 7:00 PM PT")
+
+
+def test_schedule_stub_requires_a_date_segment():
+    # A matchup alone is how plenty of real headlines start.
+    assert not is_schedule_stub("San Jose Sharks vs. Vegas Golden Knights")
+    assert not is_schedule_stub("Sharks vs Kings - TSN")
+
+
+def test_schedule_stub_ignores_titles_with_any_copy():
+    # Any segment that isn't a matchup, a date, or a publisher means the page
+    # has editorial content.
+    assert not is_schedule_stub("Sharks vs. Golden Knights - September 27, 2026 - Preview and prediction")
+    assert not is_schedule_stub("Sharks vs Kings - Nov 3, 2026 - Celebrini scores twice")
+    assert not is_schedule_stub("Sharks vs. Ducks: what to watch - October 17, 2026")
+    # A final score is copy, not fixture data.
+    assert not is_schedule_stub("Sharks 4, Golden Knights 2 - 2026-09-27 - TSN")
+    assert not is_schedule_stub(None)
+    assert not is_schedule_stub("")
 
 
 def test_scoreboard_stub_ignores_real_headlines():
