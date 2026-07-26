@@ -116,6 +116,13 @@ class ValidationStatsResponse(BaseModel):
     # pipeline fell back to keyword matching). A rising value means the LLM
     # filter is degraded (brief 09, C5).
     fail_open: int = 0
+    # Lifetime counts of machine-generated stub pages dropped by each filter
+    # layer: "ingest" = title filters (is_scoreboard_stub), "llm" = the LLM's
+    # low_value judgment during enrichment. Both are running counters, so they
+    # ignore the `since` window. A flat "llm" with a rising "ingest" means the
+    # title filters are carrying the load; the reverse means new phrasings are
+    # arriving that the marker list hasn't learned yet.
+    stubs_filtered: dict = {}
 
 
 class LLMHealthResponse(BaseModel):

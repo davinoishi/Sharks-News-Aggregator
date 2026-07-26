@@ -59,7 +59,11 @@ Tags (assign ALL that apply):
 
 Event type (pick exactly ONE primary): trade, injury, lineup, recall, waiver, signing, prospect, game, opinion, other
 
-low_value flag: set true ONLY for machine-generated pages with no reporting — streaming/"where to watch" promos (Fubo, DirecTV, Sling, "How to Watch"), live-score/boxscore/play-by-play widgets, betting odds/prediction autopages, and bare schedule stubs. Real recaps, previews with analysis, and news are NOT low_value.
+low_value flag: set true for machine-generated pages with no reporting — streaming/"where to watch" promos (Fubo, DirecTV, Sling, "How to Watch"), live-score/boxscore/play-by-play widgets, betting odds/prediction autopages, and schedule/matchup stubs.
+A schedule stub is a page whose title is essentially "<Team> vs/at <Team>" plus a date (e.g. "San Jose Sharks vs. Vegas Golden Knights - 2026-09-27 - TSN") and whose text is only fixture data: date, start time, venue, TV/streaming channel, standings, season records, odds, or an auto-generated stat table ("team leaders", points/goals/assists leaders, projected lineups with no source).
+Player names and stat lines are NOT reporting — their presence does not make a page a real preview. Treat it as real (low_value=false) only if the text contains written prose about the game or team: quotes, injury/roster news, analysis, predictions with reasoning, or a named author.
+When the description is empty, absent, or just repeats the title, and the title is a bare matchup + date, set low_value=true.
+Real recaps, previews with analysis, and news are NOT low_value.
 
 Title: {title}
 Description: {description}

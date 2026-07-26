@@ -16,6 +16,8 @@ from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
 from app.core.datetime_utils import ensure_aware, utcnow
+from app.core.db_utils import METRIC_STUB_INGEST, increment_site_metric
+from app.enrichment.teams import NHL_OPPONENT_TEAMS
 from app.tasks.celery_app import celery
 
 logger = logging.getLogger(__name__)
@@ -54,6 +56,116 @@ WATCH_VS_TITLE_RE = re.compile(r"^\s*watch\b.*\bvs\.?\b", re.IGNORECASE)
 # matchup: three things to watch").
 MATCHUP_STUB_RE = re.compile(r"\|\s*(?:nhl\s+)?matchup\s*\|", re.IGNORECASE)
 
+# --- Schedule stubs ----------------------------------------------------------
+# Marker lists only catch phrasings we've already seen. Schedule pages
+# ("San Jose Sharks vs. Vegas Golden Knights - 2026-09-27 - TSN") carry no
+# marker at all — the title is *only* the two teams, a date, and the publisher.
+# So match on that structure instead: split the title on separators, then
+# require a teams-only matchup segment, at least one date/time segment, and
+# nothing else but publisher names. Any extra word ("preview", "takeaways",
+# "3 things to watch", a score) means the page has copy, so it isn't a stub.
+#
+# Split on separators that are surrounded by whitespace, so ISO dates
+# (2026-09-27) and hyphenated names survive intact.
+_SEGMENT_SPLIT_RE = re.compile(r"\s+[-–—|]\s+|\s*\|\s*")
+
+# Every individual word that can appear in an NHL team name, plus filler that
+# carries no information on its own. A matchup segment may contain these words
+# and nothing else.
+_TEAM_WORDS = {
+    word
+    for keyword in list(NHL_OPPONENT_TEAMS) + ["san jose sharks", "sharks"]
+    for word in keyword.replace(".", "").split()
+} | {"nhl", "hockey", "game", "preseason", "the", "at", "vs", "v"}
+
+_MATCHUP_CONNECTOR_RE = re.compile(r"\b(?:vs\.?|v\.?|at)\b|@", re.IGNORECASE)
+
+_MONTHS = (
+    r"jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec|"
+    r"january|february|march|april|june|july|august|september|october|november|december"
+)
+_WEEKDAYS = r"mon|tue|tues|wed|weds|thu|thur|thurs|fri|sat|sun|monday|tuesday|wednesday|thursday|friday|saturday|sunday"
+
+# A segment that is *only* a date and/or a start time — e.g. "2026-09-27",
+# "September 27, 2026", "Sun, Sep 27", "7:00 PM PT".
+_DATE_PATTERN = rf"""
+    (?:(?:{_WEEKDAYS})\.?,?\s*)?                       # optional weekday
+    (?:
+        \d{{4}}-\d{{1,2}}-\d{{1,2}}                    # 2026-09-27
+      | \d{{1,2}}[/.]\d{{1,2}}[/.]\d{{2,4}}            # 09/27/2026
+      | (?:{_MONTHS})\.?\s+\d{{1,2}}(?:st|nd|rd|th)?(?:,?\s*\d{{4}})?   # Sep 27, 2026
+      | \d{{1,2}}\s+(?:{_MONTHS})\.?(?:,?\s*\d{{4}})?  # 27 September 2026
+    )"""
+_TIME_PATTERN = r"\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)\s*(?:[a-z]{1,3}t)?"  # 7:00 PM PT
+
+_DATE_SEGMENT_RE = re.compile(
+    rf"""^\s*
+    (?:
+        {_DATE_PATTERN}(?:\s*,?\s*(?:at\s+)?{_TIME_PATTERN})?   # date, optional time
+      | {_TIME_PATTERN}                                          # time alone
+    )
+    \s*$""",
+    re.IGNORECASE | re.VERBOSE,
+)
+
+# Publishers that append their own name as a trailing title segment. Google
+# Alerts/News feeds do this for every entry, so a bare publisher name after the
+# date is expected and must not count as content.
+_PUBLISHER_SEGMENTS = {
+    "tsn", "espn", "thescore", "the score", "sportsnet", "nhl", "nhl.com",
+    "cbs sports", "cbssports", "fox sports", "foxsports", "yahoo sports",
+    "yahoo", "sportskeeda", "msn", "si", "si.com", "bleacher report",
+    "oddsshark", "covers.com", "covers", "dazn", "nbc sports", "flashscore",
+    "sofascore", "scorebat", "stathead", "hockey reference", "action network",
+}
+
+
+def _is_matchup_segment(segment: str) -> bool:
+    """True when a title segment is nothing but two team names and a connector."""
+    if not _MATCHUP_CONNECTOR_RE.search(segment):
+        return False
+    if any(char.isdigit() for char in segment):
+        # A number in the matchup segment means a score or a game number
+        # ("Sharks vs Kings 3-2"), i.e. a result someone wrote about.
+        return False
+    words = re.findall(r"[a-z.']+", segment.lower())
+    if not words:
+        return False
+    return all(word.strip(".'") in _TEAM_WORDS for word in words if word.strip(".'"))
+
+
+def is_schedule_stub(title: Optional[str]) -> bool:
+    """True when a title is only a matchup plus a date — a bare schedule page.
+
+    These pages list the teams, the puck-drop time and (sometimes) an
+    auto-generated "team leaders" stat table, but contain no reporting. They
+    slip past SCOREBOARD_TITLE_MARKERS because they never say "boxscore" or
+    "how to watch" — the structure is the only tell.
+    """
+    if not title:
+        return False
+
+    segments = [seg.strip() for seg in _SEGMENT_SPLIT_RE.split(title) if seg and seg.strip()]
+    if len(segments) < 2:
+        # A matchup with no date segment is too weak a signal on its own —
+        # "Sharks vs. Kings" is also how real headlines start.
+        return False
+
+    has_matchup = False
+    has_date = False
+    for segment in segments:
+        if _is_matchup_segment(segment):
+            has_matchup = True
+        elif _DATE_SEGMENT_RE.match(segment):
+            has_date = True
+        elif segment.lower().strip(".") in _PUBLISHER_SEGMENTS:
+            continue
+        else:
+            # Any other segment is real copy — not a stub.
+            return False
+
+    return has_matchup and has_date
+
 
 def derive_title_from_description(description: Optional[str], max_len: int = 140) -> Optional[str]:
     """Fallback headline for feeds whose items carry no <title>.
@@ -85,7 +197,9 @@ def is_scoreboard_stub(title: Optional[str]) -> bool:
         return True
     if MATCHUP_STUB_RE.search(title):
         return True
-    return bool(WATCH_VS_TITLE_RE.search(title))
+    if WATCH_VS_TITLE_RE.search(title):
+        return True
+    return is_schedule_stub(title)
 
 
 @celery.task(name="app.tasks.ingest.ingest_all_sources", bind=True)
@@ -212,6 +326,7 @@ def ingest_rss(db: Session, source) -> dict:
 
         new_items = 0
         skipped_items = 0
+        stub_items = 0
 
         logger.info("  Found %d entries in feed", len(feed.entries))
 
@@ -232,6 +347,7 @@ def ingest_rss(db: Session, source) -> dict:
             if is_scoreboard_stub(entry_title):
                 logger.info("  ⊘ Skipped scoreboard stub: %s", entry_title)
                 skipped_items += 1
+                stub_items += 1
                 continue
 
             # Create raw_item with idempotency
@@ -259,14 +375,26 @@ def ingest_rss(db: Session, source) -> dict:
         source.fetch_error_count = 0
         db.commit()
 
-        logger.info("  ✓ Created %d new items, skipped %d duplicates", new_items, skipped_items)
+        logger.info(
+            "  ✓ Created %d new items, skipped %d (%d stubs)",
+            new_items, skipped_items, stub_items,
+        )
+
+        # Counter so the admin stats endpoint can show whether the stub filters
+        # are still firing (and catch a source that starts flooding us).
+        if stub_items:
+            try:
+                increment_site_metric(db, METRIC_STUB_INGEST, stub_items)
+            except Exception:  # pragma: no cover - metrics must never break ingest
+                logger.exception("Failed to record %s metric", METRIC_STUB_INGEST)
 
         return {
             "status": "success",
             "source_id": source.id,
             "source_name": source.name,
             "new_items": new_items,
-            "skipped_items": skipped_items
+            "skipped_items": skipped_items,
+            "stub_items": stub_items,
         }
 
     except Exception as e:

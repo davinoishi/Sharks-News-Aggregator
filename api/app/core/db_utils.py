@@ -26,6 +26,10 @@ from app.models import (
 
 # Well-known SiteMetrics keys (brief 09).
 METRIC_LLM_FAILOPEN = "llm_failopen_count"
+# Stub pages dropped by the title filters at ingest (is_scoreboard_stub).
+METRIC_STUB_INGEST = "stub_skipped_ingest_count"
+# Stub pages dropped later, by the LLM's low_value judgment during enrichment.
+METRIC_STUB_LLM = "stub_skipped_llm_count"
 
 
 def increment_site_metric(db: Session, key: str, amount: int = 1) -> None:

@@ -187,3 +187,49 @@ def test_unsupported_source_excluded_from_ingestion(pg_db):
     names = {s.name for s in active}
     assert real.name in names
     assert "HTML scrape" not in names
+
+
+# --- Stub-filter counters ----------------------------------------------------
+
+def _metrics_session():
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from app.core.database import Base
+    from app.models import SiteMetrics, ValidationLog
+
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(
+        engine, tables=[SiteMetrics.__table__, ValidationLog.__table__]
+    )
+    return sessionmaker(bind=engine)()
+
+
+def test_validation_stats_reports_stub_filter_counters():
+    """Both stub-filter layers are visible to the admin stats endpoint, so a
+    layer that silently stops firing (or a source that starts flooding us with
+    autopages) shows up instead of hiding in the worker logs."""
+    from app.core.db_utils import METRIC_STUB_INGEST, METRIC_STUB_LLM, set_site_metric
+    from app.routers.admin import get_validation_stats
+
+    db = _metrics_session()
+    try:
+        set_site_metric(db, METRIC_STUB_INGEST, 12)
+        set_site_metric(db, METRIC_STUB_LLM, 3)
+
+        stats = get_validation_stats(request=None, since=None, db=db)
+
+        assert stats["stubs_filtered"] == {"ingest": 12, "llm": 3}
+    finally:
+        db.close()
+
+
+def test_validation_stats_stub_counters_default_to_zero():
+    from app.routers.admin import get_validation_stats
+
+    db = _metrics_session()
+    try:
+        stats = get_validation_stats(request=None, since=None, db=db)
+        assert stats["stubs_filtered"] == {"ingest": 0, "llm": 0}
+    finally:
+        db.close()

@@ -87,12 +87,21 @@ def run_scoreboard_stub_cleanup(db) -> dict:
     from app.models import Cluster, ClusterVariant, RawItem
     from app.tasks.ingest import SCOREBOARD_TITLE_MARKERS, is_scoreboard_stub
 
-    # SQL prefilter (marker substrings + leading-"watch" titles for the
-    # WATCH_VS_TITLE_RE pattern), then confirm with is_scoreboard_stub so the
-    # deletion rule has a single source of truth with the ingest filter.
+    # SQL prefilter, then confirm with is_scoreboard_stub so the deletion rule
+    # has a single source of truth with the ingest filter. The prefilter must
+    # stay wider than every rule in that filter, or items it would drop can
+    # never become candidates: besides marker substrings and leading-"watch"
+    # titles (WATCH_VS_TITLE_RE), it has to admit any matchup-shaped title for
+    # MATCHUP_STUB_RE and the schedule-stub rule, neither of which needs a
+    # marker word. is_scoreboard_stub does the actual narrowing.
     candidates = db.query(RawItem.id, RawItem.raw_title).filter(
         or_(
             RawItem.raw_title.ilike("watch%"),
+            RawItem.raw_title.ilike("%matchup%"),
+            RawItem.raw_title.ilike("% vs%"),
+            RawItem.raw_title.ilike("% v %"),
+            RawItem.raw_title.ilike("% at %"),
+            RawItem.raw_title.ilike("%@%"),
             *[
                 RawItem.raw_title.ilike(f"%{marker}%")
                 for marker in SCOREBOARD_TITLE_MARKERS
