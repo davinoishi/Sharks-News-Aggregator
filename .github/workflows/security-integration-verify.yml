@@ -103,13 +103,29 @@ jobs:
       - name: Metrics rate limiting (#52)
         run: |
           set -uo pipefail
+          # enforce_metrics_rate_limit buckets on int(time.time()) // 60 — fixed
+          # windows, not a sliding one. A burst that straddles a minute boundary
+          # is therefore split across two buckets, and bursting only limit+20
+          # could leave BOTH halves under the limit and never see a 429 (a run
+          # starting at :59.4 failed exactly this way). Burst more than 2x the
+          # limit: whichever side of the split is larger then holds > limit
+          # requests, so the 429 is guaranteed wherever the boundary lands.
+          # Read the limit from the app default rather than hardcoding it, so
+          # raising the setting can't silently make this check unfalsifiable.
+          limit=$(sed -n 's/^ *metrics_rate_limit_per_min: int = \([0-9]\{1,\}\).*/\1/p' api/app/core/config.py)
+          if [ -z "$limit" ]; then
+            echo "::error::could not read metrics_rate_limit_per_min from api/app/core/config.py"; exit 1
+          fi
+          bursts=$(( limit * 2 + 10 ))
           saw429=0
-          for i in $(seq 1 80); do
+          sent=0
+          for i in $(seq 1 "$bursts"); do
             code=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:8001/metrics/pageview)
+            sent=$i
             [ "$code" = "429" ] && saw429=1 && break
           done
-          [ "$saw429" = "1" ] || { echo "::error::expected a 429 within 80 pageview bursts"; exit 1; }
-          echo "rate limiting OK (saw 429)"
+          [ "$saw429" = "1" ] || { echo "::error::expected a 429 within $bursts pageview bursts (limit=$limit/min)"; exit 1; }
+          echo "rate limiting OK (saw 429 after $sent requests, limit=$limit/min)"
 
       - name: Network isolation (#54) — datastore ports not published
         run: |
