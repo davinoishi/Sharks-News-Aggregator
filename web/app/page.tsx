@@ -4,6 +4,7 @@ import { FeedList } from './components/FeedList';
 import { SourceList } from './components/SourceList';
 import { FeedStructuredData } from './components/StructuredData';
 import { DEFAULT_SINCE } from './lib/filters';
+import { LOGO_ALT } from './lib/branding';
 import { formatLastScan, isoDateTime } from './lib/dates';
 import {
   fetchInitialFeed,
@@ -24,8 +25,9 @@ import {
  *
  * The shell and the first page of stories are now rendered here; `FeedList`
  * adopts them and owns everything interactive from that point on.
- */
-/**
+ *
+ * ---
+ *
  * Rendered per request, with the *data* cached rather than the page.
  *
  * The obvious setup — plain ISR via `export const revalidate` — is wrong here.
@@ -63,12 +65,11 @@ export default async function Home() {
       <div className="max-w-4xl mx-auto p-4 md:p-8">
         <header className="mb-8">
           <div className="flex items-center gap-3 sm:gap-4 mb-2">
-            {/* The crest sits directly beside the site name, so announcing it
-                would just repeat the h1. Eager and high-priority because it is
-                above the fold — lazy-loading it delayed the header paint. */}
+            {/* Eager and high-priority because it is above the fold —
+                lazy-loading it delayed the header paint. */}
             <Image
               src="/logo.png"
-              alt=""
+              alt={LOGO_ALT}
               width={64}
               height={64}
               priority

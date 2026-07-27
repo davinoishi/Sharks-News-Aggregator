@@ -22,9 +22,13 @@ export const SITE_URL = (
 
 export const SITE_NAME = 'Sharks News Aggregator';
 
-/** ~60 characters, and it actually contains the phrase people search for. */
+/**
+ * 54 characters. Google truncates around 60, so the earlier 70-character
+ * version ("…, Updated Hourly | …") was cut mid-phrase in results. Leads with
+ * the head term people actually search and still carries the brand.
+ */
 export const SITE_TITLE =
-  'San Jose Sharks News & Rumors, Updated Hourly | Sharks News Aggregator';
+  'San Jose Sharks News & Rumors | Sharks News Aggregator';
 
 /** ~158 chars — past roughly 160 Google truncates mid-sentence. */
 export const SITE_DESCRIPTION =
@@ -34,6 +38,23 @@ export const SITE_DESCRIPTION =
 
 /** Static 1200x630 card. See `scripts/generate-og-image.py`. */
 export const OG_IMAGE_PATH = '/og-image.png';
+
+/**
+ * Google Search Console ownership token, rendered as
+ * `<meta name="google-site-verification">`.
+ *
+ * Not a secret — it is designed to be publicly readable in the page source, and
+ * it grants nothing on its own. It only proves control of this origin, so it is
+ * tied to the URL-prefix property for SITE_URL: pointing the site at a different
+ * domain means re-verifying and replacing this value.
+ *
+ * Chosen over the `googleXXXX.html` file method so the token lives in typed
+ * config beside the rest of the site's metadata, rather than as an unexplained
+ * file in `public/` that a future cleanup could delete without knowing what it
+ * was for.
+ */
+export const GOOGLE_SITE_VERIFICATION =
+  'qd9eRFoQEAJ3IxkKfEzhBy0mvmm2WXjxTm0OGVczmxA';
 
 export const AUTHOR_NAME = 'Davin';
 export const AUTHOR_LINKS_URL = 'https://linktr.ee/davinoishi';

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { LOGO_ALT } from '../lib/branding';
 
 export default function SubmitPage() {
   const [url, setUrl] = useState('');
@@ -43,7 +44,7 @@ export default function SubmitPage() {
         {/* Header */}
         <header className="mb-8">
           <Link href="/" className="flex items-center gap-4 mb-2 hover:opacity-80">
-            <Image src="/logo.png" alt="" width={48} height={48} className="object-contain" />
+            <Image src="/logo.png" alt={LOGO_ALT} width={48} height={48} className="object-contain" />
             <span className="font-display text-wordmark uppercase text-content">Sharks News Aggregator</span>
           </Link>
         </header>

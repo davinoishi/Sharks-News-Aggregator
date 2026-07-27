@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { display, text } from './fonts';
 import { SiteStructuredData } from './components/StructuredData';
 import {
+  GOOGLE_SITE_VERIFICATION,
   OG_IMAGE_PATH,
   SITE_DESCRIPTION,
   SITE_NAME,
@@ -47,6 +48,11 @@ export const metadata: Metadata = {
         alt: `${SITE_NAME} — San Jose Sharks news and rumors in one feed`,
       },
     ],
+  },
+  // Proves origin ownership to Google Search Console. Emitted on every page, so
+  // verification does not depend on any single URL staying reachable.
+  verification: {
+    google: GOOGLE_SITE_VERIFICATION,
   },
   twitter: {
     card: 'summary_large_image',

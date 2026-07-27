@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import Image from 'next/image';
+import { LOGO_ALT } from '../lib/branding';
 import { pageOpenGraph } from '../lib/site';
 
 export const metadata: Metadata = {
@@ -33,7 +34,7 @@ export default function LegalPage() {
           <Link href="/" className="flex items-center gap-4 mb-2 hover:opacity-80">
             <Image
               src="/logo.png"
-              alt=""
+              alt={LOGO_ALT}
               width={48}
               height={48}
               className="object-contain"
