@@ -36,6 +36,21 @@ function readFiltersFromUrl(): Filters {
   return { tags, since, entity };
 }
 
+/**
+ * Mirror filter state into the URL without a navigation.
+ *
+ * **`history.state` must be preserved.** Passing `null` — which this did — wipes
+ * the App Router's own routing state (`__NA`,
+ * `__PRIVATE_NEXTJS_INTERNALS_TREE`) for the current history entry. Next reads
+ * that on `popstate` to rebuild the route tree, so with it gone the Back button
+ * changed the URL and left the previous page's DOM on screen: going
+ * home → /tag/rumors → Back showed the URL `/` with the Rumors heading, count
+ * and stories still rendered.
+ *
+ * `router.replace()` would also be correct but costs a server round-trip on a
+ * `force-dynamic` page every time a filter chip is tapped, which is exactly why
+ * this uses the raw history API.
+ */
 function writeFiltersToUrl(filters: Filters) {
   if (typeof window === 'undefined') return;
   const p = new URLSearchParams();
@@ -43,7 +58,11 @@ function writeFiltersToUrl(filters: Filters) {
   if (filters.since && filters.since !== DEFAULT_SINCE) p.set('since', filters.since);
   if (filters.entity) p.set('entities', filters.entity.slug);
   const qs = p.toString();
-  window.history.replaceState(null, '', qs ? `?${qs}` : window.location.pathname);
+  window.history.replaceState(
+    window.history.state,
+    '',
+    qs ? `?${qs}` : window.location.pathname
+  );
 }
 
 function filtersMatchDefault(filters: Filters): boolean {
