@@ -1,6 +1,6 @@
 """Feed and cluster-detail endpoints (brief 07, Q3)."""
 from email.utils import format_datetime
-from typing import Optional
+from typing import Literal, Optional
 from xml.sax.saxutils import escape
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -8,6 +8,7 @@ from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.constants import USER_SUBMISSION_SOURCE_URL
 from app.core.database import get_db
 from app.core.queries import (
     build_feed_query,
@@ -15,11 +16,26 @@ from app.core.queries import (
     encode_cursor,
     format_cluster_for_feed,
     get_cluster_variants_sorted,
+    get_entities_by_prominence,
     get_top_variant_urls,
     search_entities_by_name,
 )
-from app.models import Cluster, ClusterEntity, ClusterStatus, ClusterTag, Entity, Tag
-from app.schemas import ClusterDetailResponse, EntitiesResponse, FeedResponse
+from app.models import (
+    Cluster,
+    ClusterEntity,
+    ClusterStatus,
+    ClusterTag,
+    Entity,
+    Source,
+    SourceStatus,
+    Tag,
+)
+from app.schemas import (
+    ClusterDetailResponse,
+    EntitiesResponse,
+    FeedResponse,
+    SourcesResponse,
+)
 from app.utils import parse_since_parameter
 
 router = APIRouter()
@@ -158,16 +174,35 @@ def get_cluster(
 def list_entities(
     query: str = Query("", description="Case-insensitive name search"),
     limit: int = Query(15, ge=1, le=50),
+    order_by: Literal["name", "cluster_count"] = Query(
+        "name", description="Ordering for the no-query listing"
+    ),
+    since: Optional[str] = Query(
+        None, description="Window for cluster_count ordering: 24h|7d|30d or ISO timestamp"
+    ),
     db: Session = Depends(get_db),
 ):
-    """Public entity search for the player/entity filter picker (U2).
+    """Public entity listing for the player/entity filter picker (U2).
 
-    Empty query returns the first ``limit`` entities alphabetically so the
-    picker can show suggestions before the user types.
+    ``order_by`` applies only to the no-query listing; a name search is already
+    ordered by what the user typed.
+
+    - ``name`` (default) — alphabetical. Unchanged behaviour for the typeahead.
+    - ``cluster_count`` — ranked by how many clusters in ``since`` mention the
+      entity. This is what the server-rendered chip strip uses (SEO-2):
+      alphabetical would pin whoever sorts first to the top permanently,
+      regardless of whether anyone is writing about them.
+
+    ``since`` is parsed with the same helper the feed uses, so passing the
+    feed's window yields chips that match the stories on screen.
     """
     query = query.strip()
     if query:
         results = search_entities_by_name(db, query, limit=limit)
+    elif order_by == "cluster_count":
+        results = get_entities_by_prominence(
+            db, since=parse_since_parameter(since), limit=limit
+        )
     else:
         results = db.query(Entity).order_by(Entity.name).limit(limit).all()
 
@@ -175,6 +210,46 @@ def list_entities(
         "entities": [
             {"id": e.id, "name": e.name, "slug": e.slug, "type": e.entity_type}
             for e in results
+        ]
+    }
+
+
+@router.get("/sources", response_model=SourcesResponse)
+def list_public_sources(db: Session = Depends(get_db)):
+    """Public list of the outlets the feed aggregates (SEO-3).
+
+    For an aggregator the source list is the strongest provenance signal there
+    is, and until now it was only visible behind the admin 401 — the public
+    footer just said "official sources and trusted media outlets" and named
+    none of them.
+
+    Deliberately NOT the admin shape (``/admin/sources``). Fields are
+    whitelisted one by one rather than filtered out of the model, so a column
+    added later — a credential in ``extra_metadata``, an auth token, an error
+    count that reveals which outlets are failing — cannot leak by default.
+    Only ``name``, ``base_url`` and ``category`` are published.
+
+    Excludes the synthetic user-submission source, which is an internal bucket
+    rather than an outlet anyone can visit.
+    """
+    sources = (
+        db.query(Source)
+        .filter(
+            Source.status == SourceStatus.APPROVED,
+            Source.base_url != USER_SUBMISSION_SOURCE_URL,
+        )
+        .order_by(Source.name)
+        .all()
+    )
+
+    return {
+        "sources": [
+            {
+                "name": s.name,
+                "base_url": s.base_url,
+                "category": s.category.value if hasattr(s.category, "value") else s.category,
+            }
+            for s in sources
         ]
     }
 

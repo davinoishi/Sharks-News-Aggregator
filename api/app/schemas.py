@@ -54,6 +54,21 @@ class EntitiesResponse(BaseModel):
     entities: List[EntityItem]
 
 
+class PublicSourceItem(BaseModel):
+    """Publishable view of a Source. Deliberately narrower than the admin shape.
+
+    Keep this to fields that are safe on a public page. Anything operational
+    (feed_url, fetch_error_count, status, extra_metadata) stays admin-only.
+    """
+    name: str
+    base_url: str
+    category: str
+
+
+class SourcesResponse(BaseModel):
+    sources: List[PublicSourceItem]
+
+
 class FeedResponse(BaseModel):
     clusters: List[ClusterItem]
     cursor: Optional[str] = None

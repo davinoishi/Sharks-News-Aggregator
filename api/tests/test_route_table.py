@@ -21,6 +21,7 @@ EXPECTED_ROUTES = {
     ("GET", "/health"),
     ("GET", "/feed"),
     ("GET", "/entities"),
+    ("GET", "/sources"),
     ("GET", "/rss"),
     ("GET", "/cluster/{cluster_id}"),
     ("POST", "/submit/link"),

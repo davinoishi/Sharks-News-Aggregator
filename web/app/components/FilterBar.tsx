@@ -11,6 +11,12 @@ interface FilterBarProps {
   selectedTags: string[];
   since: string;
   entity: ActiveEntity | null;
+  /**
+   * Players and coaches most mentioned in the current window, ranked by the
+   * API and rendered server-side (SEO-2). Empty is fine — the search input
+   * still works, it just has nothing to suggest.
+   */
+  suggestedEntities?: Entity[];
   onTagsChange: (tags: string[]) => void;
   onSinceChange: (since: string) => void;
   onEntityChange: (entity: ActiveEntity | null) => void;
@@ -40,6 +46,7 @@ export function FilterBar({
   selectedTags,
   since,
   entity,
+  suggestedEntities = [],
   onTagsChange,
   onSinceChange,
   onEntityChange,
@@ -172,33 +179,67 @@ export function FilterBar({
             </span>
           </div>
         ) : (
-          <div className="relative max-w-xs" ref={pickerRef}>
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onFocus={() => setOpen(true)}
-              placeholder="Search players…"
-              aria-label="Search players to filter by"
-              className={`w-full min-h-[44px] px-3 py-2 text-ui font-normal border border-edge-strong rounded-lg ${focusRing}`}
-            />
-            {open && results.length > 0 && (
-              <ul className="absolute z-10 mt-1 w-full max-h-60 overflow-auto bg-surface border border-edge rounded-lg shadow-md">
-                {results.map((e) => (
-                  <li key={e.id}>
+          <>
+            <div className="relative max-w-xs" ref={pickerRef}>
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onFocus={() => setOpen(true)}
+                placeholder="Search players…"
+                aria-label="Search players to filter by"
+                className={`w-full min-h-[44px] px-3 py-2 text-ui font-normal border border-edge-strong rounded-lg ${focusRing}`}
+              />
+              {open && results.length > 0 && (
+                <ul className="absolute z-10 mt-1 w-full max-h-60 overflow-auto bg-surface border border-edge rounded-lg shadow-md">
+                  {results.map((e) => (
+                    <li key={e.id}>
+                      <button
+                        type="button"
+                        onClick={() => selectEntity(e)}
+                        className="w-full min-h-[44px] text-left px-3 py-2 text-ui text-content-secondary hover:bg-surface-sunken"
+                      >
+                        {e.name}
+                        <span className="ml-2 text-chip uppercase text-content-muted">{e.type}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            {/* Who is actually in the news, ranked by story count and rendered
+                on the server (SEO-2). This replaces an empty text box as the
+                resting state: a reader who doesn't already have a name in mind
+                now has somewhere to start, and the names are in the HTML. */}
+            {suggestedEntities.length > 0 && (
+              <div className="mt-3">
+                <p
+                  id="suggested-players-label"
+                  className="text-meta text-content-muted mb-2"
+                >
+                  In the news:
+                </p>
+                <div
+                  className="flex flex-wrap gap-x-2 gap-y-3"
+                  role="group"
+                  aria-labelledby="suggested-players-label"
+                >
+                  {suggestedEntities.map((e) => (
                     <button
+                      key={e.id}
                       type="button"
                       onClick={() => selectEntity(e)}
-                      className="w-full min-h-[44px] text-left px-3 py-2 text-ui text-content-secondary hover:bg-surface-sunken"
+                      title={`Filter by ${e.name}`}
+                      className={`tap-40 text-meta font-medium leading-4 px-2.5 py-1.5 rounded-full bg-control text-control-fg ring-1 ring-inset ring-control-edge hover:bg-control-hover transition-colors ${focusRing}`}
                     >
                       {e.name}
-                      <span className="ml-2 text-chip uppercase text-content-muted">{e.type}</span>
                     </button>
-                  </li>
-                ))}
-              </ul>
+                  ))}
+                </div>
+              </div>
             )}
-          </div>
+          </>
         )}
       </div>
 
