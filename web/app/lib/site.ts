@@ -22,9 +22,13 @@ export const SITE_URL = (
 
 export const SITE_NAME = 'Sharks News Aggregator';
 
-/** ~60 characters, and it actually contains the phrase people search for. */
+/**
+ * 54 characters. Google truncates around 60, so the earlier 70-character
+ * version ("…, Updated Hourly | …") was cut mid-phrase in results. Leads with
+ * the head term people actually search and still carries the brand.
+ */
 export const SITE_TITLE =
-  'San Jose Sharks News & Rumors, Updated Hourly | Sharks News Aggregator';
+  'San Jose Sharks News & Rumors | Sharks News Aggregator';
 
 /** ~158 chars — past roughly 160 Google truncates mid-sentence. */
 export const SITE_DESCRIPTION =
