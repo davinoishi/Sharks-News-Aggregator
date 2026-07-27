@@ -2,6 +2,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { FeedList } from './components/FeedList';
 import { SourceList } from './components/SourceList';
+import { TopicNav } from './components/TopicNav';
 import { FeedStructuredData } from './components/StructuredData';
 import { DEFAULT_SINCE } from './lib/filters';
 import { LOGO_ALT } from './lib/branding';
@@ -180,6 +181,8 @@ export default async function Home() {
               </li>
             </ul>
           </nav>
+
+          <TopicNav />
 
           <SourceList sources={sources} />
 

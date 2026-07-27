@@ -90,6 +90,38 @@ export async function fetchProminentEntities(
   return data?.entities ?? [];
 }
 
+/** Feed for one topic page, filtered by a single tag or entity slug. */
+export async function fetchTopicFeed(
+  filter: 'tags' | 'entities',
+  slug: string,
+  since: string,
+  limit = 50
+): Promise<FeedResponse | null> {
+  return getJson<FeedResponse>(
+    `/feed?${filter}=${encodeURIComponent(slug)}&since=${encodeURIComponent(since)}&limit=${limit}`,
+    FEED_REVALIDATE_SECONDS,
+    `/feed (${filter}=${slug})`
+  );
+}
+
+/**
+ * Whether a topic has at least `threshold` clusters in the window.
+ *
+ * Asks for exactly `threshold` items and checks whether that many came back,
+ * rather than pulling a full page to count them. The sitemap runs this for
+ * every topic, so the difference is nine small responses instead of nine
+ * hundred-item ones on a Raspberry Pi.
+ */
+export async function topicHasEnoughClusters(
+  filter: 'tags' | 'entities',
+  slug: string,
+  since: string,
+  threshold: number
+): Promise<boolean> {
+  const data = await fetchTopicFeed(filter, slug, since, threshold);
+  return (data?.clusters.length ?? 0) >= threshold;
+}
+
 export async function fetchPublicSources(): Promise<PublicSource[]> {
   const data = await getJson<SourcesResponse>(
     '/sources',
