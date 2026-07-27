@@ -139,11 +139,29 @@ Make the feed crawlable, then give crawlers the metadata to make sense of it.
   ~8 stories. Owner's decision: keep the 24h default rather than widening it. Do not
   render a wider set and hide the surplus — hidden content is discounted anyway, and
   it is not an honest pattern.
-- **Revalidate.** `export const revalidate = 300`. Ingest is every 10 minutes, so
-  nothing is ever more than half a cycle stale, and it matches `web/app/rss/route.ts`.
-  This also turns the page into ISR, which **incidentally removes the
-  `Cache-Control: no-store` header** the HTML currently ships — a free fix for a
-  separate audit finding.
+- **Caching.** ~~`export const revalidate = 300`, making the page ISR — which also
+  incidentally removes the `Cache-Control: no-store` header, a free fix for a
+  separate audit finding.~~ **Corrected during implementation (#121); both halves
+  of that were wrong.**
+
+  Plain ISR prerenders the page at *build* time, and the API is unreachable inside
+  the Docker build, so the image would ship HTML reading "No news items found" and
+  serve it to whoever arrived first after each deploy. Reproduced against a stub
+  backend: the stories were baked straight into `.next/server/app/index.html`.
+
+  What shipped instead: `dynamic = 'force-dynamic'` (skips the build-time
+  prerender) plus `fetchCache = 'default-cache'` (keeps each fetch's own
+  `next: { revalidate: 300 }` honoured — without it `force-dynamic` downgrades
+  every fetch to `no-store` and every visitor hits the Pi). Measured on a cold
+  cache: 6 page loads → 1 request per endpoint. The render is cheap; the network
+  call is what's worth caching.
+
+  Consequence for the audit's `no-store` finding: **it is not fixed and this work
+  does not fix it.** `force-dynamic` renders per request, so the HTML is
+  deliberately not cacheable downstream — verified still
+  `no-cache, no-store, must-revalidate` after deploy. Making the HTML edge-cacheable
+  would need an explicit `headers()` rule in `next.config.js`, which is a real
+  behavioural change (readers would get stale HTML) and remains out of scope.
 - **Timestamps — two separate hydration problems, both resolved by decision.**
   1. `formatLastScanTime()` (`web/app/page.tsx:106-110`, rendered at `:216`) produces
      a relative string ("Last scan: 3 minutes ago"). Computed server-side and then
