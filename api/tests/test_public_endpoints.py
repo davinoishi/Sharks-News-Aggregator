@@ -201,3 +201,35 @@ def test_rss_feed_is_wellformed_and_links_to_top_source(pg):
     root = ET.fromstring(response.body)  # raises if malformed
     links = [item.findtext("link") for item in root.iter("item")]
     assert urls["official"][0] in links
+
+
+@requires_postgres
+def test_rss_channel_metadata_follows_public_site_url(pg, monkeypatch):
+    """Channel <link> and atom:self must derive from the configured site URL.
+
+    SEO-11: production ran for weeks publishing a channel origin that 404ed,
+    because the deployed PUBLIC_SITE_URL had drifted. A test cannot catch a
+    wrong *deployed* value — the fix for that is pinning it in
+    docker-compose.pi.yml — but it can stop a refactor from hardcoding the
+    origin or dropping the setting, which would make the value unfixable
+    without a code change.
+    """
+    import xml.etree.ElementTree as ET
+
+    from app.core.config import settings
+    from app.routers.feed import rss_feed
+
+    monkeypatch.setattr(settings, "public_site_url", "https://example.test/")
+
+    now = datetime.now(timezone.utc)
+    _make_cluster_with_variants(pg, [("official", now - timedelta(hours=1))])
+
+    root = ET.fromstring(rss_feed(db=pg).body)
+    channel = root.find("channel")
+
+    # Trailing slash is stripped, so the two never disagree by a slash.
+    assert channel.findtext("link") == "https://example.test"
+
+    atom_self = channel.find("{http://www.w3.org/2005/Atom}link")
+    assert atom_self.get("href") == "https://example.test/rss"
+    assert atom_self.get("rel") == "self"

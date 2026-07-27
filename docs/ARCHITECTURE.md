@@ -338,8 +338,8 @@ See [`.env.example`](../.env.example) for the full list. Highlights:
 | `ADMIN_PANEL_PASSWORD` | - | HTTP Basic password gating `/admin` (required) |
 | `INGEST_INTERVAL_MINUTES` | 10 | RSS fetch frequency |
 | `MAX_ARTICLE_AGE_DAYS` | 7 | Reject articles older than this many days |
-| `ALLOWED_ORIGINS` | `http://localhost:3000` | CORS allowed origins (`*` on the Pi) |
-| `PUBLIC_SITE_URL` | `http://localhost:3000` | Site URL for RSS channel metadata |
+| `ALLOWED_ORIGINS` | `http://localhost:3000` | CORS allowed origins. Pinned to `https://wplepla23gjn.nobgp.com` on the Pi by R2-S1 — **not** `*`, which is what this row used to claim |
+| `PUBLIC_SITE_URL` | `http://localhost:3000` | Site URL for RSS channel metadata (`<link>`, `atom:link rel="self"`). Pinned to `https://wplepla23gjn.nobgp.com` on the Pi (SEO-11). Item links are unaffected — they always point at real source URLs |
 | `LOG_LEVEL` | `INFO` | Logging verbosity (C4) |
 | `ALERT_WEBHOOK_URL` | (empty) | Webhook for degraded-pipeline alerts (O3) |
 | `OPENROUTER_API_KEY` | (empty) | Enables LLM relevance/classification |
