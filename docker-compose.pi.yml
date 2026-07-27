@@ -7,12 +7,19 @@
 #   - CORS pinned to the public nobgp origin (R2-S1). The browser only ever
 #     talks to the Next.js proxy, so the API needs no broader origin allowlist.
 #     No trailing slash — it's matched against the request Origin header.
+#   - PUBLIC_SITE_URL pinned to the same origin (SEO-11). Declared here rather
+#     than left to the Pi's .env alone: it had drifted to a host that now 404s,
+#     and because nothing in version control named the production value, the
+#     published RSS advertised a dead origin for weeks without anyone noticing.
 #   - LLM shadow/evaluation mode + BlueSky posting enabled.
 
 services:
   api:
     environment:
       ALLOWED_ORIGINS: "${ALLOWED_ORIGINS:-https://wplepla23gjn.nobgp.com}"
+      # RSS channel metadata (<link> and atom:link rel="self"). Only the api
+      # service serves /rss, so worker/beat don't need this.
+      PUBLIC_SITE_URL: "${PUBLIC_SITE_URL:-https://wplepla23gjn.nobgp.com}"
       LLM_EVALUATION_MODE: "true"
       BLUESKY_ENABLED: "true"
       BLUESKY_HANDLE: "${BLUESKY_HANDLE:-sjsharks-news.bsky.social}"
