@@ -23,6 +23,7 @@ from app.models import (
     ClusterVariant,
     EventType,
     SiteMetrics,
+    Source,
     StoryVariant,
     Tag,
 )
@@ -814,6 +815,83 @@ def create_cluster(
     return cluster
 
 
+# Source authority for headline selection. A club/league page reporting a move
+# outranks a rewrite of it, so it names the card when both are equally on-topic.
+_HEADLINE_SOURCE_RANK = {"official": 3, "press": 2, "other": 1}
+
+# Placeholder titles never name a card while a real title is available.
+_PLACEHOLDER_TITLES = frozenset({"untitled"})
+
+
+def _headline_sort_key(title: str, category, published_at, summary: Optional[str]):
+    """Rank one candidate title for naming a cluster. Higher sorts first.
+
+    Ordered by: how well the title describes the cluster's actual subject, then
+    source authority, then earliest publication (the original report over a
+    later aggregation).
+    """
+    representativeness = summary_similarity(title, summary) if summary else 0.0
+    category_value = getattr(category, "value", category)
+    rank = _HEADLINE_SOURCE_RANK.get(category_value, 0)
+
+    aware = ensure_aware(published_at)
+    # Negated so the *earliest* publication wins the tie-break under max();
+    # an undated variant sorts last rather than winning by accident.
+    recency = -aware.timestamp() if aware else float("-inf")
+
+    return (round(representativeness, 3), rank, recency)
+
+
+def select_cluster_headline(db: Session, cluster, incoming=None) -> Optional[str]:
+    """Pick the title that should name ``cluster`` across all of its variants.
+
+    The headline used to be frozen as the first variant's title, so whichever
+    member happened to arrive first named the card forever — even when it was
+    the least representative of the story. Re-picking over the whole membership
+    is stateless (no "which variant is the headline" column to drift) and cheap:
+    clusters hold a handful of variants.
+
+    ``incoming`` is the (title, published_at, category) of a variant being added
+    right now. Callers link the ClusterVariant row *after* updating metadata, so
+    a new variant isn't visible to the query yet and must be passed explicitly.
+
+    Returns None when there is no usable candidate, meaning: keep what's there.
+    """
+    rows = (
+        db.query(StoryVariant.title, StoryVariant.published_at, Source.category)
+        .join(ClusterVariant, ClusterVariant.variant_id == StoryVariant.id)
+        .join(Source, Source.id == StoryVariant.source_id)
+        .filter(ClusterVariant.cluster_id == cluster.id)
+        # Deterministic order so equally-ranked members can't swap the headline
+        # back and forth between enrichment runs.
+        .order_by(StoryVariant.id)
+        .all()
+    )
+
+    candidates = [(title, published_at, category) for title, published_at, category in rows if title]
+    if incoming and incoming[0]:
+        candidates.append(incoming)
+
+    real_titles = [c for c in candidates if c[0].strip().lower() not in _PLACEHOLDER_TITLES]
+    candidates = real_titles or candidates
+    if not candidates:
+        return None
+
+    # Ties are common — summary_similarity strips publication suffixes, so
+    # "X - Yahoo Sports" scores exactly like "X". Sort the incumbent headline
+    # first and rely on max() returning the first maximal element, so an exact
+    # tie keeps the current headline instead of churning between equals.
+    incumbent = (cluster.headline or "").strip()
+    candidates.sort(key=lambda c: c[0].strip() != incumbent)
+
+    summary = getattr(cluster, "llm_summary", None)
+    best = max(
+        candidates,
+        key=lambda c: _headline_sort_key(c[0], c[2], c[1], summary),
+    )
+    return best[0]
+
+
 def update_cluster_metadata(db: Session, cluster, variant, tokens: List[str], entities: List[int], source, tag_names: Optional[List[str]] = None):
     """
     Update cluster metadata when adding a new variant.
@@ -854,6 +932,17 @@ def update_cluster_metadata(db: Session, cluster, variant, tokens: List[str], en
     )
     if not cluster.llm_summary and variant_summary:
         cluster.llm_summary = variant_summary
+
+    # Re-pick the headline across the whole membership now that the summary is
+    # current. Runs after the backfill above so a cluster whose first variant
+    # had no LLM summary can still rank titles by subject on this pass.
+    headline = select_cluster_headline(
+        db,
+        cluster,
+        incoming=(variant.title, variant.published_at, getattr(source, "category", None)),
+    )
+    if headline:
+        cluster.headline = headline
 
     # Add new entity associations
     add_cluster_entity_associations(db, cluster, entities)
