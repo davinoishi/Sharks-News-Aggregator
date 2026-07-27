@@ -97,3 +97,47 @@ export function pageOpenGraph(options: {
     ],
   };
 }
+
+/**
+ * Everything a subpage needs to describe itself: canonical, Open Graph and
+ * Twitter, from one title/description/path.
+ *
+ * This exists because `openGraph` and `twitter` are **separate** metadata
+ * fields, and Next merges shallowly. Setting only `openGraph` on a page leaves
+ * the root `twitter` block untouched, so the page advertised its own title to
+ * Facebook/Slack/Bluesky and the generic site title to X — visible only by
+ * inspecting a share preview on the right platform. Every subpage had that bug
+ * from the moment per-page metadata was added.
+ *
+ * Prefer this over hand-writing the blocks. If a page needs to differ, override
+ * a field on the returned object rather than rebuilding it.
+ */
+export function pageMetadata(options: {
+  title: string;
+  description: string;
+  path: string;
+  /** Shorter title for share cards, when the SEO title is unwieldy. */
+  socialTitle?: string;
+  /** Shorter description for share cards. */
+  socialDescription?: string;
+}) {
+  const socialTitle = options.socialTitle ?? options.title;
+  const socialDescription = options.socialDescription ?? options.description;
+
+  return {
+    title: options.title,
+    description: options.description,
+    alternates: { canonical: options.path },
+    openGraph: pageOpenGraph({
+      title: socialTitle,
+      description: socialDescription,
+      path: options.path,
+    }),
+    twitter: {
+      card: 'summary_large_image' as const,
+      title: socialTitle,
+      description: socialDescription,
+      images: [OG_IMAGE_PATH],
+    },
+  };
+}

@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { TopicPage } from '../../components/TopicPage';
 import { findTagTopic } from '../../lib/topics';
-import { pageOpenGraph } from '../../lib/site';
+import { pageMetadata } from '../../lib/site';
 
 /**
  * Topic pages for the eight tags the feed applies (TAG-1).
@@ -31,17 +31,11 @@ export async function generateMetadata({
   const topic = findTagTopic(params.slug);
   if (!topic) return {};
 
-  const path = `/tag/${topic.slug}`;
-  return {
+  return pageMetadata({
     title: topic.title,
     description: topic.description,
-    alternates: { canonical: path },
-    openGraph: pageOpenGraph({
-      title: topic.title,
-      description: topic.description,
-      path,
-    }),
-  };
+    path: `/tag/${topic.slug}`,
+  });
 }
 
 export default function TagRoute({ params }: { params: { slug: string } }) {

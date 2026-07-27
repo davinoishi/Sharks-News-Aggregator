@@ -3,21 +3,18 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { AuthorStructuredData } from '../components/StructuredData';
 import { LOGO_ALT } from '../lib/branding';
-import { pageOpenGraph } from '../lib/site';
+import { pageMetadata } from '../lib/site';
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
   title: 'About',
   description:
     'Why Sharks News Aggregator exists and who built it — a free, ad-free ' +
     'fan project pulling San Jose Sharks news and rumors into one feed.',
-  alternates: { canonical: '/about' },
-  openGraph: pageOpenGraph({
-    title: 'About Sharks News Aggregator',
-    description:
-      'A free, ad-free Sharks news aggregator built by a fan, for fans.',
-    path: '/about',
-  }),
-};
+  path: '/about',
+  socialTitle: 'About Sharks News Aggregator',
+  socialDescription:
+    'A free, ad-free Sharks news aggregator built by a fan, for fans.',
+});
 
 export default function AboutPage() {
   return (

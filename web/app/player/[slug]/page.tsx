@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { TopicPage } from '../../components/TopicPage';
 import { findPlayerTopic } from '../../lib/topics';
-import { pageOpenGraph } from '../../lib/site';
+import { pageMetadata } from '../../lib/site';
 
 /**
  * Player pages (TAG-4). Currently a single allowlisted player.
@@ -26,17 +26,11 @@ export async function generateMetadata({
   const topic = findPlayerTopic(params.slug);
   if (!topic) return {};
 
-  const path = `/player/${topic.slug}`;
-  return {
+  return pageMetadata({
     title: topic.title,
     description: topic.description,
-    alternates: { canonical: path },
-    openGraph: pageOpenGraph({
-      title: topic.title,
-      description: topic.description,
-      path,
-    }),
-  };
+    path: `/player/${topic.slug}`,
+  });
 }
 
 export default function PlayerRoute({ params }: { params: { slug: string } }) {
