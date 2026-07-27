@@ -2,22 +2,18 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import Image from 'next/image';
 import { LOGO_ALT } from '../lib/branding';
-import { pageOpenGraph } from '../lib/site';
+import { pageMetadata } from '../lib/site';
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
   title: 'Terms of Use & Privacy Policy',
   description:
     'Terms of use and privacy policy for Sharks News Aggregator: how it ' +
     'aggregates third-party reporting, and what it does not collect.',
-  alternates: { canonical: '/legal' },
-  openGraph: pageOpenGraph({
-    title: 'Terms of Use & Privacy Policy',
-    description:
-      'How Sharks News Aggregator handles third-party content, and the ' +
-      'no-cookie, no-tracking stance behind it.',
-    path: '/legal',
-  }),
-};
+  path: '/legal',
+  socialDescription:
+    'How Sharks News Aggregator handles third-party content, and the ' +
+    'no-cookie, no-tracking stance behind it.',
+});
 
 export default function LegalPage() {
   const lastUpdated = new Date().toLocaleDateString('en-US', {
