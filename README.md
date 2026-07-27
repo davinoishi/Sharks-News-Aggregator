@@ -8,7 +8,7 @@ A comprehensive news aggregation and clustering system for San Jose Sharks hocke
 
 Deployed on a Raspberry Pi 5 (pi5-ai2), public via noBGP proxy:
 
-- **Web App**: https://x2mq74oetjlz.nobgp.com
+- **Web App**: https://wplepla23gjn.nobgp.com
 - **BlueSky**: [@sjsharks-news.bsky.social](https://bsky.app/profile/sjsharks-news.bsky.social)
 
 ## Features
@@ -102,7 +102,7 @@ Background Workers:
 The application runs on a Raspberry Pi 5 (pi5-ai2) with public access via noBGP proxy.
 
 **Access URL:**
-- Web: https://x2mq74oetjlz.nobgp.com (or `localhost:3001` on Pi)
+- Web: https://wplepla23gjn.nobgp.com (or `localhost:3001` on Pi)
 
 **Deploy to Pi:**
 ```bash
@@ -340,6 +340,7 @@ sharks-news-aggregator/
 
 All docs live under [`docs/`](docs/):
 
+- **[docs/PRODUCT.md](docs/PRODUCT.md)** - Who this is for, what it must preserve, and the durable product constraints
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - System design, containers, data flow
 - **[docs/SETUP_GUIDE.md](docs/SETUP_GUIDE.md)** - Detailed setup walkthrough
 - **[docs/PRODUCTION_CHECKLIST.md](docs/PRODUCTION_CHECKLIST.md)** - Production deployment checklist
