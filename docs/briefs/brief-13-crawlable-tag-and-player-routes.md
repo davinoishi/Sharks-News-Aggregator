@@ -174,6 +174,14 @@ is not `force-dynamic` bakes its metadata at build time.
 
 ## After this brief
 
+- **Relevance is now the blocker, not SEO.** Measured after deploying: 27% of
+  `/tag/trade` and 32% of `/tag/rumors` are headlines naming another NHL team and
+  not San Jose, admitted because a Sharks player's name appears in the title.
+  A page promising "San Jose Sharks Trade News & Rumors" that is a quarter Oilers
+  content will not hold a ranking it wins. See **RM-2** in
+  `docs/IMPROVEMENT_PLAN.md` — start by querying `validation_logs`, where the
+  shadow-mode LLM has already been recording its disagreements with the keyword
+  check.
 - Watch Search Console for which tag pages get impressions before building more.
 - If the player page earns its keep, extend the allowlist — that is now a
   one-line change, by design.
