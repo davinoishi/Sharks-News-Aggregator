@@ -428,7 +428,7 @@ independently.
 
 | ID | Area | Item |
 |----|------|------|
-| SEO-1 | Usability | Split `page.tsx` into a server shell + `<FeedList initial>` client child. Fetch `INTERNAL_API_URL` directly server-side (not via the site's own BFF route). `revalidate = 300` — ingest is every 10 min. Incidentally removes the HTML's `Cache-Control: no-store`. |
+| SEO-1 | Usability | Split `page.tsx` into a server shell + `<FeedList initial>` client child. Fetch `INTERNAL_API_URL` directly server-side (not via the site's own BFF route). Shipped as `dynamic = 'force-dynamic'` + `fetchCache = 'default-cache'` with per-fetch `revalidate = 300`, **not** plain ISR — ISR prerenders at build time, when the API is unreachable, and would ship an empty feed in the image. Does **not** fix the HTML's `Cache-Control: no-store` (an earlier note here claimed it would). |
 | SEO-2 | Usability | Server-render ~15–20 players-in-the-news as clickable filter chips. **Blocked on** adding a prominence ordering to `GET /entities` (`api/app/routers/feed.py:157`), which is alphabetical today — Adam Gaudette first, forever. |
 | SEO-3 | Usability | Name the source outlets server-side. Needs a **new public `GET /sources`** (name, `base_url`, category — explicit field whitelist); the admin endpoint at `api/app/routers/admin.py:59` stays behind its 401. |
 | SEO-4 | Usability | Expand the header paragraph to state the goal plainly. A paragraph, not a wall — SEO-1…3 supply the bulk of the new indexable text. |
