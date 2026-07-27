@@ -42,15 +42,20 @@ _MATCH = """
 
 
 def upgrade() -> None:
-    # sources.metadata is `json`, not `jsonb`, so merge via a jsonb round trip
-    # and cast back explicitly — there is no assignment cast from jsonb to json.
-    # COALESCE covers rows with NULL metadata; `||` is a merge, so unrelated keys
-    # already on the row (e.g. skip_relevance_check) survive.
+    # sources.metadata is `json`, not `jsonb`: merge through a jsonb round trip
+    # and cast back explicitly, since there is no assignment cast either way.
+    #
+    # Cast the COLUMN, not the COALESCE result. `COALESCE(metadata, '{}'::json)
+    # ::jsonb` fails with "COALESCE could not convert type json to jsonb" —
+    # Postgres resolves the COALESCE branches before applying the outer cast and
+    # won't use the I/O-conversion cast there. Casting each operand sidesteps it.
+    #
+    # `||` is a merge, so unrelated keys on the row (skip_relevance_check) survive.
     op.execute(
         f"""
         UPDATE sources
         SET metadata = (
-            COALESCE(metadata, '{{}}'::json)::jsonb || '{{"{_FLAG}": true}}'::jsonb
+            COALESCE(metadata::jsonb, '{{}}'::jsonb) || '{{"{_FLAG}": true}}'::jsonb
         )::json
         WHERE {_MATCH}
         """
@@ -61,7 +66,7 @@ def downgrade() -> None:
     op.execute(
         f"""
         UPDATE sources
-        SET metadata = (COALESCE(metadata, '{{}}'::json)::jsonb - '{_FLAG}')::json
+        SET metadata = (COALESCE(metadata::jsonb, '{{}}'::jsonb) - '{_FLAG}')::json
         WHERE {_MATCH}
         """
     )
