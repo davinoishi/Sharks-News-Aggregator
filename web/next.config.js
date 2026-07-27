@@ -63,8 +63,21 @@ const nextConfig = {
       },
       {
         // Never cache HTML pages — always revalidate so stale chunks never load.
-        // /rss is excluded so its own 5-minute Cache-Control survives (U5).
-        source: '/((?!_next/static|_next/image|favicon.ico|rss).*)',
+        //
+        // Everything listed here sets its own Cache-Control and must be
+        // excluded, or the response carries TWO Cache-Control headers. HTTP
+        // folds duplicates into one comma-separated value, so the result was
+        // `no-cache, no-store, must-revalidate, public, max-age=86400` —
+        // self-contradictory, and it silently defeated the caching each route
+        // had deliberately chosen. /rss was already excluded for this reason
+        // (U5); the SEO discovery files added in brief 12 needed the same
+        // treatment and did not get it.
+        //
+        // og-image.png is excluded because it is an immutable static card that
+        // social platforms refetch on every share — there is nothing to
+        // revalidate and no stale-chunk risk.
+        source:
+          '/((?!_next/static|_next/image|favicon.ico|rss|sitemap.xml|robots.txt|llms.txt|og-image.png).*)',
         headers: [
           {
             key: 'Cache-Control',
