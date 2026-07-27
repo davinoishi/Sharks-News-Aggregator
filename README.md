@@ -364,6 +364,39 @@ All docs live under [`docs/`](docs/):
 
 ## Development
 
+### Frontend-only UI work
+
+The web app can run on its own against a stub API, which is the fastest loop for
+design/UI changes (no Postgres, Redis, or Celery needed).
+
+```bash
+npm --prefix web install && npm --prefix web run dev
+```
+
+Create `web/.env.local` (gitignored) to point it at a backend and to unlock the
+admin pages:
+
+```bash
+INTERNAL_API_URL=http://localhost:8000
+ADMIN_PANEL_USER=admin
+ADMIN_PANEL_PASSWORD=choose-anything-locally
+```
+
+**Admin pages are gated by HTTP Basic auth and fail closed** — with no
+`ADMIN_PANEL_PASSWORD` set, `/admin/*` returns **503**, which is what you see if
+you try to open them with an unconfigured checkout. Once it is set, either let
+the browser prompt you, or skip the prompt with:
+
+```bash
+open "http://admin:choose-anything-locally@localhost:3000/admin/sources"
+```
+
+`next dev` is CSP- and cache-configured separately from production
+(`web/next.config.js`): development adds `'unsafe-eval'` and `ws:` so the client
+bundle can execute and hot-reload, and serves `/_next/static/*` as
+`no-store` because dev chunk names are not content-hashed. The production
+policy and the year-long immutable asset caching are unchanged by that branch.
+
 ### Viewing Logs
 
 ```bash

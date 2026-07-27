@@ -6,15 +6,8 @@ import Link from 'next/link';
 import { ApiClient } from './api-client';
 import { Cluster, Entity, SiteStats } from './types';
 import { ClusterCard } from './components/ClusterCard';
-import { ActiveEntity, FilterBar } from './components/FilterBar';
-
-interface Filters {
-  tags: string[];
-  since: string;
-  entity: ActiveEntity | null;
-}
-
-const DEFAULT_FILTERS: Filters = { tags: [], since: '24h', entity: null };
+import { FilterBar } from './components/FilterBar';
+import { DEFAULT_FILTERS, DEFAULT_SINCE, Filters, hasActiveFilters } from './lib/filters';
 
 function deslugify(slug: string): string {
   return slug
@@ -28,7 +21,7 @@ function readFiltersFromUrl(): Filters {
   if (typeof window === 'undefined') return DEFAULT_FILTERS;
   const p = new URLSearchParams(window.location.search);
   const tags = p.get('tags')?.split(',').filter(Boolean) ?? [];
-  const since = p.get('since') || '24h';
+  const since = p.get('since') || DEFAULT_SINCE;
   const entSlug = p.get('entities');
   const entity = entSlug ? { slug: entSlug, name: deslugify(entSlug) } : null;
   return { tags, since, entity };
@@ -38,7 +31,7 @@ function writeFiltersToUrl(filters: Filters) {
   if (typeof window === 'undefined') return;
   const p = new URLSearchParams();
   if (filters.tags.length) p.set('tags', filters.tags.join(','));
-  if (filters.since && filters.since !== '24h') p.set('since', filters.since);
+  if (filters.since && filters.since !== DEFAULT_SINCE) p.set('since', filters.since);
   if (filters.entity) p.set('entities', filters.entity.slug);
   const qs = p.toString();
   window.history.replaceState(null, '', qs ? `?${qs}` : window.location.pathname);
@@ -46,13 +39,16 @@ function writeFiltersToUrl(filters: Filters) {
 
 function SkeletonCard() {
   return (
-    <div className="border border-gray-200 rounded-lg p-4 bg-white animate-pulse">
-      <div className="h-5 bg-gray-200 rounded w-3/4 mb-3" />
+    // Block heights track the real type roles: two headline lines at the
+    // headline role's line box, then chip and meta rows.
+    <div className="border border-edge rounded-lg p-4 bg-surface animate-pulse">
+      <div className="h-[23px] bg-surface-sunken rounded-md w-full mb-1" />
+      <div className="h-[23px] bg-surface-sunken rounded-md w-2/3 mb-3" />
       <div className="flex gap-2 mb-3">
-        <div className="h-5 w-16 bg-gray-200 rounded" />
-        <div className="h-5 w-12 bg-gray-200 rounded" />
+        <div className="h-[21px] w-16 bg-surface-sunken rounded-md" />
+        <div className="h-[21px] w-12 bg-surface-sunken rounded-md" />
       </div>
-      <div className="h-4 bg-gray-200 rounded w-1/3" />
+      <div className="h-[19px] bg-surface-sunken rounded-md w-1/3" />
     </div>
   );
 }
@@ -191,51 +187,55 @@ export default function Home() {
     setFilters((f) => ({ ...f, entity: { slug: entity.slug, name: entity.name } }));
   };
 
+  const filtersActive = hasActiveFilters(filters);
   const showSkeletons = firstLoad && refetching && clusters.length === 0;
   const showEmpty =
     !firstLoad && !refetching && !error && clusters.length === 0;
 
   return (
-    <main className="min-h-screen bg-gray-50">
+    <main className="min-h-screen bg-canvas">
       <div className="max-w-4xl mx-auto p-4 md:p-8">
         {/* Header */}
-        <div className="mb-8">
+        <header className="mb-8">
           <div className="flex items-center gap-3 sm:gap-4 mb-2">
+            {/* The crest sits directly beside the site name, so announcing it
+                would just repeat the h1. */}
             <Image
               src="/logo.png"
-              alt="Sharks News Logo"
+              alt=""
               width={64}
               height={64}
               className="object-contain w-12 h-12 sm:w-16 sm:h-16 flex-shrink-0"
             />
             <div>
-              <h1 className="text-2xl sm:text-4xl font-bold text-gray-900">
+              <h1 className="font-display text-masthead uppercase text-content">
                 Sharks News Aggregator
               </h1>
               {lastScanAt && (
-                <p className="text-sm text-gray-500 mt-1">
+                <p className="text-meta text-content-muted mt-1 tabular-nums">
                   Last scan: {formatLastScanTime(lastScanAt)}
                 </p>
               )}
             </div>
           </div>
-          <p className="text-gray-600 mt-3">
+          <p className="text-body text-content-secondary mt-3 max-w-[62ch]">
             Built by a Sharks fan for Sharks fans. Consolidates Sharks news into one place. It is missing news from popular X(Twitter) feeds because the X API costs $ to access. This feed is also published to{' '}
             <a
               href="https://bsky.app/profile/sjsharks-news.bsky.social"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-blue-600 hover:underline"
+              className="text-action hover:underline"
             >
               BlueSky
+              <span className="sr-only"> (opens in a new tab)</span>
             </a>{' '}
             and as{' '}
-            <a href="/rss" className="text-blue-600 hover:underline">
+            <a href="/rss" className="text-action hover:underline">
               RSS
             </a>
             .
           </p>
-        </div>
+        </header>
 
         {/* Filters */}
         <FilterBar
@@ -258,11 +258,11 @@ export default function Home() {
 
         {/* Error State */}
         {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-            <p className="text-red-800">{error}</p>
+          <div className="bg-critical border border-critical-edge rounded-lg p-4 mb-6">
+            <p className="text-body text-critical-fg">{error}</p>
             <button
               onClick={() => fetchPage(true)}
-              className="mt-2 text-sm font-medium text-red-700 hover:text-red-800 underline"
+              className="tap-44 mt-2 inline-flex items-center text-ui text-critical-fg underline hover:no-underline"
             >
               Try again
             </button>
@@ -271,18 +271,32 @@ export default function Home() {
 
         {/* Empty State */}
         {showEmpty && (
-          <div className="bg-white border border-gray-200 rounded-lg p-8 text-center">
-            <p className="text-gray-600 mb-2">No news items found.</p>
-            <p className="text-sm text-gray-500">
-              Try adjusting your filters or check back later.
+          <div className="bg-surface border border-edge rounded-lg p-8 text-center">
+            <p className="text-body text-content-secondary mb-1">No news items found.</p>
+            <p className="text-meta text-content-muted">
+              {filtersActive
+                ? 'No stories match these filters.'
+                : 'Nothing new in this window — check back later.'}
             </p>
+            {filtersActive && (
+              <button
+                onClick={() => setFilters(DEFAULT_FILTERS)}
+                className="tap-44 mt-4 inline-flex items-center px-4 py-2 rounded-md bg-action text-on-action text-ui hover:bg-action-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
+              >
+                Clear all filters
+              </button>
+            )}
           </div>
         )}
 
         {/* Feed */}
         {clusters.length > 0 && (
           <>
-            <div className="mb-4 text-sm text-gray-600">
+            <div
+              className="mb-4 text-meta text-content-muted tabular-nums"
+              role="status"
+              aria-live="polite"
+            >
               Showing {clusters.length} {clusters.length === 1 ? 'story' : 'stories'}
             </div>
 
@@ -308,7 +322,7 @@ export default function Home() {
                 <button
                   onClick={() => fetchPage(false)}
                   disabled={loadingMore}
-                  className="px-5 py-2 rounded-lg bg-[#006D75] text-white text-sm font-medium hover:bg-[#005a61] disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#006D75] focus-visible:ring-offset-2"
+                  className="tap-44 inline-flex items-center px-5 py-2.5 rounded-md bg-action text-on-action text-ui hover:bg-action-hover disabled:bg-control disabled:text-content-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
                 >
                   {loadingMore ? 'Loading…' : 'Load more'}
                 </button>
@@ -318,55 +332,68 @@ export default function Home() {
         )}
 
         {/* Footer */}
-        <div className="mt-12 pt-8 border-t border-gray-200 text-center text-sm text-gray-500">
+        <footer className="mt-12 pt-8 border-t border-edge text-center text-meta text-content-muted">
           {siteStats && (
-            <p className="mb-3 text-xs text-gray-400">
+            <p className="mb-3 tabular-nums">
               {siteStats.page_views.toLocaleString()} visits · {siteStats.total_stories.toLocaleString()} stories tracked · {siteStats.total_sources} sources
             </p>
           )}
-          <p className="mb-2">
-            <a
-              href="https://puckpedia.com/team/san-jose-sharks"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-blue-600 hover:underline"
-            >
-              PuckPedia Salary Cap
-            </a>
-            {' | '}
-            <a
-              href="https://capwages.com/teams/san_jose_sharks"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-blue-600 hover:underline"
-            >
-              CapWages
-            </a>
-            {' | '}
-            <a href="/rss" className="text-blue-600 hover:underline">
-              RSS
-            </a>
-            {' | '}
-            <Link href="/about" className="text-blue-600 hover:underline">
-              About
-            </Link>
-            {' | '}
-            <Link href="/legal" className="text-blue-600 hover:underline">
-              Legal
-            </Link>
-            {' | '}
-            <Link href="/submit" className="text-blue-600 hover:underline">
-              Submit a link
-            </Link>
-          </p>
+          {/* A real navigation landmark, and each link gets its own tappable
+              row height instead of being a 21px sliver of a sentence. */}
+          <nav aria-label="Site links" className="mb-2">
+            <ul className="flex flex-wrap justify-center items-center gap-x-3 gap-y-2.5">
+              <li>
+                <a
+                  href="https://puckpedia.com/team/san-jose-sharks"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="tap-44 inline-flex items-center px-2 py-2 rounded-md text-action hover:underline"
+                >
+                  PuckPedia Salary Cap
+                  <span className="sr-only"> (opens in a new tab)</span>
+                </a>
+              </li>
+              <li>
+                <a
+                  href="https://capwages.com/teams/san_jose_sharks"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="tap-44 inline-flex items-center px-2 py-2 rounded-md text-action hover:underline"
+                >
+                  CapWages
+                  <span className="sr-only"> (opens in a new tab)</span>
+                </a>
+              </li>
+              <li>
+                <a href="/rss" className="tap-44 inline-flex items-center px-2 py-2 rounded-md text-action hover:underline">
+                  RSS
+                </a>
+              </li>
+              <li>
+                <Link href="/about" className="tap-44 inline-flex items-center px-2 py-2 rounded-md text-action hover:underline">
+                  About
+                </Link>
+              </li>
+              <li>
+                <Link href="/legal" className="tap-44 inline-flex items-center px-2 py-2 rounded-md text-action hover:underline">
+                  Legal
+                </Link>
+              </li>
+              <li>
+                <Link href="/submit" className="tap-44 inline-flex items-center px-2 py-2 rounded-md text-action hover:underline">
+                  Submit a link
+                </Link>
+              </li>
+            </ul>
+          </nav>
           <p className="mb-2">
             Powered by RSS feeds from official sources and trusted media outlets.
           </p>
-          <p className="text-xs text-gray-400">
+          <p className="max-w-[60ch] mx-auto">
             Sharks News Aggregator is an independent, unofficial project. Not affiliated with the
             NHL or the San Jose Sharks.
           </p>
-        </div>
+        </footer>
       </div>
     </main>
   );

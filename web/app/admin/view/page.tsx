@@ -45,36 +45,36 @@ function Viewer() {
   }, [load]);
 
   return (
-    <main className="min-h-screen bg-gray-50">
+    <main className="min-h-screen bg-canvas">
       <div className="max-w-5xl mx-auto p-4 md:p-8">
         <div className="mb-4 flex items-center justify-between gap-4">
           <div>
-            <Link href="/admin" className="text-sm text-blue-600 hover:underline">
+            <Link href="/admin" className="text-ui text-action hover:underline">
               ← Admin
             </Link>
-            <h1 className="text-2xl font-bold text-gray-900 mt-1">{label}</h1>
-            <p className="text-xs text-gray-500 mt-1">
+            <h1 className="font-display text-title text-content mt-1">{label}</h1>
+            <p className="text-meta text-content-muted mt-1">
               <code>/api/admin/{endpoint}</code>
               {httpStatus !== null && <span className="ml-2">· HTTP {httpStatus}</span>}
             </p>
           </div>
           <button
             onClick={load}
-            className="shrink-0 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            className="tap-44 shrink-0 inline-flex items-center rounded-md border border-edge-strong bg-surface px-3 py-2 text-ui text-content-secondary hover:bg-surface-sunken"
           >
             Refresh
           </button>
         </div>
 
-        {state === 'loading' && <p className="text-gray-500">Loading…</p>}
+        {state === 'loading' && <p className="text-body text-content-muted">Loading…</p>}
         {state === 'error' && (
-          <p className="mb-3 rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">
+          <p className="mb-3 rounded-md bg-critical border border-critical-edge px-3 py-2 text-ui font-normal text-critical-fg">
             Request failed{httpStatus ? ` (HTTP ${httpStatus})` : ''}.
           </p>
         )}
 
         {data && (
-          <pre className="overflow-auto rounded-lg border border-gray-200 bg-white p-4 text-xs leading-relaxed text-gray-800 whitespace-pre-wrap break-words">
+          <pre className="overflow-auto rounded-lg border border-edge bg-surface p-4 font-mono text-xs leading-relaxed text-content-secondary whitespace-pre-wrap break-words">
             {data}
           </pre>
         )}
@@ -85,7 +85,7 @@ function Viewer() {
 
 export default function AdminViewPage() {
   return (
-    <Suspense fallback={<div className="p-8 text-gray-500">Loading…</div>}>
+    <Suspense fallback={<div className="p-8 text-body text-content-muted">Loading…</div>}>
       <Viewer />
     </Suspense>
   );

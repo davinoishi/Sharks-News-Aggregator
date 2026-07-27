@@ -38,36 +38,36 @@ export default function SubmitPage() {
   };
 
   return (
-    <main className="min-h-screen bg-gray-50">
+    <main className="min-h-screen bg-canvas">
       <div className="max-w-2xl mx-auto p-4 md:p-8">
         {/* Header */}
-        <div className="mb-8">
+        <header className="mb-8">
           <Link href="/" className="flex items-center gap-4 mb-2 hover:opacity-80">
-            <Image src="/logo.png" alt="San Jose Sharks Logo" width={48} height={48} className="object-contain" />
-            <span className="text-xl font-semibold text-gray-900">Sharks News Aggregator</span>
+            <Image src="/logo.png" alt="" width={48} height={48} className="object-contain" />
+            <span className="font-display text-wordmark uppercase text-content">Sharks News Aggregator</span>
           </Link>
-        </div>
+        </header>
 
-        <div className="bg-white border border-gray-200 rounded-lg p-6 md:p-8">
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">Submit a link</h1>
-          <p className="text-gray-600 mb-6">
+        <div className="bg-surface border border-edge rounded-lg p-6 md:p-8">
+          <h1 className="font-display text-title text-content mb-2">Submit a link</h1>
+          <p className="text-body text-content-secondary mb-6 max-w-[60ch]">
             Found a Sharks story we missed? Share the link and it will go through the normal
             review process automatically — no account needed.
           </p>
 
           {state === 'ok' ? (
-            <div className="rounded-md bg-green-50 border border-green-200 px-4 py-3 text-green-800">
+            <div className="rounded-md bg-positive border border-positive-edge px-4 py-3 text-body text-positive-fg">
               {message}
               <div className="mt-4 flex gap-3">
                 <button
                   onClick={() => setState('idle')}
-                  className="rounded-md bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800"
+                  className="tap-44 inline-flex items-center rounded-md bg-action px-4 py-2.5 text-ui text-on-action hover:bg-action-hover"
                 >
                   Submit another
                 </button>
                 <Link
                   href="/"
-                  className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  className="tap-44 inline-flex items-center rounded-md border border-edge-strong px-4 py-2.5 text-ui text-content-secondary hover:bg-surface-sunken"
                 >
                   Back to feed
                 </Link>
@@ -76,7 +76,7 @@ export default function SubmitPage() {
           ) : (
             <form onSubmit={onSubmit} className="space-y-4">
               <div>
-                <label htmlFor="url" className="block text-sm font-medium text-gray-700 mb-1">
+                <label htmlFor="url" className="block text-ui text-content-secondary mb-1.5">
                   Link URL
                 </label>
                 <input
@@ -86,12 +86,12 @@ export default function SubmitPage() {
                   placeholder="https://example.com/sharks-story"
                   value={url}
                   onChange={(e) => setUrl(e.target.value)}
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                  className="w-full min-h-[44px] rounded-md border border-edge-strong bg-surface px-3 py-2.5 text-body text-content focus:border-focus focus:outline-none focus:ring-1 focus:ring-focus"
                 />
               </div>
               <div>
-                <label htmlFor="note" className="block text-sm font-medium text-gray-700 mb-1">
-                  Note <span className="text-gray-400">(optional)</span>
+                <label htmlFor="note" className="block text-ui text-content-secondary mb-1.5">
+                  Note <span className="font-normal text-content-muted">(optional)</span>
                 </label>
                 <textarea
                   id="note"
@@ -99,12 +99,12 @@ export default function SubmitPage() {
                   placeholder="Anything we should know about this link?"
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                  className="w-full min-h-[44px] rounded-md border border-edge-strong bg-surface px-3 py-2.5 text-body text-content focus:border-focus focus:outline-none focus:ring-1 focus:ring-focus"
                 />
               </div>
 
               {state === 'error' && (
-                <p className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">
+                <p className="rounded-md bg-critical border border-critical-edge px-3 py-2 text-ui font-normal text-critical-fg">
                   {message}
                 </p>
               )}
@@ -112,7 +112,7 @@ export default function SubmitPage() {
               <button
                 type="submit"
                 disabled={state === 'submitting' || !url.trim()}
-                className="rounded-md bg-teal-700 px-5 py-2 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="tap-44 inline-flex items-center rounded-md bg-action px-5 py-2.5 text-ui text-on-action hover:bg-action-hover disabled:bg-control disabled:text-content-muted disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
               >
                 {state === 'submitting' ? 'Submitting…' : 'Submit link'}
               </button>
@@ -120,8 +120,8 @@ export default function SubmitPage() {
           )}
         </div>
 
-        <p className="mt-6 text-center text-sm">
-          <Link href="/" className="text-blue-600 hover:underline">
+        <p className="mt-6 text-center text-ui">
+          <Link href="/" className="tap-44 inline-flex items-center px-2 py-2 rounded-md text-action hover:underline">
             ← Back to feed
           </Link>
         </p>

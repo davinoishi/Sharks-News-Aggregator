@@ -9,55 +9,55 @@ export default function LegalPage() {
   });
 
   return (
-    <main className="min-h-screen bg-gray-50">
+    <main className="min-h-screen bg-canvas">
       <div className="max-w-4xl mx-auto p-4 md:p-8">
         {/* Header */}
-        <div className="mb-8">
+        <header className="mb-8">
           <Link href="/" className="flex items-center gap-4 mb-2 hover:opacity-80">
             <Image
               src="/logo.png"
-              alt="San Jose Sharks Logo"
+              alt=""
               width={48}
               height={48}
               className="object-contain"
             />
-            <span className="text-xl font-semibold text-gray-900">
+            <span className="font-display text-wordmark uppercase text-content">
               Sharks News Aggregator
             </span>
           </Link>
-        </div>
+        </header>
 
         {/* Content */}
-        <div className="bg-white border border-gray-200 rounded-lg p-6 md:p-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">
+        <div className="bg-surface border border-edge rounded-lg p-6 md:p-8">
+          <h1 className="font-display text-title text-content mb-2">
             Terms of Use and Privacy Policy
           </h1>
-          <p className="text-sm text-gray-500 mb-8">Last updated: {lastUpdated}</p>
+          <p className="text-meta text-content-muted mb-8">Last updated: {lastUpdated}</p>
 
-          <div className="prose prose-gray max-w-none">
-            <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">1. Overview</h2>
-            <p className="text-gray-700 mb-4">
+          <div className="doc">
+            <h2>1. Overview</h2>
+            <p>
               Sharks News Aggregator (&quot;the Site&quot;) is an experimental, informational website
               that aggregates publicly available news, rumors, and links related to the San Jose
               Sharks from third-party sources.
             </p>
-            <p className="text-gray-700 mb-4">
+            <p>
               The Site does not create original news content and does not host full articles. All
               links direct users to the original source.
             </p>
-            <p className="text-gray-700 mb-4">
+            <p>
               By accessing or using the Site, you agree to the terms outlined below.
             </p>
 
-            <hr className="my-8 border-gray-200" />
+            <hr />
 
-            <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">
+            <h2>
               2. Use at Your Own Risk
             </h2>
-            <p className="text-gray-700 mb-4">
+            <p>
               The Site is provided &quot;as is&quot; and &quot;as available.&quot;
             </p>
-            <ul className="list-disc pl-6 text-gray-700 mb-4 space-y-2">
+            <ul>
               <li>Information may be incomplete, inaccurate, delayed, speculative, or outdated.</li>
               <li>
                 Rumors and reports are aggregated from external sources and may not be verified.
@@ -67,35 +67,35 @@ export default function LegalPage() {
                 presented.
               </li>
             </ul>
-            <p className="text-gray-700 mb-4">
+            <p>
               The operator of this Site makes no guarantees regarding accuracy, completeness, or
               reliability.
             </p>
 
-            <hr className="my-8 border-gray-200" />
+            <hr />
 
-            <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">
+            <h2>
               3. No Professional Advice
             </h2>
-            <p className="text-gray-700 mb-4">
+            <p>
               Nothing on this Site constitutes professional, legal, medical, financial, or betting
               advice.
             </p>
-            <p className="text-gray-700 mb-4">
+            <p>
               Any decisions you make based on information from the Site are made entirely at your
               own risk.
             </p>
 
-            <hr className="my-8 border-gray-200" />
+            <hr />
 
-            <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">
+            <h2>
               4. Third-Party Content and Links
             </h2>
-            <p className="text-gray-700 mb-4">
+            <p>
               The Site aggregates headlines and links from third-party websites, social platforms,
               and public sources.
             </p>
-            <ul className="list-disc pl-6 text-gray-700 mb-4 space-y-2">
+            <ul>
               <li>All content belongs to its respective owners.</li>
               <li>
                 The Site does not control, endorse, or take responsibility for third-party content.
@@ -105,16 +105,16 @@ export default function LegalPage() {
                 privacy policies.
               </li>
             </ul>
-            <p className="text-gray-700 mb-4">
+            <p>
               If you believe a link or source should be removed, please contact the Site operator.
             </p>
 
-            <hr className="my-8 border-gray-200" />
+            <hr />
 
-            <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">
+            <h2>
               5. Intellectual Property
             </h2>
-            <ul className="list-disc pl-6 text-gray-700 mb-4 space-y-2">
+            <ul>
               <li>
                 All third-party content remains the property of its original creators and
                 publishers.
@@ -126,81 +126,81 @@ export default function LegalPage() {
                   href="https://github.com/davinoishi/Sharks-News-Aggregator"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-blue-600 hover:underline"
+                  className="text-action hover:underline"
                 >
                   github.com/davinoishi/Sharks-News-Aggregator
                 </a>
               </li>
             </ul>
-            <p className="text-gray-700 mb-4">
+            <p>
               Unless otherwise stated, no license is granted to use the Site&apos;s branding or name
               without permission.
             </p>
 
-            <hr className="my-8 border-gray-200" />
+            <hr />
 
-            <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">6. Privacy Policy</h2>
+            <h2>6. Privacy Policy</h2>
 
-            <h3 className="text-lg font-medium text-gray-900 mt-6 mb-3">6.1 Data Collection</h3>
-            <p className="text-gray-700 mb-4">
+            <h3>6.1 Data Collection</h3>
+            <p>
               The Site does not intentionally collect, store, or process personal data.
             </p>
-            <p className="text-gray-700 mb-2">Specifically:</p>
-            <ul className="list-disc pl-6 text-gray-700 mb-4 space-y-2">
+            <p className="mb-2">Specifically:</p>
+            <ul>
               <li>No user accounts</li>
               <li>No login information</li>
               <li>No names, emails, or identifiers</li>
               <li>No tracking cookies set by the Site</li>
             </ul>
-            <p className="text-gray-700 mb-4">
+            <p>
               Basic server logs (such as IP addresses or request metadata) may be generated by
               hosting infrastructure for operational and security purposes only.
             </p>
-            <p className="text-gray-700 mb-4">
+            <p>
               When you submit a link, the Site stores a salted, one-way hash of your IP address
               (never the raw IP) solely to enforce per-user submission rate limits.
             </p>
 
-            <hr className="my-8 border-gray-200" />
+            <hr />
 
-            <h3 className="text-lg font-medium text-gray-900 mt-6 mb-3">
+            <h3>
               6.2 Cookies and Analytics
             </h3>
-            <ul className="list-disc pl-6 text-gray-700 mb-4 space-y-2">
+            <ul>
               <li>The Site does not use advertising cookies.</li>
               <li>The Site does not run behavioral tracking or targeted advertising.</li>
               <li>If analytics are added in the future, this policy will be updated.</li>
             </ul>
 
-            <hr className="my-8 border-gray-200" />
+            <hr />
 
-            <h3 className="text-lg font-medium text-gray-900 mt-6 mb-3">6.3 User Submissions</h3>
-            <p className="text-gray-700 mb-2">If the Site allows users to submit links:</p>
-            <ul className="list-disc pl-6 text-gray-700 mb-4 space-y-2">
+            <h3>6.3 User Submissions</h3>
+            <p className="mb-2">If the Site allows users to submit links:</p>
+            <ul>
               <li>Submitted URLs are processed for aggregation purposes only.</li>
               <li>No personal information is required or expected.</li>
               <li>Do not submit private, confidential, or sensitive information.</li>
             </ul>
 
-            <hr className="my-8 border-gray-200" />
+            <hr />
 
-            <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">
+            <h2>
               7. Availability and Changes
             </h2>
-            <p className="text-gray-700 mb-4">
+            <p>
               The Site may be modified, suspended, or shut down at any time without notice.
             </p>
-            <p className="text-gray-700 mb-4">
+            <p>
               Features, data sources, or functionality may change as the project evolves.
             </p>
 
-            <hr className="my-8 border-gray-200" />
+            <hr />
 
-            <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">
+            <h2>
               8. Limitation of Liability
             </h2>
-            <p className="text-gray-700 mb-2">To the fullest extent permitted by law:</p>
-            <ul className="list-disc pl-6 text-gray-700 mb-4 space-y-2">
+            <p className="mb-2">To the fullest extent permitted by law:</p>
+            <ul>
               <li>
                 The Site operator shall not be liable for any damages, losses, or claims arising
                 from use of the Site.
@@ -211,27 +211,27 @@ export default function LegalPage() {
               </li>
             </ul>
 
-            <hr className="my-8 border-gray-200" />
+            <hr />
 
-            <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">9. Governing Law</h2>
-            <p className="text-gray-700 mb-4">
+            <h2>9. Governing Law</h2>
+            <p>
               This Site is operated as a personal or experimental project. Any disputes shall be
               governed by applicable local laws, without regard to conflict of law principles.
             </p>
 
-            <hr className="my-8 border-gray-200" />
+            <hr />
 
-            <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-4">10. Contact</h2>
-            <p className="text-gray-700 mb-4">
+            <h2>10. Contact</h2>
+            <p>
               For questions, concerns, or removal requests, please contact the Site operator via the
               GitHub repository:
             </p>
-            <p className="text-gray-700">
+            <p>
               <a
                 href="https://github.com/davinoishi/Sharks-News-Aggregator"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-blue-600 hover:underline"
+                className="text-action hover:underline"
               >
                 github.com/davinoishi/Sharks-News-Aggregator
               </a>
@@ -241,7 +241,7 @@ export default function LegalPage() {
 
         {/* Back link */}
         <div className="mt-8 text-center">
-          <Link href="/" className="text-blue-600 hover:underline">
+          <Link href="/" className="tap-44 inline-flex items-center px-2 py-2 rounded-md text-action hover:underline">
             &larr; Back to News Feed
           </Link>
         </div>

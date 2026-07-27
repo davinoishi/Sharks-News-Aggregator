@@ -66,14 +66,14 @@ export default function AdminSourcesPage() {
 
   const healthBadge = (health: string) => {
     const styles: Record<string, string> = {
-      active: 'bg-green-100 text-green-800',
-      broken: 'bg-red-100 text-red-800',
-      stale: 'bg-yellow-100 text-yellow-800',
-      disabled: 'bg-gray-200 text-gray-500',
-      unknown: 'bg-gray-100 text-gray-600',
+      active: 'bg-positive text-positive-fg ring-1 ring-inset ring-positive-edge',
+      broken: 'bg-critical text-critical-fg ring-1 ring-inset ring-critical-edge',
+      stale: 'bg-caution text-caution-fg ring-1 ring-inset ring-caution-edge',
+      disabled: 'bg-surface-sunken text-content-muted ring-1 ring-inset ring-edge',
+      unknown: 'bg-surface-sunken text-content-secondary ring-1 ring-inset ring-edge',
     };
     return (
-      <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${styles[health] || styles.unknown}`}>
+      <span className={`inline-block px-2 py-1 rounded-full text-chip uppercase ${styles[health] || styles.unknown}`}>
         {health}
       </span>
     );
@@ -81,12 +81,12 @@ export default function AdminSourcesPage() {
 
   const categoryBadge = (category: string) => {
     const styles: Record<string, string> = {
-      official: 'bg-blue-100 text-blue-800',
-      press: 'bg-purple-100 text-purple-800',
-      other: 'bg-gray-100 text-gray-600',
+      official: 'bg-action-quiet text-action ring-1 ring-inset ring-action/25',
+      press: 'bg-surface-sunken text-content-secondary ring-1 ring-inset ring-edge',
+      other: 'bg-surface-sunken text-content-muted ring-1 ring-inset ring-edge',
     };
     return (
-      <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${styles[category] || styles.other}`}>
+      <span className={`inline-block px-2 py-1 rounded-full text-chip uppercase ${styles[category] || styles.other}`}>
         {category}
       </span>
     );
@@ -98,20 +98,20 @@ export default function AdminSourcesPage() {
   }) || [];
 
   return (
-    <main className="min-h-screen bg-gray-50">
+    <main className="min-h-screen bg-canvas">
       <div className="max-w-6xl mx-auto p-4 md:p-8">
         {/* Header */}
         <div className="mb-6">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">RSS Sources</h1>
-              <p className="text-sm text-gray-500 mt-1">
+              <h1 className="font-display text-title text-content">RSS Sources</h1>
+              <p className="text-meta text-content-muted mt-1">
                 Admin view of all configured news sources
               </p>
             </div>
             <Link
               href="/"
-              className="text-sm text-blue-600 hover:underline"
+              className="text-ui text-action hover:underline"
             >
               Back to Feed
             </Link>
@@ -121,29 +121,29 @@ export default function AdminSourcesPage() {
         {/* Summary Cards */}
         {data && (
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-            <div className="bg-white rounded-lg border border-gray-200 p-4">
-              <p className="text-2xl font-bold text-gray-900">{data.total}</p>
-              <p className="text-sm text-gray-500">Total Sources</p>
+            <div className="bg-surface rounded-lg border border-edge p-4">
+              <p className="font-display text-title text-content tabular-nums">{data.total}</p>
+              <p className="text-meta text-content-muted">Total Sources</p>
             </div>
-            <div className="bg-white rounded-lg border border-green-200 p-4">
-              <p className="text-2xl font-bold text-green-700">{data.healthy}</p>
-              <p className="text-sm text-gray-500">Healthy</p>
+            <div className="bg-surface rounded-lg border border-positive-edge p-4">
+              <p className="font-display text-title text-positive-fg tabular-nums">{data.healthy}</p>
+              <p className="text-meta text-content-muted">Healthy</p>
             </div>
-            <div className="bg-white rounded-lg border border-red-200 p-4">
-              <p className="text-2xl font-bold text-red-700">{data.broken}</p>
-              <p className="text-sm text-gray-500">Broken</p>
+            <div className="bg-surface rounded-lg border border-critical-edge p-4">
+              <p className="font-display text-title text-critical-fg tabular-nums">{data.broken}</p>
+              <p className="text-meta text-content-muted">Broken</p>
             </div>
-            <div className="bg-white rounded-lg border border-yellow-200 p-4">
-              <p className="text-2xl font-bold text-yellow-700">
+            <div className="bg-surface rounded-lg border border-caution-edge p-4">
+              <p className="font-display text-title text-caution-fg tabular-nums">
                 {data.sources.filter((s) => s.health === 'stale').length}
               </p>
-              <p className="text-sm text-gray-500">Stale</p>
+              <p className="text-meta text-content-muted">Stale</p>
             </div>
-            <div className="bg-white rounded-lg border border-gray-200 p-4">
-              <p className="text-2xl font-bold text-gray-500">
+            <div className="bg-surface rounded-lg border border-edge p-4">
+              <p className="font-display text-title text-content-muted tabular-nums">
                 {data.sources.filter((s) => s.health === 'disabled').length}
               </p>
-              <p className="text-sm text-gray-500">Disabled</p>
+              <p className="text-meta text-content-muted">Disabled</p>
             </div>
           </div>
         )}
@@ -154,15 +154,15 @@ export default function AdminSourcesPage() {
             <button
               key={f}
               onClick={() => setFilter(f)}
-              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+              className={`tap-44 inline-flex items-center px-3 py-2 rounded-md text-ui transition-colors ${
                 filter === f
-                  ? 'bg-gray-900 text-white'
-                  : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+                  ? 'bg-action text-on-action'
+                  : 'bg-surface text-content-secondary border border-edge hover:bg-surface-sunken'
               }`}
             >
               {f.charAt(0).toUpperCase() + f.slice(1)}
               {data && f !== 'all' && (
-                <span className="ml-1 text-xs opacity-70">
+                <span className="ml-1 text-meta opacity-70 tabular-nums">
                   ({data.sources.filter((s) => s.health === f).length})
                 </span>
               )}
@@ -173,20 +173,20 @@ export default function AdminSourcesPage() {
         {/* Loading */}
         {loading && (
           <div className="text-center py-12">
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-            <p className="mt-4 text-gray-600">Loading sources...</p>
+            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-action"></div>
+            <p className="mt-4 text-body text-content-secondary">Loading sources...</p>
           </div>
         )}
 
         {/* Error */}
         {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-            <p className="text-red-800">
+          <div className="bg-critical border border-critical-edge rounded-lg p-4 mb-6">
+            <p className="text-body text-critical-fg">
               <strong>Error:</strong> {error}
             </p>
             <button
               onClick={loadSources}
-              className="mt-2 text-sm text-red-600 hover:text-red-700 underline"
+              className="mt-2 text-ui text-critical-fg underline hover:no-underline"
             >
               Try again
             </button>
@@ -195,30 +195,30 @@ export default function AdminSourcesPage() {
 
         {/* Sources Table */}
         {!loading && !error && (
-          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+          <div className="bg-surface rounded-lg border border-edge overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
-                  <tr className="bg-gray-50 border-b border-gray-200">
-                    <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Source</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Category</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Health</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Last Fetch</th>
-                    <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase">Errors</th>
-                    <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase">Items (7d)</th>
+                  <tr className="bg-surface-sunken border-b border-edge">
+                    <th className="text-left px-4 py-3 text-label uppercase text-content-muted">Source</th>
+                    <th className="text-left px-4 py-3 text-label uppercase text-content-muted">Category</th>
+                    <th className="text-left px-4 py-3 text-label uppercase text-content-muted">Health</th>
+                    <th className="text-left px-4 py-3 text-label uppercase text-content-muted">Last Fetch</th>
+                    <th className="text-right px-4 py-3 text-label uppercase text-content-muted">Errors</th>
+                    <th className="text-right px-4 py-3 text-label uppercase text-content-muted">Items (7d)</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-edge">
                   {filteredSources.map((source) => (
                     <tr
                       key={source.id}
-                      className={`hover:bg-gray-50 ${source.health === 'broken' ? 'bg-red-50/30' : ''}`}
+                      className={`hover:bg-surface-sunken ${source.health === 'broken' ? 'bg-critical/40' : ''}`}
                     >
                       <td className="px-4 py-3">
                         <div>
-                          <p className="font-medium text-gray-900 text-sm">{source.name}</p>
+                          <p className="text-ui text-content">{source.name}</p>
                           {source.feed_url && (
-                            <p className="text-xs text-gray-400 truncate max-w-xs" title={source.feed_url}>
+                            <p className="text-meta text-content-muted truncate max-w-xs" title={source.feed_url}>
                               {source.feed_url}
                             </p>
                           )}
@@ -226,16 +226,16 @@ export default function AdminSourcesPage() {
                       </td>
                       <td className="px-4 py-3">{categoryBadge(source.category)}</td>
                       <td className="px-4 py-3">{healthBadge(source.health)}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">
+                      <td className="px-4 py-3 text-meta text-content-secondary tabular-nums">
                         {formatTime(source.last_fetched_at)}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <span className={`text-sm font-mono ${source.fetch_error_count > 0 ? 'text-red-600 font-medium' : 'text-gray-400'}`}>
+                        <span className={`text-ui tabular-nums ${source.fetch_error_count > 0 ? 'text-critical-fg font-semibold' : 'text-content-muted'}`}>
                           {source.fetch_error_count}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <span className={`text-sm font-mono ${source.recent_items_7d > 0 ? 'text-gray-900' : 'text-gray-400'}`}>
+                        <span className={`text-ui tabular-nums ${source.recent_items_7d > 0 ? 'text-content' : 'text-content-muted'}`}>
                           {source.recent_items_7d}
                         </span>
                       </td>
@@ -246,7 +246,7 @@ export default function AdminSourcesPage() {
             </div>
 
             {filteredSources.length === 0 && (
-              <div className="text-center py-8 text-gray-500">
+              <div className="text-center py-8 text-body text-content-muted">
                 No sources match the selected filter.
               </div>
             )}
@@ -254,7 +254,7 @@ export default function AdminSourcesPage() {
         )}
 
         {/* Footer */}
-        <div className="mt-8 text-center text-xs text-gray-400">
+        <div className="mt-8 text-center text-meta text-content-muted">
           <p>Sharks News Aggregator - Admin Panel</p>
         </div>
       </div>
