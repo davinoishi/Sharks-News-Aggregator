@@ -232,3 +232,67 @@ def test_time_window_respected(pg_db):
     # An identical-title article today must NOT join the out-of-window cluster.
     cid_new = _cluster(pg_db, src, title, now, "trade")
     assert cid_old != cid_new
+
+
+# --- headline selection ------------------------------------------------------
+
+def test_headline_repick_replaces_an_unrepresentative_first_title(pg_db):
+    """The card is named by the title that best describes the story, not by
+    whichever variant happened to arrive first.
+
+    Models the prod incident: a Google Alerts item whose description was the
+    publisher's "Trending" sidebar got summarized as a Darnell Nurse trade story
+    and created the cluster, so its unrelated title named the card even after two
+    genuine Nurse articles joined.
+    """
+    from app.models import Cluster
+
+    src = _source(pg_db)
+    now = datetime.utcnow()
+    summary = "Darnell Nurse trade to San Jose Sharks"
+
+    cid = _cluster(
+        pg_db, src,
+        "Edmonton police to introduce involuntary detention detox",
+        now, "trade", llm_summary=summary,
+    )
+    cluster = pg_db.query(Cluster).filter(Cluster.id == cid).first()
+    assert cluster.headline == "Edmonton police to introduce involuntary detention detox"
+
+    # A genuinely on-topic article joins the same cluster.
+    joined = _cluster(
+        pg_db, src,
+        "Darnell Nurse trade to San Jose Sharks reshapes the blue line",
+        now, "trade", llm_summary=summary,
+    )
+    assert joined == cid
+
+    pg_db.refresh(cluster)
+    assert cluster.headline == "Darnell Nurse trade to San Jose Sharks reshapes the blue line"
+
+
+def test_headline_repick_keeps_the_incumbent_on_a_tie(pg_db):
+    """A later variant that scores no better must not churn the headline.
+
+    summary_similarity strips publication suffixes, so "X - Yahoo Sports" scores
+    exactly like "X" — an exact tie, resolved in favour of the incumbent.
+    """
+    from app.models import Cluster
+
+    src = _source(pg_db)
+    now = datetime.utcnow()
+    summary = "Celebrini contract extension"
+
+    cid = _cluster(
+        pg_db, src, "Celebrini signs contract extension with Sharks",
+        now, "signing", llm_summary=summary,
+    )
+    joined = _cluster(
+        pg_db, src, "Celebrini signs contract extension with Sharks - Yahoo Sports",
+        now, "signing", llm_summary=summary,
+    )
+    assert joined == cid
+
+    cluster = pg_db.query(Cluster).filter(Cluster.id == cid).first()
+    pg_db.refresh(cluster)
+    assert cluster.headline == "Celebrini signs contract extension with Sharks"

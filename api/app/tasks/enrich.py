@@ -10,6 +10,7 @@ The helpers are re-exported here for backwards compatibility with existing
 imports (``from app.tasks.enrich import ...``).
 """
 import logging
+from typing import Optional
 
 from app.core.database import SessionLocal
 from app.core.datetime_utils import utcnow
@@ -57,6 +58,7 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "enrich_raw_item",
+    "effective_description",
     # entities
     "extract_entities",
     "filter_team_entities",
@@ -95,6 +97,33 @@ __all__ = [
 ]
 
 
+def effective_description(source_metadata: Optional[dict], raw_description: Optional[str]) -> str:
+    """The description text enrichment is allowed to trust, per source.
+
+    Search-snippet aggregators (Google Alerts) put the *page's* chrome in the
+    description rather than the article: nav bars, "Trending" sidebars, unrelated
+    headlines, with the alert query bolded wherever it appears on the page. One
+    observed item titled "Edmonton police to introduce involuntary detention
+    detox" carried "... San Jose Sharks won Darnell Nurse trade. Trending ...
+    News · Sports · Opinion ...", which was enough to extract Darnell Nurse as an
+    entity, clear the relevance gate on that entity alone, produce the summary
+    "Speculation regarding Darnell Nurse trade implications", and cluster the
+    item with two genuine Nurse stories.
+
+    check_sharks_relevance already refuses to keyword-match on description for
+    this reason; the ``description_unreliable`` flag extends the same rule to the
+    other consumers (entity extraction, entity-based relevance, LLM
+    classification).
+
+    Per-source, never global: Bluesky mirror sources emit items with no <title>,
+    so derive_title_from_description synthesizes the title *from* the
+    description — there the description is the only content there is.
+    """
+    if (source_metadata or {}).get("description_unreliable"):
+        return ""
+    return raw_description or ""
+
+
 @celery.task(name="app.tasks.enrich.enrich_raw_item", bind=True)
 def enrich_raw_item(self, raw_item_id: int):
     """
@@ -117,22 +146,26 @@ def enrich_raw_item(self, raw_item_id: int):
 
         # Load source for tagging and relevance check
         source = db.query(Source).filter(Source.id == raw_item.source_id).first()
+        source_metadata = (getattr(source, "extra_metadata", None) or {})
+
+        # Drop the description entirely for sources whose descriptions are page
+        # chrome rather than article text (see effective_description).
+        description = effective_description(source_metadata, raw_item.raw_description)
 
         # Step 1: Extract and normalize text
-        text = f"{raw_item.raw_title or ''} {raw_item.raw_description or ''}"
+        text = f"{raw_item.raw_title or ''} {description}".strip()
         tokens = normalize_tokens(text)
 
         # Step 2: Extract entities
         entity_ids = extract_entities(db, text)
 
         # Step 2.5: Check relevance unless source is dedicated to Sharks news
-        source_metadata = source.extra_metadata or {}
         if not source_metadata.get('skip_relevance_check'):
             validation_result = validate_sharks_relevance(
                 db=db,
                 raw_item_id=raw_item_id,
                 title=raw_item.raw_title or '',
-                description=raw_item.raw_description or '',
+                description=description,
                 entity_ids=entity_ids
             )
 
@@ -156,7 +189,7 @@ def enrich_raw_item(self, raw_item_id: int):
 
         # Step 3: Classify event type and tags (LLM with keyword fallback)
         event_type_str, tag_names, llm_summary, low_value = classify_article(
-            db, text, entity_ids, raw_item.raw_title or "", raw_item.raw_description or "",
+            db, text, entity_ids, raw_item.raw_title or "", description,
             source, url=raw_item.canonical_url or ""
         )
 
