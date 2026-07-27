@@ -21,9 +21,10 @@ Project docs for the Sharks News Aggregator. Start with the root
 | [MIGRATIONS.md](MIGRATIONS.md) | Alembic database migrations |
 | [BACKUP_RESTORE.md](BACKUP_RESTORE.md) | Nightly Postgres backups + restore procedure |
 
-## Project history
+## Planned work and project history
 
 | Doc | What it covers |
 |-----|----------------|
-| [IMPROVEMENT_PLAN.md](IMPROVEMENT_PLAN.md) | The 2026-06 codebase review and 9-brief improvement plan (all merged) |
+| [IMPROVEMENT_PLAN.md](IMPROVEMENT_PLAN.md) | **Open work only** — planned briefs, the R2/R3 review backlogs, and the roadmap |
+| [IMPROVEMENT_PLAN_ARCHIVE.md](IMPROVEMENT_PLAN_ARCHIVE.md) | Completed work, and the findings register defining the `S1`/`C1`/`P3` ids the older briefs reference |
 | [briefs/](briefs/) | The individual execution briefs (historical record) |
