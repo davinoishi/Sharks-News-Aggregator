@@ -558,31 +558,79 @@ Note the homepage's 0% is a window artifact, not evidence the filter is fine: th
 30-day window covers July's Nurse/Trouba acquisition coverage, and 24 hours in the
 offseason simply does not contain much.
 
-**Start by reading data that already exists, not by building.** Production runs
-`LLM_EVALUATION_MODE=true` (`docker-compose.pi.yml`), which per
-`validate_sharks_relevance()` (`classify.py:109`) means **keyword always decides
-and the LLM only logs a comparison**. Every disagreement is already recorded in
-`validation_logs` with `keyword_matched` alongside the LLM verdict. So the first
-task is a query, not a feature: on the off-team clusters above, did the LLM
-already disagree with the keyword check? If it did, most of the fix is flipping
-one env var that is already implemented and already being measured.
+**Background.** Production runs `LLM_EVALUATION_MODE=true`
+(`docker-compose.pi.yml`), which per `validate_sharks_relevance()`
+(`classify.py:109`) means **keyword always decides and the LLM only logs a
+comparison**. Every disagreement is recorded in `validation_logs` with
+`keyword_matched` alongside the LLM verdict — so the obvious first question,
+"would promoting the LLM fix this?", is answerable from a month of existing data
+without building anything. It was, and the answer is no.
 
-**Options, roughly in order of cost:**
+#### The eval data has been read (2026-07-27). Promoting the LLM will not fix this.
 
-1. **Promote the LLM to decision mode** (`LLM_EVALUATION_MODE=false`). Already
-   built, with keyword fallback on error. Cost: an LLM call per candidate item
-   on a paid model — check the rate against `openrouter` spend first. Only worth
-   it if the eval logs show the LLM actually catches these.
-2. **Tighten rule 2**: require a player entity *plus* a second signal — a Sharks
-   keyword anywhere in the title, or the absence of another NHL team's name.
-   Cheap, deterministic, no per-item cost. Risk: rejects genuine "Sharks acquire
-   X from Edmonton" stories, which name both teams. Needs the both-teams case
-   handled explicitly.
-3. **Keep admitting them, but label and segregate.** Add an `off-team` or
-   "Around the NHL" classification, show it on the homepage, and exclude it from
-   team topic pages and the RSS feed. Keeps coverage the aggregator arguably
-   should have while stopping topic pages from breaking their promise. Largest
-   change; probably the best end state.
+2,618 logged comparisons over a month (2026-06-26 → 07-27):
+
+| keyword | LLM | count |
+|---|---|---|
+| approve | relevant | 1,070 |
+| approve | **not** relevant | **25** |
+| reject | **relevant** | **642** |
+| reject | not relevant | 881 |
+
+Flipping `LLM_EVALUATION_MODE=false` would remove **25** items a month (2.3% of
+keyword approvals) and add **642** the keyword check currently rejects — a ~59%
+increase in admitted volume. It makes the feed larger, not tighter, and does
+essentially nothing for the 27–32% off-team rate.
+
+**Worse, the LLM's rejections are right for the wrong reason.** Its stated
+reasons on those 25:
+
+> "Darnell Nurse is an Edmonton Oilers player and has no affiliation with the
+> San Jose Sharks."
+
+Nurse was traded *to* San Jose. The model is reasoning from stale training data,
+and the reason it rejects those Oilers articles is that it does not believe Nurse
+is a Shark at all. Promoted to decision mode it would also reject genuine
+Sharks-Nurse coverage — trading a precision problem for a worse recall one, on
+exactly the players currently generating the most news.
+
+The 642 additions are the prompt behaving as written:
+`RELEVANCE_PROMPT_USER` (`api/app/services/openrouter.py:23`) says approve "any
+current **or former** Sharks/Barracuda player" and "REJECT **only** if … NO
+meaningful connection". That is deliberately permissive, and it is what admits
+Timo Meier, Joel Ward and Michael Bunting items.
+
+**Two genuine keyword false positives the LLM caught for correct reasons**, worth
+fixing regardless and independent of any LLM work:
+
+- *"AEW Forbidden Door Explodes at SAP Center"* — the `sap center` keyword
+  matches non-hockey events at the venue.
+- *"Teal just hits different. 🔥 #sharks #nhl #hockey"* — hashtag-only YouTube
+  descriptions match `sharks`.
+
+**Revised options, best first:**
+
+1. **Give the LLM roster ground truth, and narrow the prompt.** The system
+   already syncs a current roster (`sync_sharks_roster`), so the model never
+   needs to guess which team a player is on. State in the prompt that the listed
+   entities *are* current Sharks as of a date, and reconsider "or former" — that
+   clause is generating much of the +642. Then re-measure in evaluation mode
+   before promoting anything. Cheapest change with the highest ceiling, and it
+   keeps the existing shadow-mode safety net.
+2. **Tighten keyword rule 2** deterministically: require a player entity *plus*
+   a second signal — a Sharks keyword in the title, or no other NHL team named.
+   No per-item cost. Must handle "Sharks acquire X from Edmonton", which names
+   both teams and is exactly the story you most want to keep.
+3. **Classify and segregate.** An `off-team` / "Around the NHL" label: shown on
+   the homepage, excluded from topic pages and RSS. Largest change, probably the
+   best end state, and it keeps coverage the aggregator arguably should have.
+4. ~~Promote the LLM to decision mode as-is~~ — **ruled out by the data above.**
+
+Note the tooling cost of answering this: `validation_logs.llm_response` is
+`String(100)`, so the stored JSON is truncated and unparseable. The verdict has
+to be recovered with a `LIKE '%"relevant": true%'` prefix match. Widening that
+column (or storing the boolean separately) would make future analysis ordinary
+SQL.
 
 **Verify with:** the measurement script pattern above — pull each tag feed at
 30d and count headlines naming another NHL team without naming San Jose. Target
