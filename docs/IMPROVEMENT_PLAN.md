@@ -5,8 +5,9 @@ correctness, performance, usability, code quality, and operations. Work is packa
 into nine self-contained briefs in `docs/briefs/`, each scoped to a single PR.
 Later reviews and feature work append to this file; see
 [brief 10](#brief-10--mcp-interface-for-agent-access-planned-2026-07-25),
-[brief 11](#brief-11--richer-public-metrics-without-cookies-planned-2026-07-25) and
-[brief 12](#brief-12--make-the-feed-crawlable-and-give-it-metadata-planned-2026-07-27)
+[brief 11](#brief-11--richer-public-metrics-without-cookies-planned-2026-07-25),
+[brief 12](#brief-12--make-the-feed-crawlable-and-give-it-metadata-planned-2026-07-27) and
+[brief 13](#brief-13--crawlable-tag-routes-and-one-player-page-planned-2026-07-27)
 for the current planned work.
 
 **How to use:** start a fresh agent session, point it at exactly one brief file, and
@@ -466,6 +467,45 @@ because real tag pages are next. `sharks trade rumors` is **1,900 searches/month
 difficulty 23, +125% YoY** (DataForSEO Labs, US/en) — the most winnable term available,
 and the Trade and Rumors tags already exist. Pair it with Google Search Console: at one
 indexed page and zero backlinks, GSC is the only way to see whether any of this moved.
+
+---
+
+# Brief 13 — Crawlable tag routes, and one player page (planned, 2026-07-27)
+
+[brief-13-crawlable-tag-and-player-routes.md](briefs/brief-13-crawlable-tag-and-player-routes.md)
+— the follow-up brief 12 deliberately set up.
+
+Brief 12 canonicalised `?tags=trade&since=7d` into the bare homepage. Correct at
+the time (those URLs were client filter state, not pages), but it leaves the site
+with **four** indexable URLs, none targeting a topic. `sharks trade rumors` is
+1,900/mo at difficulty 23 and +125% YoY, and the Trade and Rumors tags already
+exist.
+
+Ships as **one PR**, web-only — the feed API already accepts `tags`, `entities`
+and `since`, so no API/worker/beat rebuild.
+
+| ID | Area | Item |
+|----|------|------|
+| TAG-1 | Usability | `/tag/[slug]`, allowlisted to the eight known tags (anything else 404s — an allowlist is what stops the route minting unbounded indexable URLs). 30-day window, `force-dynamic` + `fetchCache`, per-tag metadata, self-canonical. |
+| TAG-2 | Code quality | Extract `ClusterList` from `FeedList` so tag/player pages reuse the list + pagination instead of copying it. |
+| TAG-3 | Usability | "Browse by topic" footer nav linking every new route — without it they are orphans only the sitemap knows about. |
+| TAG-4 | Usability | `/player/[slug]` allowlisted to `macklin-celebrini` only. 65 clusters/30d, 2.6× the next player. Targets the realistic long tail, **not** the 135k/mo navigational head term. |
+| TAG-5 | Operations | Sitemap entries gated on a live ≥10 cluster count. Below threshold the page still renders and stays linked, it is just not advertised. Count cheaply via `limit=10` and test for ten. |
+| TAG-6 | Usability | `CollectionPage`/`ItemList` JSON-LD on the new routes, `isPartOf` the existing `#website` node. Still no `NewsArticle`. |
+
+**Decisions already taken — do not re-litigate:**
+
+- **30-day window.** At 24h every tag but Rumors and Trade is empty.
+- **Thin-content gating is dynamic, never a hardcoded skip list.** Waiver, Injury
+  and Lineup are thin *in July* and are exactly the tags that spike Oct–Apr.
+- **Tag chips stay `<button>`s.** Progressive-enhancement anchors were considered
+  and rejected as not worth the complexity; footer links get crawlability,
+  internal linking and sitemap entries for far less work.
+- **One player page.** 47 entities have coverage and ~150 exist — that is
+  programmatic scale and the pattern Google scrutinises hardest. Measure first.
+- **No `tags_mode=all`.** `/tag/trade` serves the "trade rumors" intent honestly;
+  54% of trade-tagged clusters already carry Rumors.
+- **No paginated URLs.** SSR 50 + client "Load more" + self-canonical.
 
 ---
 

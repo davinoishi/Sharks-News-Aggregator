@@ -1,4 +1,5 @@
 import { Cluster } from '../types';
+import { Topic } from '../lib/topics';
 import {
   AUTHOR_LINKS_URL,
   AUTHOR_NAME,
@@ -130,6 +131,54 @@ export function FeedStructuredData({ clusters }: { clusters: Cluster[] }) {
         mainEntity: {
           '@type': 'ItemList',
           name: 'Latest San Jose Sharks stories',
+          numberOfItems: items.length,
+          itemListOrder: 'https://schema.org/ItemListOrderDescending',
+          itemListElement: items,
+        },
+      }}
+    />
+  );
+}
+
+/**
+ * A tag or player page: the same shape as the feed, scoped to one topic.
+ *
+ * `isPartOf` points at the site-wide `#website` node so the graph stays
+ * connected rather than being an island per route. Still no `NewsArticle` —
+ * these pages list other people's reporting, same as the homepage.
+ */
+export function TopicStructuredData({
+  topic,
+  path,
+  clusters,
+}: {
+  topic: Topic;
+  path: string;
+  clusters: Cluster[];
+}) {
+  const items = clusters
+    .filter((c) => c.top_url)
+    .map((cluster, index) => ({
+      '@type': 'ListItem',
+      position: index + 1,
+      name: cluster.headline,
+      url: cluster.top_url,
+    }));
+
+  return (
+    <JsonLd
+      data={{
+        '@context': 'https://schema.org',
+        '@type': 'CollectionPage',
+        '@id': `${absoluteUrl(path)}#webpage`,
+        url: absoluteUrl(path),
+        name: topic.title,
+        description: topic.description,
+        inLanguage: 'en-US',
+        isPartOf: { '@id': WEBSITE_ID },
+        mainEntity: {
+          '@type': 'ItemList',
+          name: topic.heading,
           numberOfItems: items.length,
           itemListOrder: 'https://schema.org/ItemListOrderDescending',
           itemListElement: items,
