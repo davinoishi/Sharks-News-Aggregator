@@ -144,7 +144,12 @@ services:
     restart: unless-stopped
 
   web:
-    build: ./web
+    build:
+      context: ./web
+      args:
+        # Also a build arg, not only a runtime env: the statically prerendered
+        # pages bake their canonical/og:url at `next build` time.
+        PUBLIC_SITE_URL: ${PUBLIC_SITE_URL:-http://localhost:3000}
     environment:
       INTERNAL_API_URL: http://api:8000
       # Same variable the api service reads for RSS channel metadata. The web
