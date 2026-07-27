@@ -45,6 +45,11 @@ yarn-error.log*
 .env.development.local
 .env.test.local
 .env.production.local
+# Timestamped copies taken before editing .env on a deploy host. The bare `.env`
+# rule above doesn't cover a suffixed name, so these sat untracked in the
+# production checkout.
+.env.bak*
+.env.*.bak
 
 # IDEs
 .vscode/
@@ -69,6 +74,13 @@ docker-compose.override.yml
 *.db
 *.sqlite
 *.sqlite3
+# Compressed dumps. The nightly backup service writes into backups/ (which has
+# its own .gitignore), but manual pre-deploy dumps land wherever they were run
+# from — in practice the repo root on the Pi, where six of them showed up as
+# untracked on every `git status` during a deploy.
+# Deliberately NOT `*.sql`: the migrations under api/migrations/legacy/,
+# infra/postgres/init/ and db_data_export.sql are tracked source.
+*.sql.gz
 
 # Logs
 logs/

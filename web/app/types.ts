@@ -59,6 +59,20 @@ export interface EntitiesResponse {
   entities: Entity[];
 }
 
+/**
+ * Outlet as published by the API's public `/sources`. Deliberately narrower
+ * than the admin shape — no feed URL, status, or error counts.
+ */
+export interface PublicSource {
+  name: string;
+  base_url: string;
+  category: string;
+}
+
+export interface SourcesResponse {
+  sources: PublicSource[];
+}
+
 export interface ClusterDetailResponse {
   cluster: Cluster;
   variants: StoryVariant[];

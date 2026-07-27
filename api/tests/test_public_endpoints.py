@@ -55,7 +55,7 @@ def test_entities_empty_query_lists_alphabetically():
         ])
         db.commit()
 
-        result = list_entities(query="", limit=15, db=db)
+        result = list_entities(query="", limit=15, order_by="name", since=None, db=db)
         names = [e["name"] for e in result["entities"]]
         assert names == ["Alpha", "Zeev"]
     finally:
@@ -233,3 +233,179 @@ def test_rss_channel_metadata_follows_public_site_url(pg, monkeypatch):
     atom_self = channel.find("{http://www.w3.org/2005/Atom}link")
     assert atom_self.get("href") == "https://example.test/rss"
     assert atom_self.get("rel") == "self"
+
+
+# ---------------------------------------------------------------------------
+# Brief 12 (SEO-2 / SEO-3): prominence ordering and the public source list.
+
+
+def _make_entity_cluster(db, headline, entity, *, last_seen_at, active=True):
+    """Attach ``entity`` to a new cluster. Returns the cluster."""
+    from app.models import Cluster, ClusterEntity, ClusterStatus
+
+    cluster = Cluster(
+        headline=headline,
+        first_seen_at=last_seen_at,
+        last_seen_at=last_seen_at,
+        status=ClusterStatus.ACTIVE if active else ClusterStatus.ARCHIVED,
+        source_count=1,
+    )
+    db.add(cluster)
+    db.flush()
+    db.add(ClusterEntity(cluster_id=cluster.id, entity_id=entity.id))
+    db.flush()
+    return cluster
+
+
+@requires_postgres
+def test_entities_cluster_count_ordering_ranks_by_coverage(pg):
+    """The chip strip must lead with who is actually in the news.
+
+    Alphabetical ordering (the endpoint default) would pin whoever sorts first
+    to the top permanently — on the live site that was Adam Gaudette, who had
+    no current coverage at all.
+    """
+    now = datetime.now(timezone.utc)
+
+    # Deliberately named so alphabetical and by-coverage orders disagree: if the
+    # ranking silently fell back to name order, this test would still see
+    # "Aaron" first and pass. It must not be able to.
+    aaron = Entity(name="Aaron Quiet", slug=_uniq("aaron"), entity_type="player")
+    zack = Entity(name="Zack Everywhere", slug=_uniq("zack"), entity_type="player")
+    pg.add_all([aaron, zack])
+    pg.flush()
+
+    for i in range(3):
+        _make_entity_cluster(pg, f"Zack story {i}", zack, last_seen_at=now)
+    _make_entity_cluster(pg, "Aaron story", aaron, last_seen_at=now)
+
+    result = list_entities(
+        query="", limit=15, order_by="cluster_count", since="24h", db=pg
+    )
+    names = [e["name"] for e in result["entities"]]
+
+    assert names.index("Zack Everywhere") < names.index("Aaron Quiet")
+
+
+@requires_postgres
+def test_entities_cluster_count_respects_the_since_window(pg):
+    """Chips are scoped to the window the feed is showing.
+
+    If they weren't, a player who was everywhere last month would sit at the
+    top of a 24-hour feed, and clicking the chip would return nothing.
+    """
+    now = datetime.now(timezone.utc)
+
+    recent = Entity(name="Recent Player", slug=_uniq("recent"), entity_type="player")
+    stale = Entity(name="Stale Player", slug=_uniq("stale"), entity_type="player")
+    pg.add_all([recent, stale])
+    pg.flush()
+
+    _make_entity_cluster(pg, "Fresh", recent, last_seen_at=now - timedelta(hours=2))
+    for i in range(5):
+        _make_entity_cluster(
+            pg, f"Old {i}", stale, last_seen_at=now - timedelta(days=20)
+        )
+
+    result = list_entities(
+        query="", limit=15, order_by="cluster_count", since="24h", db=pg
+    )
+    names = [e["name"] for e in result["entities"]]
+
+    assert "Recent Player" in names
+    # Five clusters would dominate any unscoped count.
+    assert "Stale Player" not in names
+
+
+@requires_postgres
+def test_entities_cluster_count_ignores_inactive_clusters(pg):
+    """Must match build_feed_query's status filter.
+
+    If the two drift, a chip offers a filter whose results are empty, which
+    reads to a visitor as a broken feed.
+    """
+    now = datetime.now(timezone.utc)
+
+    ghost = Entity(name="Ghost Player", slug=_uniq("ghost"), entity_type="player")
+    pg.add(ghost)
+    pg.flush()
+    _make_entity_cluster(pg, "Archived", ghost, last_seen_at=now, active=False)
+
+    result = list_entities(
+        query="", limit=15, order_by="cluster_count", since="24h", db=pg
+    )
+    assert "Ghost Player" not in [e["name"] for e in result["entities"]]
+
+
+@requires_postgres
+def test_public_sources_publishes_only_whitelisted_fields(pg):
+    """The public shape must not grow fields by accident.
+
+    ``/admin/sources`` exposes feed URLs, error counts and status; this
+    endpoint is a different, deliberately narrow view. A future column on the
+    model must not appear here just because it was added.
+    """
+    from app.core.constants import USER_SUBMISSION_SOURCE_URL
+    from app.models import Source, SourceStatus
+    from app.routers.feed import list_public_sources
+
+    pg.add(
+        Source(
+            name="Visible Outlet",
+            category="press",
+            ingest_method="rss",
+            base_url="https://visible.example.com",
+            feed_url="https://visible.example.com/secret-feed.xml",
+            status=SourceStatus.APPROVED,
+            fetch_error_count=7,
+        )
+    )
+    pg.flush()
+
+    result = list_public_sources(db=pg)
+    published = [s for s in result["sources"] if s["name"] == "Visible Outlet"]
+    assert len(published) == 1
+    assert set(published[0].keys()) == {"name", "base_url", "category"}
+
+    # Nothing operational leaks, whatever the serialiser does.
+    serialised = str(result)
+    assert "secret-feed" not in serialised
+    assert USER_SUBMISSION_SOURCE_URL not in serialised
+
+
+@requires_postgres
+def test_public_sources_excludes_submissions_and_unapproved(pg):
+    """The submission bucket is an internal sink, not an outlet to link to."""
+    from app.core.constants import USER_SUBMISSION_SOURCE_URL
+    from app.models import Source, SourceStatus
+    from app.routers.feed import list_public_sources
+
+    pg.add_all([
+        Source(
+            name="User Submissions",
+            category="other",
+            ingest_method="rss",
+            base_url=USER_SUBMISSION_SOURCE_URL,
+            status=SourceStatus.APPROVED,
+        ),
+        Source(
+            name="Rejected Outlet",
+            category="other",
+            ingest_method="rss",
+            base_url="https://rejected.example.com",
+            status=SourceStatus.REJECTED,
+        ),
+        Source(
+            name="Unsupported Outlet",
+            category="other",
+            ingest_method="html",
+            base_url="https://unsupported.example.com",
+            status=SourceStatus.UNSUPPORTED,
+        ),
+    ])
+    pg.flush()
+
+    names = [s["name"] for s in list_public_sources(db=pg)["sources"]]
+    assert "User Submissions" not in names
+    assert "Rejected Outlet" not in names
+    assert "Unsupported Outlet" not in names

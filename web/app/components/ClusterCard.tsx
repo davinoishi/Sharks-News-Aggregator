@@ -3,6 +3,7 @@
 import { Cluster, Entity } from '../types';
 import { ApiClient } from '../api-client';
 import { chipClass } from '../lib/taxonomy';
+import { formatFeedDate, formatSourceDate, isoDateTime } from '../lib/dates';
 
 interface ClusterCardProps {
   cluster: Cluster;
@@ -22,12 +23,7 @@ export function ClusterCard({
   onEntityClick,
   activeEntitySlug,
 }: ClusterCardProps) {
-  const formattedDate = new Date(cluster.last_seen_at).toLocaleString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  });
+  const formattedDate = formatFeedDate(cluster.last_seen_at);
 
   const isTrending = cluster.click_count >= TRENDING_THRESHOLD;
 
@@ -113,7 +109,9 @@ export function ClusterCard({
           )}
 
           <div className="flex items-center gap-4 text-meta text-content-muted tabular-nums">
-            <span>{formattedDate}</span>
+            {/* Freshness is the whole premise of the feed, so the date is
+                machine-readable and not just painted on. */}
+            <time dateTime={isoDateTime(cluster.last_seen_at)}>{formattedDate}</time>
             <span>
               {cluster.source_count} {cluster.source_count === 1 ? 'source' : 'sources'}
             </span>
@@ -162,7 +160,10 @@ export function ClusterCard({
                   <div className="flex-1">
                     <p className="text-ui text-content">{variant.title}</p>
                     <p className="text-meta text-content-muted mt-1 tabular-nums">
-                      {variant.source_name} • {new Date(variant.published_at).toLocaleString()}
+                      {variant.source_name} •{' '}
+                      <time dateTime={isoDateTime(variant.published_at)}>
+                        {formatSourceDate(variant.published_at)}
+                      </time>
                       <span className="sr-only"> (opens in a new tab)</span>
                     </p>
                   </div>

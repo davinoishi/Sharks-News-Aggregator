@@ -310,6 +310,44 @@ def search_entities_by_name(db: Session, query: str, limit: int = 10) -> List[En
     ).limit(limit).all()
 
 
+def get_entities_by_prominence(
+    db: Session,
+    since: Optional[datetime] = None,
+    limit: int = 20,
+) -> List[Entity]:
+    """Entities ranked by how many clusters currently mention them.
+
+    Alphabetical order is useless for a "who's in the news" strip — it pins
+    whoever sorts first to the top forever, regardless of whether anyone is
+    writing about them. This ranks by cluster count within the same window the
+    feed is showing.
+
+    The cluster filters here MUST match ``build_feed_query``
+    (``status == ACTIVE`` plus the ``since`` bound). If they drift, the chips
+    offer filters that return nothing, which reads as a broken feed.
+
+    Ties break alphabetically so the order is stable between renders — an
+    unstable order would churn the server-rendered HTML on every revalidate.
+    """
+    counts = (
+        db.query(Entity, func.count(ClusterEntity.cluster_id).label("n"))
+        .join(ClusterEntity, ClusterEntity.entity_id == Entity.id)
+        .join(Cluster, Cluster.id == ClusterEntity.cluster_id)
+        .filter(Cluster.status == ClusterStatus.ACTIVE)
+    )
+
+    if since:
+        counts = counts.filter(Cluster.last_seen_at >= since)
+
+    rows = (
+        counts.group_by(Entity.id)
+        .order_by(desc("n"), Entity.name)
+        .limit(limit)
+        .all()
+    )
+    return [entity for entity, _ in rows]
+
+
 def get_recent_clusters_count(db: Session, hours: int = 24) -> int:
     """
     Get count of clusters updated in the last N hours.
