@@ -37,14 +37,14 @@ const groups: { heading: string; links: AdminLink[] }[] = [
 
 export default function AdminIndexPage() {
   return (
-    <main className="min-h-screen bg-gray-50">
+    <main className="min-h-screen bg-canvas">
       <div className="max-w-4xl mx-auto p-4 md:p-8">
         <div className="mb-6">
-          <Link href="/" className="text-sm text-blue-600 hover:underline">
+          <Link href="/" className="text-ui text-action hover:underline">
             ← Back to site
           </Link>
-          <h1 className="text-2xl font-bold text-gray-900 mt-2">Admin</h1>
-          <p className="text-gray-600 text-sm mt-1">
+          <h1 className="font-display text-title text-content mt-2">Admin</h1>
+          <p className="text-meta text-content-muted mt-1">
             All pages here are protected by the admin login.
           </p>
         </div>
@@ -52,7 +52,7 @@ export default function AdminIndexPage() {
         <div className="space-y-8">
           {groups.map((group) => (
             <section key={group.heading}>
-              <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-3">
+              <h2 className="text-label uppercase text-content-muted mb-3">
                 {group.heading}
               </h2>
               <ul className="grid gap-3 sm:grid-cols-2">
@@ -60,10 +60,10 @@ export default function AdminIndexPage() {
                   <li key={link.href}>
                     <Link
                       href={link.href}
-                      className="block rounded-lg border border-gray-200 bg-white p-4 hover:border-blue-400 hover:shadow-sm transition"
+                      className="block rounded-lg border border-edge bg-surface p-4 hover:border-action hover:shadow-md transition"
                     >
-                      <span className="block font-medium text-gray-900">{link.title}</span>
-                      <span className="block text-sm text-gray-500 mt-1">{link.desc}</span>
+                      <span className="block font-display text-subsubhead text-content">{link.title}</span>
+                      <span className="block text-meta text-content-muted mt-1">{link.desc}</span>
                     </Link>
                   </li>
                 ))}

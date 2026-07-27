@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { display, text } from './fonts';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -30,8 +31,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body>{children}</body>
+    <html lang="en" className={`${display.variable} ${text.variable}`}>
+      <body className="antialiased">{children}</body>
     </html>
   );
 }

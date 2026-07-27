@@ -24,7 +24,7 @@ wheels/
 *.egg
 
 # The Python `lib/`/`build/` rules above are unanchored and would otherwise
-# swallow the frontend source dir web/app/lib (the U6 tagColor helper lives
+# swallow the frontend source dir web/app/lib (taxonomy.ts and filters.ts live
 # there). Re-include it.
 !web/app/lib/
 !web/app/lib/**
@@ -52,6 +52,11 @@ yarn-error.log*
 *.swp
 *.swo
 *~
+
+# Agent tooling — local scratch state, not project source.
+# `.claude/` also holds this checkout's git worktrees.
+.claude/
+.impeccable/
 
 # OS
 .DS_Store

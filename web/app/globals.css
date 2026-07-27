@@ -2,6 +2,230 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ---------------------------------------------------------------------------
+   Palette
+   ---------------------------------------------------------------------------
+   Sampled from the crest (web/public/logo.png), not invented. The mark is built
+   on two hues plus a near-black ground:
+
+     teal    oklch(0.52 0.086 193)  — the shark and the shield
+     orange  oklch(0.62 0.188  45)  — the shield outline and highlights
+     ground  oklch(0.12 0.021 195)  — a black with a teal cast, not neutral
+
+   Strategy: cold deep water with one hot signal. Teal (H193) and orange (H45)
+   sit 148° apart — near-complementary tension. Teal owns interaction and
+   nothing else; orange is rationed to speculation and momentum, so a typical
+   feed screen is mostly quiet and the accents keep their force.
+
+   Neutrals are tinted to the same H193 axis as the crest's ground rather than
+   using a blue-cast stock gray, which is what makes the whole surface read as
+   one object with the mark.
+
+   Ramps were built in OKLCH (documented per step) and emitted as hex so the
+   palette does not depend on browser oklch() support.
+   ------------------------------------------------------------------------- */
+
+:root {
+  /* -- Primitives ------------------------------------------------------- */
+
+  /* Ink — neutrals on the crest's own hue axis. oklch(L 0.013–0.018 193) */
+  --ink-0: #fcfefe;
+  --ink-50: #f3f8f8;
+  --ink-100: #e8f0ef;
+  --ink-200: #d6e0df;
+  --ink-300: #bcc7c7;
+  --ink-400: #909c9b;
+  --ink-500: #606d6d;
+  --ink-600: #526060;
+  --ink-700: #3b4948;
+  --ink-800: #233030;
+  --ink-900: #101c1c;
+  --ink-950: #050e0e;
+
+  /* Teal — the brand axis. oklch(L C 193) */
+  --teal-50: #ecf8f7;
+  --teal-100: #d8f1f0;
+  --teal-200: #b7e1df;
+  --teal-300: #8dc9c7;
+  --teal-400: #52a3a1;
+  --teal-500: #248987;
+  --teal-600: #027472;
+  --teal-700: #005e5d;
+  --teal-800: #004645;
+  --teal-900: #022f2e;
+
+  /* Orange — the crest's accent. oklch(L C 45) */
+  --orange-50: #fff2eb;
+  --orange-100: #ffe1d3;
+  --orange-200: #ffc7ad;
+  --orange-300: #faa680;
+  --orange-400: #f28450;
+  --orange-500: #e86821;
+  --orange-600: #d45300;
+  --orange-700: #a64000;
+  --orange-800: #7d3101;
+  --orange-900: #592204;
+
+  /* Red — pulled warm (H22) so it reads as the orange's serious sibling
+     rather than an unrelated stock red. */
+  --red-50: #fff1f0;
+  --red-100: #ffdfdc;
+  --red-200: #fec3c0;
+  --red-300: #f79f9c;
+  --red-400: #eb7675;
+  --red-500: #d85154;
+  --red-600: #bf3940;
+  --red-700: #9d2c33;
+  --red-800: #7a2327;
+  --red-900: #56171a;
+
+  --amber-50: #fff5e8;
+  --amber-100: #ffe9cc;
+  --amber-200: #fed59d;
+  --amber-300: #fcc069;
+  --amber-500: #e89f16;
+  --amber-700: #95650f;
+  --amber-800: #6e4a0a;
+  --amber-900: #513607;
+
+  --green-50: #eef8f0;
+  --green-100: #daf2df;
+  --green-200: #b9e3c3;
+  --green-300: #90cda0;
+  --green-600: #327f4c;
+  --green-700: #26653c;
+  --green-800: #1c4c2c;
+  --green-900: #14361f;
+
+  /* -- Semantic roles (light) ------------------------------------------- */
+
+  --canvas: var(--ink-50);
+  --surface: var(--ink-0);
+  --surface-sunken: var(--ink-100);
+
+  --text: var(--ink-900);
+  --text-secondary: var(--ink-600);
+  --text-muted: var(--ink-500);
+
+  /* Interaction. Teal appears here and essentially nowhere else, which is
+     what makes an action findable at a glance. */
+  --action: var(--teal-600);
+  --action-hover: var(--teal-700);
+  --action-quiet: var(--teal-50);
+  --on-action: var(--ink-0);
+  --focus: var(--teal-600);
+
+  --border: var(--ink-200);
+  --border-strong: var(--ink-300);
+
+  /* Unselected pill controls (tag filters, time range, entity pills). These
+     carry their own edge: on a dark ground a fill alone separates too weakly
+     from the panel behind it, and these are the surface's primary controls. */
+  --control-bg: var(--ink-100);
+  --control-fg: var(--ink-600);
+  --control-edge: var(--ink-200);
+  --control-hover: var(--ink-200);
+
+  /* Taxonomy tiers. Chips encode how much a reader should lean in, not just
+     which bucket a story fell into. The four fills are separated by lightness
+     (0.67 / 0.47 / 0.30 / 0.95) as well as hue, so they stay distinguishable
+     in grayscale and under red-green colour vision deficiency — and every chip
+     carries its label, so colour is never the only code. */
+  --chip-speculation-bg: var(--orange-500);
+  --chip-speculation-fg: var(--ink-950);
+  --chip-status-bg: var(--red-700);
+  --chip-status-fg: var(--ink-0);
+  --chip-confirmed-bg: var(--ink-800);
+  --chip-confirmed-fg: var(--ink-0);
+  --chip-routine-bg: var(--ink-100);
+  --chip-routine-fg: var(--ink-600);
+  --chip-routine-border: var(--ink-200);
+
+  /* Momentum: the one other place orange is allowed. */
+  --trending-bg: var(--orange-100);
+  --trending-fg: var(--orange-800);
+
+  /* Status semantics (used by forms and the admin surfaces) */
+  --critical-bg: var(--red-50);
+  --critical-fg: var(--red-700);
+  --critical-border: var(--red-200);
+  --caution-bg: var(--amber-50);
+  --caution-fg: var(--amber-800);
+  --caution-border: var(--amber-200);
+  --positive-bg: var(--green-50);
+  --positive-fg: var(--green-700);
+  --positive-border: var(--green-200);
+
+  /* Elevation. Tinted with the ground hue and given a real offset — a
+     zero-offset halo is decoration, not depth. */
+  --shadow-sm: 0 1px 2px -1px rgb(5 14 14 / 0.10), 0 1px 3px 0 rgb(5 14 14 / 0.07);
+  --shadow-md: 0 2px 4px -2px rgb(5 14 14 / 0.12), 0 6px 14px -4px rgb(5 14 14 / 0.12);
+
+  /* Comfortable reading measure for running prose (~68 characters). */
+  --measure: 68ch;
+}
+
+/* ---------------------------------------------------------------------------
+   Dark theme
+   ---------------------------------------------------------------------------
+   Composed, not inverted. Surfaces step up in lightness as they come forward;
+   text steps down in chroma; the action colour moves up the ramp (teal-400) so
+   it stays findable against a dark ground. The two accent chips keep their
+   light-theme treatment on purpose — a fan learns "orange = talk, red = a
+   player is affected" once, and it holds in either theme.
+
+   No toggle: this follows the OS. The use scene is a fan checking the feed
+   after a late West-coast game.
+   ------------------------------------------------------------------------- */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --canvas: var(--ink-950);
+    --surface: var(--ink-900);
+    --surface-sunken: var(--ink-800);
+
+    --text: var(--ink-50);
+    --text-secondary: var(--ink-300);
+    --text-muted: var(--ink-400);
+
+    --action: var(--teal-400);
+    --action-hover: var(--teal-300);
+    --action-quiet: var(--teal-900);
+    --on-action: var(--ink-950);
+    --focus: var(--teal-400);
+
+    --border: var(--ink-800);
+    --border-strong: var(--ink-700);
+
+    --control-bg: var(--ink-800);
+    --control-fg: var(--ink-300);
+    --control-edge: var(--ink-700);
+    --control-hover: var(--ink-700);
+
+    --chip-status-bg: var(--red-600);
+    --chip-confirmed-bg: var(--ink-200);
+    --chip-confirmed-fg: var(--ink-900);
+    --chip-routine-bg: var(--ink-800);
+    --chip-routine-fg: var(--ink-300);
+    --chip-routine-border: var(--ink-700);
+
+    --trending-bg: var(--orange-900);
+    --trending-fg: var(--orange-300);
+
+    --critical-bg: #2a1315;
+    --critical-fg: var(--red-300);
+    --critical-border: var(--red-900);
+    --caution-bg: #2a2008;
+    --caution-fg: var(--amber-300);
+    --caution-border: var(--amber-900);
+    --positive-bg: #0d2415;
+    --positive-fg: var(--green-300);
+    --positive-border: var(--green-900);
+
+    --shadow-sm: 0 1px 2px -1px rgb(0 0 0 / 0.5), 0 1px 3px 0 rgb(0 0 0 / 0.4);
+    --shadow-md: 0 2px 4px -2px rgb(0 0 0 / 0.5), 0 6px 14px -4px rgb(0 0 0 / 0.5);
+  }
+}
+
 * {
   box-sizing: border-box;
   padding: 0;
@@ -15,17 +239,168 @@ body {
 }
 
 body {
-  color: rgb(var(--foreground-rgb));
-  background: linear-gradient(
-      to bottom,
-      transparent,
-      rgb(var(--background-end-rgb))
-    )
-    rgb(var(--background-start-rgb));
+  color: var(--text);
+  background: var(--canvas);
 }
 
-:root {
-  --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 249, 250, 251;
-  --background-end-rgb: 255, 255, 255;
+@layer base {
+  /* Headings here are short and self-contained; balancing them keeps a
+     two-line headline from dropping a single orphaned word. Browsers without
+     support simply wrap normally. */
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+
+  /* Form controls inherit the themed surface rather than the UA's white. */
+  input,
+  textarea,
+  select {
+    background-color: var(--surface);
+    color: var(--text);
+  }
+
+  ::placeholder {
+    color: var(--text-muted);
+    opacity: 1;
+  }
+
+  ::selection {
+    background: var(--teal-200);
+    color: var(--ink-900);
+  }
+
+  /* One focus treatment for the whole surface. Components that need an offset
+     against a specific ground still set their own ring utilities. */
+  a:focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  @layer base {
+    ::selection {
+      background: var(--teal-800);
+      color: var(--ink-50);
+    }
+  }
+}
+
+@layer components {
+  /* Hit-area expansion.
+     Phones are the primary device, but the feed's density is the product — a
+     13-player card must not become a scroll. So the painted control keeps its
+     size and an invisible child extends only the touch target. Row gaps below
+     are set so expanded targets tile rather than overlap.
+
+     .tap-44 — primary controls (filters, time range, expand, form buttons)
+     .tap-40 — secondary, denser controls (player pills on a card) */
+  .tap-44,
+  .tap-40 {
+    position: relative;
+  }
+
+  /* Only where a touchscreen actually exists. With a mouse the painted box is
+     already an accurate target, and an overhanging invisible overlay would
+     trigger hover early and shadow its neighbours. */
+  @media (any-pointer: coarse) {
+    .tap-44::after,
+    .tap-40::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+    }
+
+    .tap-44::after {
+      width: max(100%, 44px);
+      height: max(100%, 44px);
+    }
+
+    .tap-40::after {
+      width: max(100%, 40px);
+      height: max(100%, 40px);
+    }
+  }
+
+  /* A reading surface for the long-form pages (/about, /legal).
+     Selectors are wrapped in :where() so they carry zero specificity — any
+     Tailwind utility placed on an element inside still wins. */
+  .doc {
+    max-width: var(--measure);
+    font-size: 1rem;
+    line-height: 1.7;
+    color: var(--text-secondary);
+  }
+
+  .doc :where(p) {
+    margin-bottom: 1.1em;
+  }
+
+  .doc :where(p:last-child) {
+    margin-bottom: 0;
+  }
+
+  .doc :where(ul, ol) {
+    margin-bottom: 1.1em;
+    padding-left: 1.4em;
+    list-style: disc;
+  }
+
+  .doc :where(li) {
+    margin-bottom: 0.4em;
+  }
+
+  .doc :where(li)::marker {
+    color: var(--text-muted);
+  }
+
+  .doc :where(h2) {
+    @apply font-display text-subhead;
+    color: var(--text);
+    /* More air above a heading than below it, so it binds to what follows. */
+    margin-top: 2.5rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .doc :where(h3) {
+    @apply font-display text-subsubhead;
+    color: var(--text);
+    margin-top: 1.75rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .doc :where(h2:first-child, h3:first-child) {
+    margin-top: 0;
+  }
+
+  .doc :where(hr) {
+    margin-top: 2rem;
+    margin-bottom: 0;
+    border-color: var(--border);
+  }
+
+  /* A rule already provides the separation, so a heading after one does not
+     need to add its full leading margin on top. */
+  .doc :where(hr + h2, hr + h3) {
+    margin-top: 2rem;
+  }
+
+  /* In running prose a link must be unambiguous without relying on hue
+     alone, so it is underlined outright rather than on hover. */
+  .doc :where(a) {
+    color: var(--action);
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 0.15em;
+    text-decoration-color: color-mix(in srgb, var(--action) 45%, transparent);
+  }
+
+  .doc :where(a:hover) {
+    text-decoration-color: var(--action);
+  }
 }
