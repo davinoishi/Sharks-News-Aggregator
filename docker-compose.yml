@@ -147,6 +147,11 @@ services:
     build: ./web
     environment:
       INTERNAL_API_URL: http://api:8000
+      # Same variable the api service reads for RSS channel metadata. The web
+      # app uses it for canonical tags, Open Graph URLs, the sitemap, robots.txt
+      # and JSON-LD @ids, so one value keeps both services agreeing on where the
+      # site lives (SEO-6; cf. the SEO-11 drift).
+      PUBLIC_SITE_URL: ${PUBLIC_SITE_URL:-http://localhost:3000}
       # Server-side admin key forwarded to the API as X-Admin-API-Key.
       ADMIN_API_KEY: ${ADMIN_API_KEY:?ADMIN_API_KEY is required}
       # HTTP Basic gate for the /admin pages and /api/admin proxy routes.

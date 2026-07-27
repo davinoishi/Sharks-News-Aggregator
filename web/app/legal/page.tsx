@@ -1,5 +1,22 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import Image from 'next/image';
+import { pageOpenGraph } from '../lib/site';
+
+export const metadata: Metadata = {
+  title: 'Terms of Use & Privacy Policy',
+  description:
+    'Terms of use and privacy policy for Sharks News Aggregator: how it ' +
+    'aggregates third-party reporting, and what it does not collect.',
+  alternates: { canonical: '/legal' },
+  openGraph: pageOpenGraph({
+    title: 'Terms of Use & Privacy Policy',
+    description:
+      'How Sharks News Aggregator handles third-party content, and the ' +
+      'no-cookie, no-tracking stance behind it.',
+    path: '/legal',
+  }),
+};
 
 export default function LegalPage() {
   const lastUpdated = new Date().toLocaleDateString('en-US', {

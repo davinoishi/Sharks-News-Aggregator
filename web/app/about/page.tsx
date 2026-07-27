@@ -1,9 +1,27 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import Image from 'next/image';
+import { AuthorStructuredData } from '../components/StructuredData';
+import { pageOpenGraph } from '../lib/site';
+
+export const metadata: Metadata = {
+  title: 'About',
+  description:
+    'Why Sharks News Aggregator exists and who built it — a free, ad-free ' +
+    'fan project pulling San Jose Sharks news and rumors into one feed.',
+  alternates: { canonical: '/about' },
+  openGraph: pageOpenGraph({
+    title: 'About Sharks News Aggregator',
+    description:
+      'A free, ad-free Sharks news aggregator built by a fan, for fans.',
+    path: '/about',
+  }),
+};
 
 export default function AboutPage() {
   return (
     <main className="min-h-screen bg-canvas">
+      <AuthorStructuredData />
       <div className="max-w-4xl mx-auto p-4 md:p-8">
         {/* Header */}
         <header className="mb-8">

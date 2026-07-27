@@ -2,6 +2,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { FeedList } from './components/FeedList';
 import { SourceList } from './components/SourceList';
+import { FeedStructuredData } from './components/StructuredData';
 import { DEFAULT_SINCE } from './lib/filters';
 import { formatLastScan, isoDateTime } from './lib/dates';
 import {
@@ -58,6 +59,7 @@ export default async function Home() {
 
   return (
     <main className="min-h-screen bg-canvas">
+      <FeedStructuredData clusters={feed?.clusters ?? []} />
       <div className="max-w-4xl mx-auto p-4 md:p-8">
         <header className="mb-8">
           <div className="flex items-center gap-3 sm:gap-4 mb-2">
