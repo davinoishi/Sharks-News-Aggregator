@@ -4,8 +4,9 @@ This plan is the result of a full codebase review (2026-06-10) covering security
 correctness, performance, usability, code quality, and operations. Work is packaged
 into nine self-contained briefs in `docs/briefs/`, each scoped to a single PR.
 Later reviews and feature work append to this file; see
-[brief 10](#brief-10--mcp-interface-for-agent-access-planned-2026-07-25) and
-[brief 11](#brief-11--richer-public-metrics-without-cookies-planned-2026-07-25)
+[brief 10](#brief-10--mcp-interface-for-agent-access-planned-2026-07-25),
+[brief 11](#brief-11--richer-public-metrics-without-cookies-planned-2026-07-25) and
+[brief 12](#brief-12--make-the-feed-crawlable-and-give-it-metadata-planned-2026-07-27)
 for the current planned work.
 
 **How to use:** start a fresh agent session, point it at exactly one brief file, and
@@ -304,7 +305,7 @@ OpenTelemetry (R2-A5), derive `source_count` by query (R2-F4), dedup `entities_a
 | R3-S3 | P3 | Security | Add CSP `report-uri`/`report-to` + a `/csp-report` endpoint for visibility into violations (extends R2-S6). |
 | R3-A2 | P3 | Code quality | Extract a thin `services/` layer (`feed_service`, `cluster_service`) so routers stop calling enrichment/clustering directly — easier unit testing. |
 | R3-A3 | P3 | Code quality | Enforce Pydantic v2 `model_config = ConfigDict(from_attributes=True)` + strict validation across response schemas to catch shape mismatches at dev time. |
-| R3-U1 | P3 | Usability | Relative timestamps ("2h ago" / "Yesterday") via `date-fns` `formatDistanceToNow`. |
+| R3-U1 | P3 | Usability | ~~Relative timestamps ("2h ago" / "Yesterday") via `date-fns` `formatDistanceToNow`.~~ **Conflicts with brief 12.** Once the feed is server-rendered under ISR, a relative string computed server-side is stale on arrival and mismatches on hydrate; brief 12 deliberately moves the one remaining relative string to an absolute datetime. If this is ever revived it must be a client-only effect over a server-rendered `<time datetime>`, never a server-rendered string. |
 | R3-U2 | P3 | Usability | Source credibility tier indicators (official 🏒 / press 📰 / blog ✍️) to help gauge reliability at a glance. |
 | R3-U3 | P3 | Usability | Cluster "Breaking"/🔥 importance badge when `source_count >= 4` or a trade/injury within the last ~2h. |
 | R3-T3 | P3 | Testing | Load test `/feed` (k6/locust, ~50 concurrent) to validate the Pi under concurrency. |
@@ -395,6 +396,76 @@ Cookie-free unique visitors (the Plausible/Fathom daily-salted-IP pattern) was
 considered and **explicitly rejected**, so a later session doesn't add it as a
 helpful extra. Phase B must also update `web/app/legal/page.tsx` §6.2, which
 currently promises the policy will be updated if analytics are ever added.
+
+---
+
+# Brief 12 — Make the feed crawlable, and give it metadata (planned, 2026-07-27)
+
+[brief-12-crawlable-feed-and-metadata.md](briefs/brief-12-crawlable-feed-and-metadata.md)
+— from a DataForSEO audit of the live site, 2026-07-27.
+
+`web/app/page.tsx` is `'use client'`, so every cluster is fetched after hydration and
+the server response is **108 words** (header, filter bar, footer) at a 4.3%
+text-to-HTML ratio. Google has indexed the homepage — rank 1 for
+`site:nobgp.com sharks` — and chose the **footer disclaimer** as the snippet, because
+there was no article content to draw from. The same applies to GPTBot, ClaudeBot,
+PerplexityBot and Bing, none of which execute JavaScript on arbitrary pages.
+
+The 94/100 OnPage score and the 99/96/100/100 Lighthouse row are both grading the
+shell. The shell is genuinely excellent; it is also all a crawler receives.
+
+Ships as **three PRs, one per session**:
+
+| Phase | Scope | Items | Effort | Rebuild | Branch |
+|-------|-------|-------|--------|---------|--------|
+| A | Correct `PUBLIC_SITE_URL` and the docs that let it drift | SEO-11 | XS | api restart | `improve/12a-public-site-url` |
+| B | Server-render the feed + the structural content that comes with it | SEO-1 … SEO-4 | L | web + api | `improve/12b-ssr-feed` |
+| C | Metadata, discovery, structured data | SEO-5 … SEO-10 | M | web | `improve/12c-metadata` |
+
+Phase A is config-only, ships on its own, and fixes a live correctness bug in the
+published RSS. Phase C depends on B only for SEO-9's `ItemList`; the rest can ship
+independently.
+
+| ID | Area | Item |
+|----|------|------|
+| SEO-1 | Usability | Split `page.tsx` into a server shell + `<FeedList initial>` client child. Fetch `INTERNAL_API_URL` directly server-side (not via the site's own BFF route). `revalidate = 300` — ingest is every 10 min. Incidentally removes the HTML's `Cache-Control: no-store`. |
+| SEO-2 | Usability | Server-render ~15–20 players-in-the-news as clickable filter chips. **Blocked on** adding a prominence ordering to `GET /entities` (`api/app/routers/feed.py:157`), which is alphabetical today — Adam Gaudette first, forever. |
+| SEO-3 | Usability | Name the source outlets server-side. Needs a **new public `GET /sources`** (name, `base_url`, category — explicit field whitelist); the admin endpoint at `api/app/routers/admin.py:59` stays behind its 401. |
+| SEO-4 | Usability | Expand the header paragraph to state the goal plainly. A paragraph, not a wall — SEO-1…3 supply the bulk of the new indexable text. |
+| SEO-5 | Operations | `web/app/robots.ts` + `web/app/sitemap.ts`. Both currently 404. Disallow `/admin` and `/api`; `lastmod` on `/` from the newest cluster. |
+| SEO-6 | Usability | `metadataBase` + per-page `metadata` for `about`/`legal`/`submit` — all four pages currently share one 22-char title and one 43-char description from `web/app/layout.tsx:5`. Base URL as **one exported constant**. |
+| SEO-7 | Usability | Canonical tags; `/` canonicalises to the bare origin so filter query strings collapse. |
+| SEO-8 | Usability | Open Graph + Twitter Card, and one **static** 1200×630 image from `Logos/`. Currently a shared link on Bluesky — the project's live distribution channel — renders no card at all. |
+| SEO-9 | Usability | JSON-LD: `WebSite` + `Organization` sitewide, `CollectionPage`/`ItemList` on `/`, `Person` for Davin on `/about`. |
+| SEO-10 | Operations | Static `web/public/llms.txt`. |
+| SEO-11 | Operations | `PUBLIC_SITE_URL` on the Pi still holds `x2mq74oetjlz.nobgp.com`, which **404s**, so `/rss` publishes a dead origin in `<link>` and `atom:link rel="self"`. Also declare it in `docker-compose.pi.yml` and record the real value in `.env.example:25` + `docs/ARCHITECTURE.md:342`. |
+
+**Decisions already taken — do not re-litigate in a later session:**
+
+- **24h window stays the default.** Server-render exactly what the UI shows (~8
+  stories). Rendering a wider set and hiding the surplus was considered and
+  **rejected** — hidden content is discounted anyway, and it is not honest.
+- **Absolute datetimes, not relative strings.** `formatLastScanTime()`
+  (`web/app/page.tsx:106-110`) becomes an absolute datetime. Separately, card dates
+  (`web/app/components/ClusterCard.tsx:25`) already are absolute but pass no
+  `timeZone`, so server and client disagree — pin `America/Los_Angeles`. Wrap both in
+  `<time datetime>`; the feed currently contains **zero** `<time>` elements.
+- **No `NewsArticle` markup per item.** The site links out rather than hosting;
+  claiming article markup for someone else's reporting misrepresents authorship.
+- **Legacy headline/link mismatches are out of scope.** Verified 2026-07-27 that
+  `df142f2` works on live clusters (4019 self-corrected within ~20 min); cluster 4003
+  is pre-fix backlog and ages out of a 24h window on its own.
+- **Static OG image, not dynamic `opengraph-image.tsx`**, for now.
+- **No custom domain.** `wplepla23gjn.nobgp.com` is the strategic ceiling on any
+  organic result — zero referring domains, unbrandable, shared root — but that is a
+  separate decision, not part of this brief.
+
+**Follow-up this brief deliberately sets up:** crawlable `/tag/*` routes. Filters stay
+client-side here and SEO-7 makes filter URLs non-indexable, which is only acceptable
+because real tag pages are next. `sharks trade rumors` is **1,900 searches/month at
+difficulty 23, +125% YoY** (DataForSEO Labs, US/en) — the most winnable term available,
+and the Trade and Rumors tags already exist. Pair it with Google Search Console: at one
+indexed page and zero backlinks, GSC is the only way to see whether any of this moved.
 
 ---
 
