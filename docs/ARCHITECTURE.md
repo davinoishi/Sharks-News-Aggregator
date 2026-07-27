@@ -8,7 +8,7 @@ The application runs on a **Raspberry Pi 5** (pi5-ai2) with public access via no
 
 | Service | Public URL | Local URL (on Pi) |
 |---------|------------|-------------------|
-| Web App | https://x2mq74oetjlz.nobgp.com | http://localhost:3001 |
+| Web App | https://wplepla23gjn.nobgp.com | http://localhost:3001 |
 | API | https://tz2k2lxwodrv.nobgp.com | http://localhost:8001 |
 | BlueSky | https://bsky.app/profile/sjsharks-news.bsky.social | N/A |
 

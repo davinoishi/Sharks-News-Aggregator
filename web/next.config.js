@@ -52,7 +52,7 @@ const securityHeaders = [
 ]
 
 const nextConfig = {
-  allowedDevOrigins: ['x2mq74oetjlz.nobgp.com'],
+  allowedDevOrigins: ['wplepla23gjn.nobgp.com'],
 
   async headers() {
     return [

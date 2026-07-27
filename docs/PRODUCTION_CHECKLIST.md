@@ -5,7 +5,7 @@ A checklist of tasks for deploying the Sharks News Aggregator to production.
 **Current Status:** ✅ Deployed and running on Raspberry Pi 5 (pi5-ai2)
 
 **Live URLs:**
-- Web: https://x2mq74oetjlz.nobgp.com
+- Web: https://wplepla23gjn.nobgp.com
 - BlueSky: https://bsky.app/profile/sjsharks-news.bsky.social
 
 ---
@@ -70,7 +70,7 @@ A checklist of tasks for deploying the Sharks News Aggregator to production.
 ## Infrastructure
 
 - [x] **noBGP proxy configured** — Both web and API services accessible via HTTPS
-  - Web: https://x2mq74oetjlz.nobgp.com
+  - Web: https://wplepla23gjn.nobgp.com
   - `auth_required=false` for public access
 - [x] **Docker containers running** — All 6 services operational
 - [x] **Datastore ports not exposed** — `db`/`redis` host port mappings removed
