@@ -28,6 +28,14 @@ services:
       - "8001:8000"
 
   web:
+    build:
+      context: ./web
+      args:
+        # Must match the runtime value below. The statically prerendered pages
+        # (/about, /legal, /submit) bake canonical/og:url at build time, so a
+        # build arg that disagreed with the runtime env would give the site two
+        # different origins depending on which page you looked at.
+        PUBLIC_SITE_URL: "${PUBLIC_SITE_URL:-https://wplepla23gjn.nobgp.com}"
     environment:
       # Pinned here for the same reason as the api service above: the production
       # value lives in version control, so a stale .env has something to be
