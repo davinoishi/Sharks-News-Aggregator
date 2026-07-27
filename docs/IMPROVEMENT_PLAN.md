@@ -513,6 +513,88 @@ and `since`, so no API/worker/beat rebuild.
 
 Deferred items, specified well enough to execute later without re-research.
 
+### RM-2 — Relevance: a Sharks player's name admits an article about another team
+
+*Found 2026-07-27 while verifying brief 13. Highest-value open item — it is a
+content-quality problem, and the topic pages just raised its cost.*
+
+**The mechanism.** `check_sharks_relevance()`
+(`api/app/enrichment/classify.py:65`) approves an article if either:
+
+1. the title contains a Sharks keyword (`sharks`, `barracuda`, `sap center`…), or
+2. the title mentions **any** non-team Sharks entity — a player, coach or staff
+   member.
+
+Rule 2 is the leak. It admits an article on the strength of a name appearing in
+the title, with no test of what the article is *about*. That is usually right,
+and it is badly wrong for recently-acquired players: Darnell Nurse, Jacob Trouba,
+Yaroslav Askarov and Alex Nedeljkovic all carry heavy ongoing coverage from
+their **former** teams' media, and every one of those articles passes.
+
+**Measured 2026-07-27** (30-day window; "headline names another NHL team and
+does not mention San Jose"):
+
+| Page | Clusters | Off-team | Rate |
+|---|---|---|---|
+| `/tag/rumors` | 100 | 32 | **32%** |
+| `/tag/trade` | 90 | 24 | **27%** |
+| `/tag/game` | 45 | 7 | 16% |
+| `/tag/signing` | 100 | 10 | 10% |
+| Homepage, 24h | 10 | 0 | **0%** |
+
+Representative failures, each admitted solely by rule 2:
+
+- *"3 Reasons the Oilers Got Better This Offseason"* — entity: Darnell Nurse
+- *"4 Early PTO Targets the Maple Leafs Should Consider"* — entity: Alex Nedeljkovic
+- *"Calgary Flames Still Fielding Trade Calls On Two Players"* — entity: Jacob Trouba
+
+**Why it matters more now.** On the homepage an off-team story is noise, and the
+24-hour default keeps the rate near zero. A topic page makes an explicit promise
+in its `<h1>` and `<title>` — "San Jose Sharks Trade News & Rumors" — and then
+fills a quarter to a third of the page with Oilers and Maple Leafs content. That
+is the kind of intent mismatch that costs the ranking the page was built for.
+
+Note the homepage's 0% is a window artifact, not evidence the filter is fine: the
+30-day window covers July's Nurse/Trouba acquisition coverage, and 24 hours in the
+offseason simply does not contain much.
+
+**Start by reading data that already exists, not by building.** Production runs
+`LLM_EVALUATION_MODE=true` (`docker-compose.pi.yml`), which per
+`validate_sharks_relevance()` (`classify.py:109`) means **keyword always decides
+and the LLM only logs a comparison**. Every disagreement is already recorded in
+`validation_logs` with `keyword_matched` alongside the LLM verdict. So the first
+task is a query, not a feature: on the off-team clusters above, did the LLM
+already disagree with the keyword check? If it did, most of the fix is flipping
+one env var that is already implemented and already being measured.
+
+**Options, roughly in order of cost:**
+
+1. **Promote the LLM to decision mode** (`LLM_EVALUATION_MODE=false`). Already
+   built, with keyword fallback on error. Cost: an LLM call per candidate item
+   on a paid model — check the rate against `openrouter` spend first. Only worth
+   it if the eval logs show the LLM actually catches these.
+2. **Tighten rule 2**: require a player entity *plus* a second signal — a Sharks
+   keyword anywhere in the title, or the absence of another NHL team's name.
+   Cheap, deterministic, no per-item cost. Risk: rejects genuine "Sharks acquire
+   X from Edmonton" stories, which name both teams. Needs the both-teams case
+   handled explicitly.
+3. **Keep admitting them, but label and segregate.** Add an `off-team` or
+   "Around the NHL" classification, show it on the homepage, and exclude it from
+   team topic pages and the RSS feed. Keeps coverage the aggregator arguably
+   should have while stopping topic pages from breaking their promise. Largest
+   change; probably the best end state.
+
+**Verify with:** the measurement script pattern above — pull each tag feed at
+30d and count headlines naming another NHL team without naming San Jose. Target
+is materially under 10% on `/tag/trade` and `/tag/rumors` without losing
+genuine two-team trade stories.
+
+**Correction to the record:** the original SEO audit (2026-07-27) said "roughly
+half the surfaced items are off-topic", based on eyeballing eight stories in the
+default view. The measured figure is 10–32% depending on the page, and the
+failure has a specific mechanism rather than being general noise. The audit
+number was an impression; these are counts.
+
 ### RM-1 — Threads accounts as sources via self-hosted RSSHub
 
 *Deferred by decision 2026-07-19 (documented, not implemented). Feasibility
