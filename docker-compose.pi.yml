@@ -27,6 +27,13 @@ services:
     ports:
       - "8001:8000"
 
+  web:
+    environment:
+      # Pinned here for the same reason as the api service above: the production
+      # value lives in version control, so a stale .env has something to be
+      # diffed against.
+      PUBLIC_SITE_URL: "${PUBLIC_SITE_URL:-https://wplepla23gjn.nobgp.com}"
+
   worker:
     environment:
       LLM_EVALUATION_MODE: "true"

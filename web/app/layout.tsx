@@ -1,16 +1,58 @@
 import type { Metadata } from 'next';
 import { display, text } from './fonts';
+import { SiteStructuredData } from './components/StructuredData';
+import {
+  OG_IMAGE_PATH,
+  SITE_DESCRIPTION,
+  SITE_NAME,
+  SITE_TITLE,
+  SITE_URL,
+} from './lib/site';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Sharks News Aggregator',
-  description: 'San Jose Sharks news and rumors in one feed',
+  // Without metadataBase, Next cannot resolve the relative URLs below into the
+  // absolute ones canonical and og:image require — it emits a build warning and
+  // drops them. Sourced from PUBLIC_SITE_URL, the same variable the API uses for
+  // the RSS channel, so the two can't disagree about where the site lives.
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: SITE_TITLE,
+    // Subpages supply only their own name; this appends the brand once, so no
+    // page has to remember to.
+    template: `%s | ${SITE_NAME}`,
+  },
+  description: SITE_DESCRIPTION,
+  applicationName: SITE_NAME,
   alternates: {
+    canonical: '/',
     types: {
       'application/rss+xml': [
-        { url: '/rss', title: 'Sharks News Aggregator RSS' },
+        { url: '/rss', title: `${SITE_NAME} RSS` },
       ],
     },
+  },
+  openGraph: {
+    type: 'website',
+    siteName: SITE_NAME,
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+    url: '/',
+    locale: 'en_US',
+    images: [
+      {
+        url: OG_IMAGE_PATH,
+        width: 1200,
+        height: 630,
+        alt: `${SITE_NAME} — San Jose Sharks news and rumors in one feed`,
+      },
+    ],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+    images: [OG_IMAGE_PATH],
   },
   icons: {
     icon: [
@@ -32,7 +74,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={`${display.variable} ${text.variable}`}>
-      <body className="antialiased">{children}</body>
+      <body className="antialiased">
+        <SiteStructuredData />
+        {children}
+      </body>
     </html>
   );
 }
