@@ -349,7 +349,8 @@ All docs live under [`docs/`](docs/):
 - **[docs/ROSTER_SYNC.md](docs/ROSTER_SYNC.md)** - Automated roster sync from CapWages
 - **[docs/IMPORT_SOURCES.md](docs/IMPORT_SOURCES.md)** - Importing sources from CSV
 - **[docs/BACKUP_RESTORE.md](docs/BACKUP_RESTORE.md)** - Postgres backup & restore
-- **[docs/IMPROVEMENT_PLAN.md](docs/IMPROVEMENT_PLAN.md)** - Codebase improvement plan & status (all 9 briefs merged)
+- **[docs/IMPROVEMENT_PLAN.md](docs/IMPROVEMENT_PLAN.md)** - Open work: planned briefs, review backlogs, roadmap
+- **[docs/IMPROVEMENT_PLAN_ARCHIVE.md](docs/IMPROVEMENT_PLAN_ARCHIVE.md)** - Completed work and the original findings register
 
 ## Operations
 
