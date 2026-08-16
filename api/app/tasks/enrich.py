@@ -21,8 +21,6 @@ from app.enrichment.classify import (
     classify_event_type_keyword,
     classify_tags_keyword,
     count_event_keyword_matches,
-    has_hockey_context,
-    is_wrong_sport,
     log_validation,
     validate_sharks_relevance,
 )
@@ -68,8 +66,6 @@ __all__ = [
     # classify
     "check_sharks_relevance",
     "validate_sharks_relevance",
-    "is_wrong_sport",
-    "has_hockey_context",
     "log_validation",
     "classify_event_type_keyword",
     "count_event_keyword_matches",
@@ -170,9 +166,7 @@ def enrich_raw_item(self, raw_item_id: int):
                 raw_item_id=raw_item_id,
                 title=raw_item.raw_title or '',
                 description=description,
-                entity_ids=entity_ids,
-                url=raw_item.canonical_url or raw_item.original_url or '',
-                source_is_hockey=bool(source_metadata.get('hockey_scoped')),
+                entity_ids=entity_ids
             )
 
             if not validation_result:
