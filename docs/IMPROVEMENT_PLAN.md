@@ -15,6 +15,7 @@ verification steps.
 | | Item | Where |
 |---|------|-------|
 | **Next up** | `RM-2` — relevance: a Sharks player's name admits an article about another team | [below](#rm-2--relevance-a-sharks-players-name-admits-an-article-about-another-team) |
+| Shipped, unverified on prod | `RM-3` — relevance: "Sharks" is not a hockey word | [below](#rm-3--relevance-sharks-is-not-a-hockey-word) |
 | Planned brief | Brief 10 — MCP interface for agent access | [below](#brief-10--mcp-interface-for-agent-access-planned-2026-07-25) |
 | Planned brief | Brief 11 — richer public metrics, without cookies | [below](#brief-11--richer-public-metrics-without-cookies-planned-2026-07-25) |
 | Backlog | `R2-*` — round-2 review leftovers (P1–P3) | [below](#r2-backlog-open-items) |
@@ -324,7 +325,9 @@ meaningful connection". That is deliberately permissive, and it is what admits
 Timo Meier, Joel Ward and Michael Bunting items.
 
 **Two genuine keyword false positives the LLM caught for correct reasons**, worth
-fixing regardless and independent of any LLM work:
+fixing regardless and independent of any LLM work — both now **fixed under
+`RM-3`** (2026-08-15), which made `sharks` and `sap center` weak keywords
+requiring corroboration:
 
 - *"AEW Forbidden Door Explodes at SAP Center"* — the `sap center` keyword
   matches non-hockey events at the venue.
@@ -365,6 +368,120 @@ half the surfaced items are off-topic", based on eyeballing eight stories in the
 default view. The measured figure is 10–32% depending on the page, and the
 failure has a specific mechanism rather than being general noise. The audit
 number was an impression; these are counts.
+### RM-3 — Relevance: "Sharks" is not a hockey word
+
+*Found 2026-08-15 in the live feed. Code shipped the same day; the prod
+measurement below is the remaining step.*
+
+**The item.** "Longstaff agrees to new deal with Sharks - Yahoo Sport" — a Sale
+Sharks **rugby union** story, on the feed, from the Google Alerts source.
+
+**The mechanism.** Distinct from RM-2, which is about *which team*; this is
+about *which sport*. The old `check_sharks_relevance()` treated bare `sharks`
+as a sufficient signal, in the same undifferentiated tier as `san jose sharks`.
+At least four pro clubs carry the name (Sale Sharks and Cell C/Natal Sharks in
+rugby union, Cronulla-Sutherland in the NRL, Jacksonville in arena football),
+and the Google Alerts source queries the bare word. Prod runs
+`LLM_EVALUATION_MODE=true`, so the keyword check decided and the LLM's
+(correct) rejection was logged and discarded.
+
+**Shipped.**
+
+1. **Tiered keywords.** `san jose sharks` / `sj sharks` / `sjsharks` /
+   `barracuda` approve alone. Bare `sharks`, `sap center` and `tech ccs arena`
+   approve only with corroboration: hockey-exclusive vocabulary in the title,
+   "san jose" in title or URL, a player/coach/staff entity, or a source flagged
+   `hockey_scoped`. Deterministic, no per-item cost.
+2. **Wrong-sport veto** (`is_wrong_sport()`), checked ahead of every approval
+   path including the entity match: rugby/NRL/cricket club and competition
+   names and sport-exclusive jargon in the title, plus `/rugby-union/`-style
+   URL path segments. Ambiguous words are deliberately excluded — `try`,
+   `union`, `league`, `football` and `pitch` all appear in hockey coverage.
+
+This also retires the two keyword false positives RM-2 recorded as worth
+fixing independently: the AEW-at-SAP-Center item and the `#sharks` hashtag
+item. RM-2's own gate (a player entity admitting an off-team NHL article) is
+untouched.
+
+**New source flag:** `hockey_scoped` in `sources.metadata`, alongside the
+existing `skip_relevance_check` and `description_unreliable`. Set it on
+league-wide hockey outlets, which run "Sharks recall forward from Barracuda"
+headlines naming neither the city nor a roster player. Not needed for sources
+that already carry `skip_relevance_check` — those never reach the gate.
+
+**Measured against `db_data_export.sql`** (741 real `raw_items`, 467 of which
+reach the gate; January 2026 snapshot):
+
+| | Items |
+|---|---|
+| unchanged, approved | 103 |
+| unchanged, rejected | 363 |
+| **newly rejected** | **1** |
+| newly approved | 0 |
+
+Getting to 1 took a second pass. The first version of the corroboration list —
+hockey vocabulary, city name, entity, source flag — rejected **six** real
+Sharks stories: "Rangers at Sharks game 50", "Canucks Face The Sharks",
+"Hamilton Blocked A Trade To Sharks", "Sharks' Roster Crunch Hits Critical
+Mass". Ordinary game and roster coverage carries no hockey token at all. Two
+more signals fixed five of the six: **another NHL club named in the title**
+(reusing `NHL_OPPONENT_TEAMS`) and **a hockey beat visible in the URL**
+(`prohockeyrumors.com`, `thehockeynews.com/nhl/…`).
+
+The one remaining loss is item 546, "Sharks Have Big Decision To Make With
+Important Defender - Yahoo Sports" — genuine, and rejected. Its title has no
+hockey word, no opponent and no city, and `sports.yahoo.com/videos/` says
+nothing about the sport. Admitting it means accepting bare "Sharks", which is
+the hole this closes. Pinned in the tests as a known loss rather than fixed.
+
+**Still verify on prod** — the snapshot predates the current source mix:
+
+```bash
+docker compose exec api python -m app.scripts.measure_relevance_change --days 30
+```
+
+It replays `raw_items` through the old and new predicates and prints every item
+whose verdict changed, with the deciding gate. Read the newly-rejected list by
+eye: a count can't tell a rugby story from a Barracuda call-up. Expected shape
+is a handful of newly-rejected items, all junk, and **zero newly approved** —
+RM-3 only narrows. Any genuine Sharks story in the rejected list is a
+regression; the likely cause is a headline carrying a bare `sharks` and nothing
+else, which argues for `hockey_scoped` on that source rather than for widening
+the keyword tiers. `--source-id` narrows to the Google Alerts feed alone.
+
+#### Tightening the Google Alerts query — measured, and not recommended as stated
+
+The obvious companion change is narrowing the alert from `Sharks` to
+`"San Jose Sharks" OR "SJ Sharks"`. Simulated over the same snapshot (98 items
+from source 16), **at most 7 would stop arriving** — and that 7 is an upper
+bound, not an estimate: Google matches the whole indexed page, while the
+snapshot stores only a title and a ~160-character description with no
+`raw_content` at all. The true figure is smaller and can't be recovered from
+stored data.
+
+What matters is the composition of those 7:
+
+| Item | Verdict |
+|---|---|
+| "Suspect in deadly San Jose police shooting … - KRON4" | junk, good riddance |
+| "Bantering Points: 1/21/26 - Blueshirt Banter" | marginal |
+| "Rangers vs. Sharks \| NHL Highlights" | **real** |
+| "Rangers' loss to Sharks the latest example of costly starts" | **real** |
+| "Macklin Celebrini haunts Rangers again … in loss to Sharks" | **real** |
+| "Macklin Mania: A 19-year-old has the hockey world buzzing" | **real** |
+| "Sharks' Roster Crunch Hits Critical Mass - The Hockey Writers" | **real** |
+
+So the strict phrase query trades five real articles for two bad ones — the
+wrong direction. And it is largely redundant: RM-3's code path already rejects
+the police-shooting and Blueshirt Banter items, while keeping four of the five
+real ones.
+
+**Do this instead:** leave the query as `Sharks` and add negative terms —
+`Sharks -rugby -NRL -cricket`. It removes the wrong-sport class at the source
+without touching headlines that simply say "Sharks" and mean San Jose.
+Reproduce the numbers with the parser in the RM-3 branch history, or re-run
+against prod where `raw_content` may be populated.
+
 ### RM-1 — Threads accounts as sources via self-hosted RSSHub
 
 *Deferred by decision 2026-07-19 (documented, not implemented). Feasibility

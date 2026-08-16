@@ -233,11 +233,23 @@ event/tag classification), `clustering.py` (similarity + match-or-create),
 5. **Clustering** - Matches to existing cluster or creates new one
 6. **Tagging** - Assigns tags (Rumors, Trade, Injury, Game, etc.)
 
-**Relevance** (`enrichment/classify.py`): keyword check ("Sharks", "Barracuda",
-"SAP Center" + known player/coach entities) with optional LLM (OpenRouter)
-adjudication. On an LLM error the check **fails open to keyword matching** and
-increments the `llm_failopen_count` metric (C5). Sources can opt out via
-`skip_relevance_check` metadata.
+**Relevance** (`enrichment/classify.py`): four gates in order (RM-3), reading
+the title and URL only — never the description, which for aggregator sources is
+page chrome:
+
+1. **Wrong sport** — rugby/NRL/cricket terms in the title, or a `/rugby-union/`
+   style URL segment, reject outright, ahead of everything below.
+2. **Strong keyword** — "San Jose Sharks", "SJ Sharks", "Barracuda" approve alone.
+3. **Entity match** — a known player/coach/staff entity approves alone (team
+   entities excluded).
+4. **Weak keyword** — bare "Sharks", "SAP Center", "Tech CCS Arena" approve only
+   with hockey corroboration, because at least four pro clubs are called the
+   Sharks and the venue hosts non-hockey events.
+
+Then optional LLM (OpenRouter) adjudication. On an LLM error the check **fails
+open to keyword matching** and increments the `llm_failopen_count` metric (C5).
+Sources can opt out entirely via `skip_relevance_check` metadata, or declare a
+hockey-only beat via `hockey_scoped` (which satisfies gate 4's corroboration).
 
 **Function:** `match_or_create_cluster()` (`enrichment/clustering.py`)
 - Calculates similarity score: `S = 0.55*E + 0.35*T + 0.10*K`
@@ -285,7 +297,7 @@ Stories are grouped when they cover the same event from multiple sources:
 - id, name, category (official/press/other)
 - feed_url, ingest_method (rss/html/api)
 - status (approved/rejected)
-- metadata (JSON: skip_relevance_check, etc.)
+- metadata (JSON: skip_relevance_check, description_unreliable, hockey_scoped)
 ```
 
 ### raw_items
