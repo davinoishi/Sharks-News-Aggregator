@@ -11,7 +11,6 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.db_utils import METRIC_LLM_FAILOPEN, increment_site_metric
 from app.enrichment.entities import filter_team_entities, get_entity_names
-from app.enrichment.teams import NHL_OPPONENT_TEAMS
 from app.models.validation_log import ValidationLog, ValidationMethod, ValidationResult
 from app.services.openrouter import check_relevance as llm_check_relevance
 from app.services.openrouter import classify_and_summarize as llm_classify_and_summarize
@@ -48,178 +47,6 @@ _EVENT_KEYWORD_PATTERNS = {
 }
 
 
-# --- Sharks keyword tiers (RM-3) ---------------------------------------------
-#
-# "Sharks" alone is not a hockey word. At least four pro clubs carry the name
-# (Sale Sharks and Cell C/Natal Sharks in rugby union, Cronulla-Sutherland in
-# the NRL, plus the Jacksonville arena-football side), and the Google Alerts
-# source queries the bare word. The prod failure was "Longstaff agrees to new
-# deal with Sharks - Yahoo Sport", a Sale Sharks rugby story that reached the
-# feed on that one token.
-#
-# So the keyword list is split. A STRONG keyword names San Jose unambiguously
-# and approves on its own. A WEAK keyword is the ambiguous kind and needs a
-# second hockey signal — which also retires two false positives recorded in
-# RM-2: "AEW Forbidden Door Explodes at SAP Center" (a venue, not a team) and
-# "Teal just hits different. #sharks #nhl #hockey" (hashtag chrome).
-_STRONG_SHARKS_KEYWORDS = (
-    'san jose sharks',
-    'sj sharks',
-    'sjsharks',
-    'barracuda',
-)
-
-_WEAK_SHARKS_KEYWORDS = (
-    'sharks',
-    'sap center',
-    'tech ccs arena',
-)
-
-# Terms that corroborate a weak keyword. Deliberately hockey-exclusive: shared
-# sports vocabulary ('winger', 'hat trick', 'overtime', 'power play' in the
-# NFL sense) would corroborate the very articles this is meant to exclude.
-_HOCKEY_CONTEXT_TERMS = (
-    'nhl', 'ahl', 'echl', 'hockey', 'puck', 'goalie', 'goaltender',
-    'stanley cup', 'penalty kill', 'blue line', 'blueline', 'faceoff',
-    'face-off', 'slapshot', 'slap shot', 'zamboni', 'icing', 'crease',
-    'defenseman', 'defencemen', 'defensemen', 'winger', 'centerman',
-    'teal town', 'sharkie',
-)
-
-_HOCKEY_CONTEXT_PATTERNS = tuple(
-    re.compile(r'\b' + re.escape(term) + r'\b') for term in _HOCKEY_CONTEXT_TERMS
-)
-
-# "San Jose" without "Sharks" — e.g. "Longstaff agrees to new deal in San Jose".
-_SAN_JOSE_PATTERN = re.compile(r'\bsan jose\b')
-
-# Another NHL club in the title. Measured against a 741-item snapshot, this is
-# the signal that saves ordinary game coverage — "Rangers at Sharks game 50",
-# "Canucks Face The Sharks", "Hamilton Blocked A Trade To Sharks" — none of
-# which carry hockey vocabulary, a roster player, or the city name. The table
-# is reused from clustering rather than duplicated.
-_NHL_TEAM_PATTERNS = tuple(
-    re.compile(r'\b' + re.escape(name) + r'\b') for name in NHL_OPPONENT_TEAMS
-)
-
-# Markers that put a URL on a hockey beat. Publishers name it in the host or
-# path (prohockeyrumors.com, thehockeynews.com/nhl/…, thehockeywriters).
-# 'sharks' is deliberately NOT here: the rugby item's own URL contains it.
-#
-# 'hockey' is distinctive enough to match anywhere; the short league acronyms
-# are delimited, or 'ahl' would fire on any slug containing a name like
-# "Dahlin" and 'nhl' is only ever a standalone token anyway.
-_HOCKEY_URL_PATTERN = re.compile(r'hockey|(?:^|[^a-z])(?:nhl|ahl|echl|puck)(?:[^a-z]|$)')
-
-# --- Wrong-sport veto (RM-3) --------------------------------------------------
-#
-# Multi-word club and competition names are matched as substrings; single words
-# are matched on word boundaries. Everything here is a term no ice-hockey
-# headline carries, which is why the veto can outrank every approval path
-# below it, entity matches included. Ambiguous words are deliberately absent:
-# 'try', 'pitch', 'code', 'union', 'league' and 'football' all appear in
-# ordinary hockey coverage.
-_WRONG_SPORT_PHRASES = (
-    'sale sharks',
-    'natal sharks',
-    'cell c sharks',
-    'sharks rugby',
-    'cronulla',
-    'sharkies',
-    'super rugby',
-    'currie cup',
-    'united rugby championship',
-    'premiership rugby',
-    'gallagher premiership',
-    'six nations',
-    'rugby championship',
-    'all blacks',
-    'springbok',
-    'wallabies',
-)
-
-_WRONG_SPORT_WORDS = (
-    'rugby', 'nrl', 'scrum', 'scrums', 'scrum-half', 'fly-half', 'flyhalf',
-    'lineout', 'line-out', 'ruck', 'rucks', 'maul', 'mauls', 'tighthead',
-    'loosehead', 'afl', 'cricket', 'wicket', 'batsman', 'bowler',
-)
-
-_WRONG_SPORT_WORD_PATTERNS = tuple(
-    re.compile(r'\b' + re.escape(word) + r'\b') for word in _WRONG_SPORT_WORDS
-)
-
-# URL path segments publishers use to file a story by sport. A Sharks story
-# never lives under one of these. '/football/' is intentionally excluded: it
-# means soccer on UK sites and gridiron elsewhere, and sites that cover both
-# football and hockey are common enough that the segment is not evidence.
-_WRONG_SPORT_URL_SEGMENTS = (
-    '/rugby/',
-    '/rugby-union/',
-    '/rugby-league/',
-    '/rugbyunion/',
-    '/nrl/',
-    '/afl/',
-    '/cricket/',
-    '/soccer/',
-)
-
-
-def is_wrong_sport(title: str, url: str = "") -> bool:
-    """True when the title or URL files this story under a sport that is not
-    ice hockey (RM-3).
-
-    Checked before any approval path, so a rugby story cannot be rescued by a
-    keyword or an entity match. Reads the title and the URL only — never the
-    description, which for the aggregator sources is page chrome (see
-    ``effective_description``).
-    """
-    text_lower = (title or '').lower()
-
-    if any(phrase in text_lower for phrase in _WRONG_SPORT_PHRASES):
-        return True
-    if any(pattern.search(text_lower) for pattern in _WRONG_SPORT_WORD_PATTERNS):
-        return True
-
-    url_lower = (url or '').lower()
-    return any(segment in url_lower for segment in _WRONG_SPORT_URL_SEGMENTS)
-
-
-def has_hockey_context(title: str, url: str = "", source_is_hockey: bool = False) -> bool:
-    """True when something beyond an ambiguous 'Sharks' marks this as hockey.
-
-    Any one of:
-
-    - hockey-exclusive vocabulary in the title ("goaltender", "puck", "NHL");
-    - another NHL club named in the title ("Rangers at Sharks");
-    - "San Jose" in the title or URL;
-    - a hockey beat visible in the URL (prohockeyrumors.com, /nhl/…);
-    - a source whose whole beat is hockey (the ``hockey_scoped`` flag), for
-      league-wide outlets whose headlines carry none of the above.
-
-    The list is this long on purpose. A narrower version, measured against the
-    741-item snapshot, rejected six real Sharks stories to catch one rugby one
-    — headlines like "Sharks Have Big Decision To Make With Important Defender"
-    genuinely carry no hockey token at all.
-    """
-    if source_is_hockey:
-        return True
-
-    text_lower = (title or '').lower()
-    if any(pattern.search(text_lower) for pattern in _HOCKEY_CONTEXT_PATTERNS):
-        return True
-    if any(pattern.search(text_lower) for pattern in _NHL_TEAM_PATTERNS):
-        return True
-
-    url_lower = (url or '').lower()
-    if _HOCKEY_URL_PATTERN.search(url_lower):
-        return True
-
-    return bool(
-        _SAN_JOSE_PATTERN.search(text_lower)
-        or _SAN_JOSE_PATTERN.search(url_lower.replace('-', ' '))
-    )
-
-
 def _record_llm_failopen(db: Session, error: Optional[str]) -> None:
     """Surface a fail-open: the LLM relevance check errored and we fell back to
     keyword matching (brief 09, C5).
@@ -235,56 +62,46 @@ def _record_llm_failopen(db: Session, error: Optional[str]) -> None:
         logger.exception("Failed to record llm_failopen_count metric")
 
 
-def check_sharks_relevance(
-    db: Session,
-    title: str,
-    entity_ids: List[int],
-    url: str = "",
-    source_is_hockey: bool = False,
-) -> bool:
+def check_sharks_relevance(db: Session, title: str, entity_ids: List[int]) -> bool:
     """
     Check if content is relevant to the San Jose Sharks using keyword matching.
 
-    Uses the article TITLE and URL only (never the description), because
-    aggregator sources like Google Alerts inject unrelated context snippets
-    into descriptions.
+    Uses the article TITLE only for keyword matching (not description),
+    because aggregator sources like Google Alerts inject unrelated
+    context snippets into descriptions.
 
-    Four gates, in order (RM-3):
-
-    0. Wrong sport — a rugby/NRL/cricket term in the title or URL rejects
-       outright, ahead of every approval path.
-    1. A strong keyword (``san jose sharks``, ``barracuda``…) approves alone.
-    2. A player/coach/staff entity approves alone. Team entities don't count:
-       "San Jose Sharks" appears in site navigation and in the sidebar text
-       Google Alerts injects. (This gate is RM-2's open leak — an off-team
-       article admitted by a name — and is deliberately untouched here.)
-    3. A weak keyword (bare ``sharks``, or a venue) approves only with hockey
-       corroboration.
+    Only player/coach/staff entities count for relevance — team entities
+    are too broad (e.g. "San Jose Sharks" appearing in site navigation).
 
     Args:
         db: Database session
         title: Article title to check for Sharks keywords
         entity_ids: List of entity IDs found in text
-        url: Canonical URL, read for sport-section path segments and "san jose"
-        source_is_hockey: Source's whole beat is hockey (``hockey_scoped`` flag)
 
     Returns:
         True if content is Sharks-relevant, False otherwise
     """
-    if is_wrong_sport(title, url):
-        return False
-
     text_lower = title.lower()
 
-    if any(keyword in text_lower for keyword in _STRONG_SHARKS_KEYWORDS):
+    # Direct team mentions in title (hockey-specific only)
+    sharks_keywords = [
+        'sharks',
+        'sj sharks',
+        'san jose sharks',
+        'barracuda',
+        'sap center',
+        'tech ccs arena',
+    ]
+
+    if any(keyword in text_lower for keyword in sharks_keywords):
         return True
 
+    # Only count non-team entities (players, coaches, staff) for relevance.
+    # Team entities like "San Jose Sharks" can appear in site navigation
+    # or sidebar text that Google Alerts injects into descriptions.
     non_team_ids = filter_team_entities(db, entity_ids)
     if non_team_ids:
         return True
-
-    if any(keyword in text_lower for keyword in _WEAK_SHARKS_KEYWORDS):
-        return has_hockey_context(title, url, source_is_hockey)
 
     return False
 
@@ -294,9 +111,7 @@ def validate_sharks_relevance(
     raw_item_id: int,
     title: str,
     description: str,
-    entity_ids: List[int],
-    url: str = "",
-    source_is_hockey: bool = False,
+    entity_ids: List[int]
 ) -> bool:
     """
     Validate article relevance using keyword matching, with optional LLM evaluation.
@@ -312,14 +127,12 @@ def validate_sharks_relevance(
         title: Article title
         description: Article description
         entity_ids: Entity IDs found in text
-        url: Canonical URL, passed through to the keyword check
-        source_is_hockey: Source's whole beat is hockey (``hockey_scoped`` flag)
 
     Returns:
         True if article is relevant, False otherwise
     """
     # Always check keyword result
-    keyword_matched = check_sharks_relevance(db, title, entity_ids, url, source_is_hockey)
+    keyword_matched = check_sharks_relevance(db, title, entity_ids)
 
     # Resolve entity names for LLM context
     entity_names = get_entity_names(db, entity_ids) if entity_ids else ""

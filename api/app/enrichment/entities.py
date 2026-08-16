@@ -1,6 +1,6 @@
 """Entity extraction and team filtering (brief 07, Q4)."""
 import re
-from typing import List, Optional
+from typing import List
 
 from sqlalchemy.orm import Session
 
@@ -19,7 +19,7 @@ COMMON_WORD_NAMES = {
 }
 
 
-def extract_entities(db: Session, text: str, entities: Optional[List[Entity]] = None) -> List[int]:
+def extract_entities(db: Session, text: str) -> List[int]:
     """
     Extract entities (players, coaches, teams) from text.
 
@@ -32,15 +32,12 @@ def extract_entities(db: Session, text: str, entities: Optional[List[Entity]] = 
     Args:
         db: Database session
         text: Text to extract entities from
-        entities: Preloaded entity rows, for callers that extract over many
-            texts in a loop (the relevance measurement script). Normal
-            enrichment omits it and reads the table per item.
 
     Returns:
         List of entity IDs found in text
     """
-    if entities is None:
-        entities = db.query(Entity).all()
+    # Load all known entities from database
+    entities = db.query(Entity).all()
 
     full_match_ids = []
     last_name_match_ids = []
