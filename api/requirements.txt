@@ -1,25 +1,25 @@
 # Web Framework
-fastapi==0.139.0
-uvicorn[standard]==0.51.0
+fastapi==0.141.1
+uvicorn[standard]==0.52.3
 
 # Database
-SQLAlchemy==2.0.51
+SQLAlchemy==2.0.52
 psycopg[binary]==3.3.4
-alembic==1.18.5
+alembic==1.19.1
 
 # Task Queue
-redis==8.0.1
+redis==8.1.0
 celery==5.6.3
 
 # HTTP & Web Scraping
 httpx==0.28.1
 beautifulsoup4==4.15.0
-feedparser==6.0.12
+feedparser==6.0.14
 trafilatura==1.8.0
 lxml==5.1.0
 
 # NLP & Text Processing
-nltk==3.10.0
+nltk==3.10.3
 scikit-learn==1.9.0
 
 # Data Validation
