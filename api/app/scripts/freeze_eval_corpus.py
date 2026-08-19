@@ -1,0 +1,225 @@
+#!/usr/bin/env python3
+"""
+Freeze a labelled-eval corpus out of the live database (brief 16, EV-2).
+
+**Time-sensitive.** ``run_purge_old_items`` deletes ``raw_items`` after 30 days,
+so anything not captured stops existing. This script is shipped ahead of the
+rest of brief 16 for that reason alone: capture is urgent, labelling is not.
+Snapshot now, label later — the file will still be there.
+
+Usage:
+    python -m app.scripts.freeze_eval_corpus [--out PATH] [--per-stratum N]
+
+Example (on the Pi):
+    docker compose exec api python -m app.scripts.freeze_eval_corpus \\
+        --out /app/eval_corpus/corpus-2026-08-19.jsonl
+
+Writes two JSONL files next to each other:
+
+    <out>              one record per raw_item
+    <out>.pairs.jsonl  candidate variant pairs drawn from multi-variant clusters
+
+**Sampling is stratified, not recent-first.** A corpus of only hard cases
+measures the wrong thing, and a corpus of only recent items measures August. The
+strata are:
+
+    accepted            became a story_variant — the ordinary case, the control
+    low_value_suspect   relevance-approved but never became a variant, which is
+                        how a low_value stub looks after the fact (the flag
+                        itself is not persisted — enrich.py just skips)
+    rejected            relevance rejected it
+    llm_disagreement    keyword and LLM disagreed — the RM-2 gold seam
+    clustered           member of a multi-variant cluster, for pair labelling
+
+**Labels are provisional.** Fields under ``labels`` are derived from what
+production actually did, and production is what is under test — so they are a
+starting point for a human pass, never ground truth. Every record carries
+``label_source: "derived"``; change it to ``"human"`` on the ones you verify.
+
+**Storage.** The output is third-party article text and is deliberately *not*
+committed: see R3-A1 on keeping bulk data dumps out of the repo. Keep it with
+the backups (which go off-device per R3-O1). Only the small hand-labelled pair
+file lives in git.
+"""
+import argparse
+import json
+import sys
+from datetime import datetime
+from pathlib import Path
+
+from sqlalchemy import func
+
+from app.core.database import SessionLocal
+from app.models import Cluster, ClusterVariant, RawItem, Source, StoryVariant
+from app.models.validation_log import ValidationLog, ValidationResult
+
+STRATA = ("accepted", "low_value_suspect", "rejected", "llm_disagreement", "clustered")
+
+
+def _record(raw, source, variant, log, stratum):
+    """One corpus row. Mirrors what the enrich task actually sees as input."""
+    return {
+        "raw_item_id": raw.id,
+        "stratum": stratum,
+        "url": raw.canonical_url or raw.original_url,
+        "source_name": source.name if source else None,
+        "source_category": getattr(source.category, "value", None) if source else None,
+        "title": raw.raw_title,
+        "description": raw.raw_description,
+        "published_at": raw.published_at.isoformat() if raw.published_at else None,
+        "entity_ids": list(variant.entities or []) if variant else list(log.entities_found or []) if log else [],
+        "variant_id": variant.id if variant else None,
+        "cluster_id": variant.cluster_id if variant else None,
+        "event_type": getattr(variant.event_type, "value", None) if variant else None,
+        "llm_summary": (variant.extra_metadata or {}).get("llm_summary") if variant else None,
+        "labels": {
+            # What production did, not what is correct. Under test.
+            "relevant": (log.result == ValidationResult.APPROVED) if log else (variant is not None),
+            "low_value": stratum == "low_value_suspect",
+            "keyword_matched": log.keyword_matched if log else None,
+        },
+        "label_source": "derived",
+    }
+
+
+def _collect(db, per_stratum):
+    """Gather up to ``per_stratum`` raw_items for each stratum, oldest first.
+
+    Oldest-first on purpose: the oldest rows are the ones about to be purged,
+    which is the whole reason this script exists.
+    """
+    picked = {}
+
+    def add(rows, stratum):
+        taken = 0
+        for raw, source, variant, log in rows:
+            if raw.id in picked or taken >= per_stratum:
+                continue
+            picked[raw.id] = _record(raw, source, variant, log, stratum)
+            taken += 1
+        return taken
+
+    base = (
+        db.query(RawItem, Source, StoryVariant, ValidationLog)
+        .join(Source, Source.id == RawItem.source_id)
+        .outerjoin(StoryVariant, StoryVariant.raw_item_id == RawItem.id)
+        .outerjoin(ValidationLog, ValidationLog.raw_item_id == RawItem.id)
+        .order_by(RawItem.created_at)
+    )
+
+    counts = {}
+    counts["llm_disagreement"] = add(
+        base.filter(
+            ValidationLog.keyword_matched.isnot(None),
+            ValidationLog.llm_response.isnot(None),
+            ValidationLog.result != ValidationResult.ERROR,
+        ).all(),
+        "llm_disagreement",
+    )
+    counts["rejected"] = add(
+        base.filter(ValidationLog.result == ValidationResult.REJECTED).all(), "rejected"
+    )
+    counts["low_value_suspect"] = add(
+        base.filter(
+            StoryVariant.id.is_(None),
+            ValidationLog.result == ValidationResult.APPROVED,
+        ).all(),
+        "low_value_suspect",
+    )
+    counts["clustered"] = add(
+        base.filter(StoryVariant.cluster_id.isnot(None)).all(), "clustered"
+    )
+    counts["accepted"] = add(base.filter(StoryVariant.id.isnot(None)).all(), "accepted")
+
+    return picked, counts
+
+
+def _candidate_pairs(db, limit):
+    """Variant pairs from multi-variant clusters, for should_merge labelling.
+
+    Emitted unlabelled (``should_merge: null``). A pair that production merged
+    is exactly what is under test — auto-labelling these ``true`` would bake the
+    RM-4 defect into the eval set as ground truth.
+    """
+    multi = (
+        db.query(ClusterVariant.cluster_id)
+        .group_by(ClusterVariant.cluster_id)
+        .having(func.count(ClusterVariant.variant_id) > 1)
+        .all()
+    )
+    pairs = []
+    for (cluster_id,) in multi:
+        cluster = db.query(Cluster).filter(Cluster.id == cluster_id).first()
+        rows = (
+            db.query(StoryVariant)
+            .join(ClusterVariant, ClusterVariant.variant_id == StoryVariant.id)
+            .filter(ClusterVariant.cluster_id == cluster_id)
+            .order_by(StoryVariant.published_at)
+            .all()
+        )
+        for i in range(len(rows) - 1):
+            for j in range(i + 1, len(rows)):
+                pairs.append({
+                    "cluster_id": cluster_id,
+                    "cluster_headline": cluster.headline if cluster else None,
+                    "a_variant_id": rows[i].id,
+                    "a_title": rows[i].title,
+                    "b_variant_id": rows[j].id,
+                    "b_title": rows[j].title,
+                    "production_merged": True,
+                    "should_merge": None,
+                    "label_source": "unlabelled",
+                })
+                if len(pairs) >= limit:
+                    return pairs
+    return pairs
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    default = f"eval_corpus/corpus-{datetime.now().strftime('%Y-%m-%d')}.jsonl"
+    parser.add_argument("--out", default=default, help=f"output path (default: {default})")
+    parser.add_argument("--per-stratum", type=int, default=150,
+                        help="max items per stratum (default: 150)")
+    parser.add_argument("--max-pairs", type=int, default=400,
+                        help="max candidate pairs (default: 400)")
+    args = parser.parse_args()
+
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+
+    db = SessionLocal()
+    try:
+        records, counts = _collect(db, args.per_stratum)
+        pairs = _candidate_pairs(db, args.max_pairs)
+    finally:
+        db.close()
+
+    if not records:
+        print("No raw_items found — nothing to freeze.")
+        return 1
+
+    with out.open("w") as fh:
+        for record in records.values():
+            fh.write(json.dumps(record) + "\n")
+
+    pairs_path = Path(str(out) + ".pairs.jsonl")
+    with pairs_path.open("w") as fh:
+        for pair in pairs:
+            fh.write(json.dumps(pair) + "\n")
+
+    print("=" * 60)
+    print("EVAL CORPUS FROZEN")
+    print("=" * 60)
+    print(f"\n{out}  —  {len(records)} items")
+    for stratum in STRATA:
+        print(f"  {stratum:20s} {counts.get(stratum, 0)}")
+    print(f"\n{pairs_path}  —  {len(pairs)} candidate pairs (unlabelled)")
+    print("\nLabels are DERIVED from what production did, which is what is")
+    print("under test. Verify them by hand and set label_source to 'human'.")
+    print("Keep these files with the backups, not in git (R3-A1).")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

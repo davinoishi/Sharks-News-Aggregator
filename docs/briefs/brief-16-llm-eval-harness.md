@@ -68,7 +68,18 @@ slugs 404.
 - **Verify.** Existing rows still read; a new row round-trips a full JSON
   response; `alembic downgrade` works.
 
-## EV-2 — Freeze an eval corpus
+## EV-2 — Freeze an eval corpus ✅ shipped early with brief 14
+
+> **Shipped ahead of this brief (2026-08-19), on purpose.** The 30-day purge was
+> deleting the corpus daily, and capture is the only time-sensitive part of this
+> brief — labelling can happen whenever. Delivered:
+> `api/app/scripts/freeze_eval_corpus.py` (stratified snapshot + candidate
+> pairs), `api/eval/pairs.seed.jsonl` (19 hand-labelled clustering pairs from
+> the RM-4 measurement), and `api/eval/README.md`.
+>
+> **Still to do here:** run it on the Pi — nothing is captured until it is
+> executed — and make a human labelling pass over the derived labels. Everything
+> below describes what was built; treat it as the record, not as pending work.
 
 - **Approach.** A script that snapshots N `raw_items` (title, description, source
   category, existing entity IDs) to a versioned file in the repo, before the

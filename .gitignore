@@ -97,3 +97,11 @@ coverage.xml
 
 # TypeScript incremental build info
 *.tsbuildinfo
+
+# Frozen LLM eval corpora (brief 16, EV-2). Third-party article text and bulk
+# data — keep it with the backups, not in the repo (R3-A1). The small
+# hand-labelled pair file in api/eval/ is committed on purpose.
+eval_corpus/
+api/eval_corpus/
+*.pairs.jsonl
+!api/eval/pairs.seed.jsonl
