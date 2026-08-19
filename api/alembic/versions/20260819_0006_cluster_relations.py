@@ -19,6 +19,15 @@ with their clusters. That matters more than it looks: the purge deletes
 clusters with a bulk ``query.delete(synchronize_session=False)`` specifically
 because ORM-level cascades NULL not-null child FKs and abort (see R2/#97), so
 cleanup here has to be the database's job, not the ORM's.
+
+**Idempotent, and it has to be.** ``0001_baseline`` runs
+``Base.metadata.create_all(checkfirst=True)`` against the *current* models, so
+on a fresh database (CI, a new deployment) it creates every table the code
+knows about today — including this one — before this revision is reached. A
+bare ``create_table`` then fails with DuplicateTable, and because the API
+starts with ``alembic upgrade head && uvicorn``, a failed migration means the
+service never comes up at all. docker-verify caught it exactly that way.
+Guarding on the inspector mirrors what the baseline already does for itself.
 """
 from typing import Sequence, Union
 
@@ -34,6 +43,11 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
+    if sa.inspect(bind).has_table("cluster_relations"):
+        # Already created by the baseline's create_all on a fresh database.
+        return
+
     op.create_table(
         "cluster_relations",
         sa.Column("id", sa.Integer(), nullable=False),
@@ -52,6 +66,10 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    bind = op.get_bind()
+    if not sa.inspect(bind).has_table("cluster_relations"):
+        return
+
     op.drop_index("ix_cluster_relations_b", table_name="cluster_relations")
     op.drop_index("ix_cluster_relations_a", table_name="cluster_relations")
     op.drop_index("ix_cluster_relations_id", table_name="cluster_relations")
