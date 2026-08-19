@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 
 from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -18,6 +19,7 @@ from app.enrichment.teams import NHL_OPPONENT_TEAMS, extract_game_identifier
 from app.models import (
     Cluster,
     ClusterEntity,
+    ClusterRelation,
     ClusterStatus,
     ClusterTag,
     ClusterVariant,
@@ -104,6 +106,66 @@ def normalize_tokens(text: str) -> List[str]:
     # tokens = [stemmer.stem(t) for t in tokens]
 
     return tokens
+
+
+def record_cluster_relations(db: Session, cluster_id: int, near_misses) -> int:
+    """Record "related stories" links for candidates that nearly merged (SK-4).
+
+    Briefs 14 and 15 buy precision with recall on purpose. Without this, the
+    reader pays that bill in full: a split card is a dead end and the near-miss
+    comparison the matcher already computed is thrown away.
+
+    Symmetric and deduplicated — one row per unordered pair. Pruned to
+    ``max_relations_per_cluster`` strongest links so a hub story ("Celebrini
+    signs") cannot accumulate a relation to every article of the month, which
+    is the same unbounded-growth failure RM-4 was.
+    """
+    if not near_misses or not cluster_id:
+        return 0
+
+    ranked = sorted(near_misses, key=lambda pair: pair[0], reverse=True)
+    added = 0
+    for score, other_id in ranked[: settings.max_relations_per_cluster]:
+        if other_id == cluster_id:
+            continue
+        a_id, b_id = ClusterRelation.ordered(cluster_id, other_id)
+        exists = (
+            db.query(ClusterRelation)
+            .filter(
+                ClusterRelation.cluster_a_id == a_id,
+                ClusterRelation.cluster_b_id == b_id,
+            )
+            .first()
+        )
+        if exists:
+            # Keep the strongest observation rather than the first.
+            if score > float(exists.score or 0.0):
+                exists.score = round(score, 3)
+            continue
+        db.add(ClusterRelation(cluster_a_id=a_id, cluster_b_id=b_id, score=round(score, 3)))
+        added += 1
+
+    if added:
+        _prune_cluster_relations(db, cluster_id)
+    return added
+
+
+def _prune_cluster_relations(db: Session, cluster_id: int) -> None:
+    """Keep only the strongest ``max_relations_per_cluster`` links for a cluster."""
+    db.flush()
+    rows = (
+        db.query(ClusterRelation)
+        .filter(
+            or_(
+                ClusterRelation.cluster_a_id == cluster_id,
+                ClusterRelation.cluster_b_id == cluster_id,
+            )
+        )
+        .order_by(ClusterRelation.score.desc().nullslast())
+        .all()
+    )
+    for stale in rows[settings.max_relations_per_cluster:]:
+        db.delete(stale)
 
 
 def log_cluster_decision(route: str, cluster_id, variant, detail: str = "") -> None:
@@ -446,6 +508,9 @@ def match_or_create_cluster(
 
     best_topic_evidence = (0.0, 0.0)
     best_key = ("unknown", 0.0)
+    # Candidates that scored well but did not merge. The comparison is already
+    # paid for; discarding it is what makes a split card a dead end (SK-4).
+    near_misses: list = []
     for cluster in candidates:
         # Get cluster's aggregated entities and tokens
         cluster_entities = cluster.entities_agg or []
@@ -570,6 +635,10 @@ def match_or_create_cluster(
                 best_score = S
                 best_topic_evidence = (T_topic, L_topic)
                 best_key = (key_verdict, key_score)
+        elif S >= settings.cluster_relation_threshold:
+            # Close, but held back by the evidence gate, the key verdict or the
+            # score itself. Exactly the pair a reader would want offered.
+            near_misses.append((S, cluster.id))
 
     # Step 4: Create cluster if no match found
     if best_cluster is None:
@@ -601,6 +670,8 @@ def match_or_create_cluster(
 
     # Update variant with cluster_id
     variant.cluster_id = cluster.id
+
+    record_cluster_relations(db, cluster.id, near_misses)
 
     db.commit()
 

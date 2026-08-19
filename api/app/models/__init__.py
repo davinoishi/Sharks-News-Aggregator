@@ -5,6 +5,7 @@ from app.models.bluesky_post import BlueSkyPost, PostStatus
 from app.models.candidate_source import CandidateSource
 from app.models.cluster import Cluster, ClusterStatus, EventType
 from app.models.cluster_entity import ClusterEntity
+from app.models.cluster_relation import ClusterRelation
 from app.models.cluster_tag import ClusterTag
 from app.models.cluster_variant import ClusterVariant
 from app.models.entity import Entity
@@ -33,6 +34,7 @@ __all__ = [
     "ClusterVariant",
     "ClusterTag",
     "ClusterEntity",
+    "ClusterRelation",
     "Submission",
     "SubmissionStatus",
     "CandidateSource",
