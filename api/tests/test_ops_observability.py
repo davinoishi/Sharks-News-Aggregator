@@ -116,6 +116,85 @@ def test_pipeline_health_no_sources_is_stale(pg_db):
     assert health.degraded is True
 
 
+@requires_postgres
+def test_oversized_cluster_is_flagged_but_not_degraded(pg_db):
+    """SK-6: a mis-merged card is a content problem, not an outage.
+
+    Both limits would have fired weeks before a reader reported the RM-4 card;
+    neither may flip /health, or an uptime pinger learns to ignore it.
+    """
+    from datetime import datetime
+
+    from app.core.health_checks import check_pipeline_health
+    from app.models import (
+        Cluster,
+        ClusterStatus,
+        ClusterVariant,
+        EventType,
+        RawItem,
+        StoryVariant,
+    )
+
+    source = _make_source(pg_db)
+    now = datetime.utcnow()
+    cluster = Cluster(
+        headline="Sharks sign Celebrini to 5-year, $94M extension",
+        event_type=EventType.SIGNING,
+        status=ClusterStatus.ACTIVE,
+        # 435h — the span of the real production cluster.
+        first_seen_at=now - timedelta(hours=435),
+        last_seen_at=now,
+        source_count=0,
+        tokens=[],
+        entities_agg=[],
+    )
+    pg_db.add(cluster)
+    pg_db.flush()
+
+    for i in range(16):
+        raw = RawItem(
+            source_id=source.id,
+            original_url=f"https://src.example.com/oversized/{i}",
+            canonical_url=f"https://src.example.com/oversized/{i}",
+            raw_title=f"Story {i}",
+        )
+        pg_db.add(raw)
+        pg_db.flush()
+        variant = StoryVariant(
+            raw_item_id=raw.id,
+            source_id=source.id,
+            url=f"https://src.example.com/oversized/{i}",
+            title=f"Story {i}",
+            published_at=now,
+            tokens=[],
+            entities=[],
+            event_type=EventType.SIGNING,
+        )
+        pg_db.add(variant)
+        pg_db.flush()
+        pg_db.add(ClusterVariant(cluster_id=cluster.id, variant_id=variant.id))
+    pg_db.flush()
+
+    health = check_pipeline_health(pg_db)
+    assert health.oversized_clusters
+    flagged = health.oversized_clusters[0]
+    assert flagged["id"] == cluster.id
+    assert flagged["variants"] >= 15
+    assert flagged["span_hours"] >= 120
+    assert "oversized_clusters" in health.conditions
+    # Advisory only — must not mark the pipeline degraded on its own.
+    assert "oversized_clusters" not in ("ingest_stale", "broken_sources")
+
+
+@requires_postgres
+def test_normal_clusters_are_not_flagged(pg_db):
+    from app.core.health_checks import check_pipeline_health
+
+    _make_source(pg_db)
+    health = check_pipeline_health(pg_db)
+    assert health.oversized_clusters == []
+
+
 def _make_submission_source(db, **overrides):
     from app.core.constants import (
         USER_SUBMISSION_SOURCE_NAME,

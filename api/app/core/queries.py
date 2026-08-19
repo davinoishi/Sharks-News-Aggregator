@@ -172,6 +172,68 @@ def get_top_variant_urls(db: Session, cluster_ids: List[int]) -> dict:
     return {cluster_id: value[1] for cluster_id, value in best.items()}
 
 
+# How many sibling headlines a card previews. Enough to make a mis-merge
+# obvious, few enough to keep the card a card (brief 15, SK-5).
+PREVIEW_HEADLINE_LIMIT = 3
+
+
+def get_variant_headline_previews(db: Session, cluster_ids: List[int]) -> dict:
+    """Map each cluster id to a few of its variants' headlines.
+
+    Every variant title currently lives behind the "View sources" control, so a
+    mis-merged story is invisible to a reader who has no reason to expand that
+    card — which is exactly how the RM-4 card cost a reader the pipeline story.
+    Surfacing a couple of sibling headlines makes a bad merge self-evident
+    without an extra request, and salvages the story even when the matcher is
+    wrong.
+
+    Excludes the cluster's own headline: repeating it back adds nothing. Ordered
+    the same way the expanded list is (official→press→other, then recency) so
+    the preview is a prefix of what expanding reveals, not a different set.
+
+    Returns ``{cluster_id: [title, ...]}``, omitting single-variant clusters.
+    """
+    if not cluster_ids:
+        return {}
+
+    rows = (
+        db.query(
+            ClusterVariant.cluster_id,
+            StoryVariant.title,
+            Source.category,
+            StoryVariant.published_at,
+        )
+        .join(StoryVariant, ClusterVariant.variant_id == StoryVariant.id)
+        .join(Source, StoryVariant.source_id == Source.id)
+        .filter(ClusterVariant.cluster_id.in_(cluster_ids))
+        .all()
+    )
+
+    grouped: dict = {}
+    for cluster_id, title, category, published_at in rows:
+        if not title:
+            continue
+        category_value = category.value if hasattr(category, "value") else category
+        rank = _CATEGORY_RANK.get(category_value, 0)
+        sort_key = (rank, published_at or datetime.min.replace(tzinfo=timezone.utc))
+        grouped.setdefault(cluster_id, []).append((sort_key, title))
+
+    previews: dict = {}
+    for cluster_id, entries in grouped.items():
+        entries.sort(key=lambda e: e[0], reverse=True)
+        seen = set()
+        titles = []
+        for _, title in entries:
+            normalized = title.strip()
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            titles.append(normalized)
+        if len(titles) > 1:
+            previews[cluster_id] = titles[:PREVIEW_HEADLINE_LIMIT]
+    return previews
+
+
 def get_cluster_with_details(db: Session, cluster_id: int) -> Optional[Cluster]:
     """
     Get cluster with all related data eagerly loaded.

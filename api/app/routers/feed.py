@@ -18,6 +18,7 @@ from app.core.queries import (
     get_cluster_variants_sorted,
     get_entities_by_prominence,
     get_top_variant_urls,
+    get_variant_headline_previews,
     search_entities_by_name,
 )
 from app.models import (
@@ -87,9 +88,12 @@ def get_feed(
 
     # One batched query for the top source URL of every cluster on the page, so
     # the frontend can make headlines real links without fetching detail (U3).
-    top_urls = get_top_variant_urls(db, [c.id for c in clusters])
+    cluster_ids = [c.id for c in clusters]
+    top_urls = get_top_variant_urls(db, cluster_ids)
+    previews = get_variant_headline_previews(db, cluster_ids)
     for item in cluster_items:
         item["top_url"] = top_urls.get(item["id"])
+        item["preview_headlines"] = previews.get(item["id"], [])
 
     next_cursor = None
     if has_more and clusters:

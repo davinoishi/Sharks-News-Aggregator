@@ -27,6 +27,17 @@ export function ClusterCard({
 
   const isTrending = cluster.click_count >= TRENDING_THRESHOLD;
 
+  // Sibling headlines are hidden once the sources list is open — the expanded
+  // list is a superset of them, and showing both reads as a duplicate.
+  const previewHeadlines = isExpanded ? [] : (cluster.preview_headlines ?? []);
+  // source_count over-reports (it is incremented on join and never decremented
+  // after the 30-day variant purge — R2-F4), so clamp at zero rather than
+  // promising "+7 more" behind a control that reveals two.
+  const remainingHeadlines = Math.max(
+    0,
+    (cluster.source_count ?? 0) - previewHeadlines.length,
+  );
+
   const handleLinkClick = () => {
     // Record the click (fire and forget); default link behavior continues.
     ApiClient.recordClusterClick(cluster.id);
@@ -78,6 +89,28 @@ export function ClusterCard({
                 </span>
               ))}
           </div>
+
+          {/* Sibling headlines, shown without expanding. Every variant title
+              otherwise lives behind "View sources", so a story merged onto the
+              wrong card is invisible to a reader with no reason to open it —
+              which is how the RM-4 card cost a reader the pipeline story
+              (brief 15, SK-5). Rendered as plain text, not links: this is a
+              legibility aid, not a second navigation surface competing with
+              the headline. */}
+          {previewHeadlines.length > 0 && (
+            <ul className="mb-3 space-y-1 border-l-2 border-edge pl-3">
+              {previewHeadlines.map((title, i) => (
+                <li key={i} className="text-meta text-content-muted leading-snug">
+                  {title}
+                </li>
+              ))}
+              {remainingHeadlines > 0 && (
+                <li className="text-meta text-content-muted leading-snug">
+                  +{remainingHeadlines} more
+                </li>
+              )}
+            </ul>
+          )}
 
           {/* Player and coach names stay in mixed case — they are proper nouns
               and the reader's main scan anchor, so recognizability beats the
