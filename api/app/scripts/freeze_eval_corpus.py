@@ -56,8 +56,15 @@ from app.models.validation_log import ValidationLog, ValidationResult
 STRATA = ("accepted", "low_value_suspect", "rejected", "llm_disagreement", "clustered")
 
 
-def _record(raw, source, variant, log, stratum):
-    """One corpus row. Mirrors what the enrich task actually sees as input."""
+def _record(raw, source, variant, log, cluster_id, stratum):
+    """One corpus row. Mirrors what the enrich task actually sees as input.
+
+    ``cluster_id`` is passed in rather than read off the variant: StoryVariant
+    has no cluster_id column, and the cluster link lives in the ClusterVariant
+    junction. (clustering.py assigns ``variant.cluster_id`` in four places;
+    those are transient attribute sets that never persist — see the note in
+    RM-4 follow-ups.)
+    """
     return {
         "raw_item_id": raw.id,
         "stratum": stratum,
@@ -69,7 +76,7 @@ def _record(raw, source, variant, log, stratum):
         "published_at": raw.published_at.isoformat() if raw.published_at else None,
         "entity_ids": list(variant.entities or []) if variant else list(log.entities_found or []) if log else [],
         "variant_id": variant.id if variant else None,
-        "cluster_id": variant.cluster_id if variant else None,
+        "cluster_id": cluster_id,
         "event_type": getattr(variant.event_type, "value", None) if variant else None,
         "llm_summary": (variant.extra_metadata or {}).get("llm_summary") if variant else None,
         "labels": {
@@ -92,18 +99,19 @@ def _collect(db, per_stratum):
 
     def add(rows, stratum):
         taken = 0
-        for raw, source, variant, log in rows:
+        for raw, source, variant, log, cluster_id in rows:
             if raw.id in picked or taken >= per_stratum:
                 continue
-            picked[raw.id] = _record(raw, source, variant, log, stratum)
+            picked[raw.id] = _record(raw, source, variant, log, cluster_id, stratum)
             taken += 1
         return taken
 
     base = (
-        db.query(RawItem, Source, StoryVariant, ValidationLog)
+        db.query(RawItem, Source, StoryVariant, ValidationLog, ClusterVariant.cluster_id)
         .join(Source, Source.id == RawItem.source_id)
         .outerjoin(StoryVariant, StoryVariant.raw_item_id == RawItem.id)
         .outerjoin(ValidationLog, ValidationLog.raw_item_id == RawItem.id)
+        .outerjoin(ClusterVariant, ClusterVariant.variant_id == StoryVariant.id)
         .order_by(RawItem.created_at)
     )
 
@@ -127,7 +135,7 @@ def _collect(db, per_stratum):
         "low_value_suspect",
     )
     counts["clustered"] = add(
-        base.filter(StoryVariant.cluster_id.isnot(None)).all(), "clustered"
+        base.filter(ClusterVariant.cluster_id.isnot(None)).all(), "clustered"
     )
     counts["accepted"] = add(base.filter(StoryVariant.id.isnot(None)).all(), "accepted")
 
