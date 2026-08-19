@@ -196,7 +196,28 @@ log records the *old* behaviour for at least one ingest cycle.
 
 - **Approach.** `summary_name_match` (`clustering.py:371`) currently merges on a
   shared person name plus `K >= 0.5`, with no content comparison at all. Require
-  `L >= settings.summary_evidence_threshold` in addition.
+  evidence beyond the name in addition.
+
+> **Amended during execution (2026-08-19).** This originally said "require
+> `L >= settings.summary_evidence_threshold`". Measured against the two canonical
+> cases, raw `L` separates them by **0.007** — 0.465 for the role-headline pair
+> that must merge, 0.458 for the card-auction/pipeline pair that must not. That
+> is noise, not a threshold, and tuning to it is the RM-3 mistake.
+>
+> **The cause is the same double-count CM-3 fixes.** The prompt puts the person's
+> full name in both summaries, and in a 5–10 word string the name *is* the
+> similarity. So the gate uses `L_topic` — summary similarity with entity-derived
+> tokens stripped, exactly as `T_topic` does for headlines — and
+> `summary_name_match` keeps its original name + `K` condition, held in check by
+> the same uniform `topical_evidence` gate as the score route. Measured after the
+> change: card-vs-pipeline `L_topic` 0.000 (blocked), card-vs-card 0.600 (merges).
+>
+> **Consequence, accepted under the governing principle:** once the subject is a
+> known entity, the role-headline pair shares *only* the name, which is
+> structurally identical to the bad pairs — so it now splits. No lexical rule can
+> separate those two cases; that is precisely what `story_key` (brief 15) is for.
+> `test_role_headline_bridge_needs_evidence_beyond_the_name` pins the new
+> behaviour, and the entity-free original still passes.
 - Do **not** delete the route. It was added for a real case — a headline naming
   its subject only by role ("Sharks' first-round pick finalizes plans") — which
   `test_role_headline_merges_with_named_sibling_via_summary` covers and which

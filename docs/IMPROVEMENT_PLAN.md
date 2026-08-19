@@ -349,6 +349,85 @@ is itself mixed (a Yahoo copy plus an unrelated SJHN Daily roundup). Variants ar
 absorbed by whichever magnet cluster they touch first, so the real story never
 accumulates its own sources and never earns a card of its own.
 
+#### Would a more capable LLM fix this? No — measured 2026-08-19
+
+The obvious question, asked because the production model
+(`google/gemini-2.5-flash-lite`) was chosen on price. The answer is no, and for
+this defect a stronger model is **marginally worse**. The two mis-merged
+articles, scored through the real functions under each LLM condition:
+
+| Condition | `L` | `S` | Merges? |
+|---|---|---|---|
+| No summary (LLM off, or the call failed) | — | **0.650** | yes |
+| Summaries that do *not* both lead with the person's name | 0.220 | 0.527 | **no — correct** |
+| Summaries that *do* both lead with the person's name | 0.531 | **0.636** | yes |
+
+The middle row is the finding: **a good summary already prevents this merge.**
+The model is capable. What defeats it is our own prompt.
+
+**`CLASSIFY_PROMPT_USER` (`api/app/services/openrouter.py:72`) is load-bearing in
+the wrong direction.** It instructs the model to *"LEAD with that person's full
+name … This lets two stories about the same person cluster together."* In a 5–10
+word summary the name is a third of the text, so forcing it into both summaries
+lifts `L` from 0.220 to 0.531 and carries the pair over the 0.62 bar. It also
+makes `summary_name_match` fire, which merges outright regardless of score.
+
+A more capable model follows that instruction *more* reliably, produces *more*
+name-dominated summaries, and merges *more*. The instruction reads like a
+feature; anyone touching clustering needs to know it is a cause of RM-4.
+
+The merge is also overdetermined — the no-summary branch reaches 0.650 through
+`0.55·E + 0.10·K` without consulting the LLM at all. No model choice affects that
+path.
+
+**The same conclusion holds for RM-2, for a different reason.** Its eval found
+the LLM rejecting Nurse articles because it believes *"Darnell Nurse is an
+Edmonton Oilers player and has no affiliation with the San Jose Sharks."* That is
+a knowledge-cutoff failure, not a reasoning failure: no model at any price knows
+about a trade made weeks ago. A stronger model returns the same wrong answer with
+more confidence. RM-2 option 1 — feed the synced roster into the prompt — is the
+fix, and it is free.
+
+**Generalisation, worth holding onto:** the LLM failures in this codebase are
+*grounding and prompt-design* failures, not capability failures. That is why
+paying more per call does not move them.
+
+#### Where model capability would actually pay
+
+Two jobs are pure judgment over supplied text, needing no external knowledge —
+where capability does convert into quality:
+
+- **`low_value` detection.** The prompt is already a wall of hedged heuristics
+  about schedule stubs, betting autopages and "player names are NOT reporting" —
+  prompt complexity compensating for a weak model.
+- **`story_key` generation** (brief 15). Producing a canonical topic slug is a
+  harder abstraction than anything the model is asked for today, and it is the
+  signal RM-4 ultimately depends on. If we upgrade anywhere, upgrade here.
+
+#### Cost is not the constraint — measured, not assumed
+
+Volume from our own logs: ~2,618 relevance + ~1,100 classify calls/month in the
+offseason. Prompts are ~200 and ~647 tokens plus ~200 for the article. Projecting
+3× for the season (~6M input, ~0.35M output per month):
+
+| Model | Input $/M | Output $/M | Est. $/month, in-season |
+|---|---|---|---|
+| `gemini-2.5-flash-lite` (current) | ~0.10 | ~0.40 | **~$1** |
+| Claude Haiku 4.5 | 1.00 | 5.00 | **~$8** |
+| Claude Sonnet 5 | 3.00 | 15.00 | **~$23** |
+| Claude Opus 5 | 5.00 | 25.00 | **~$39** |
+
+The entire decision space is under $40/month; at 3× the volume estimate, top tier
+is ~$120. **Select on accuracy, not price.** Claude figures are Anthropic list
+rates (cached 2026-06-24) and OpenRouter may add margin; the Gemini figure is
+approximate — verify both live per `[[openrouter-model]]`.
+
+Measuring accuracy needs a replay harness that does not exist yet, plus two
+prerequisites: `validation_logs.llm_response` is `String(100)` and truncates the
+JSON (already noted under RM-2), and `run_purge_old_items` deletes `raw_items`
+after 30 days, so **an eval corpus must be frozen before it is purged** — and an
+in-season corpus cannot exist until October. Scoped in brief 16.
+
 #### Not yet attributed
 
 The E+K hole above is proven by computation. The merge path taken by each
@@ -366,12 +445,18 @@ in advance — see `[[relevance-change-seasonal-measurement]]`.
   execute.** Instrument the decision; require positive topical evidence for any
   merge; stop double-counting entity names; gate the summary-name bypass; bound
   cluster lifetime; test the entity path; split the existing bad clusters.
-- **Brief 15 — not yet written.** The durable fix: have the classifier emit a
-  canonical `story_key` topic slug in the JSON it already returns (zero extra LLM
-  calls) and make story-key agreement the primary merge signal. Plus a "Related
-  stories" link between near-miss clusters to pay back the cost of splitting, an
-  offline eval harness over labelled pairs, and surfacing 2–3 variant headlines
-  inline on the card so a bad merge is visible without expanding it.
+- **[Brief 15](briefs/brief-15-story-keys.md) — written.** The durable fix: have
+  the classifier emit a canonical `story_key` topic slug in the JSON it already
+  returns (zero extra LLM calls) and make story-key agreement the primary merge
+  signal; retire the name-leading summary instruction that this item proved is a
+  cause; a "Related stories" link between near-miss clusters to pay back the cost
+  of splitting; surfacing variant headlines inline on the card; an oversized-
+  cluster alert; and a pair-eval harness.
+- **[Brief 16](briefs/brief-16-llm-eval-harness.md) — written.** The LLM replay
+  harness and model bake-off, split out of brief 15 because it serves RM-2 and
+  RM-3 equally, has its own prerequisites (widen `validation_logs.llm_response`,
+  freeze a corpus before the 30-day purge), and is eval tooling rather than
+  pipeline code.
 
 Lexical similarity cannot separate "Celebrini's rookie card sold for $1.28M" from
 "Celebrini tops the pipeline rankings" — the shared words *are* his name. Brief
