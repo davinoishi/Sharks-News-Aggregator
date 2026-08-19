@@ -81,3 +81,47 @@ Always read the generated migration — autogenerate does not detect everything
 (server defaults, some index/constraint changes, data migrations) and may emit
 spurious operations. Edit it down to the intended change, then `alembic upgrade
 head` to apply.
+
+### Two traps that take the whole API down
+
+Both were hit while writing revisions `0006` and `0007` (2026-08-19). They matter
+more than ordinary migration bugs because the API's command is
+`alembic upgrade head && uvicorn` — **a migration that raises means uvicorn never
+starts**, so the symptom is not a migration error anyone sees, it is the service
+failing to come up. In CI that surfaced as a ten-minute
+`API did not become healthy` timeout with no other detail.
+
+**1. New DDL must be idempotent.** `0001_baseline` runs
+`Base.metadata.create_all(checkfirst=True)` against the *current* models. On a
+fresh database — CI's `docker-verify`, or any rebuild from scratch — that creates
+every table and column the code knows about **today**, before your revision is
+reached. A bare `op.create_table` or `op.add_column` then fails with
+DuplicateTable / DuplicateColumn. Guard on the inspector, the way the baseline
+guards itself:
+
+```python
+bind = op.get_bind()
+if sa.inspect(bind).has_table("my_table"):
+    return  # already created by the baseline's create_all
+```
+
+This does not affect an existing database, where the baseline ran long ago and
+the guard simply passes.
+
+**2. `op.execute()` parses `:name` as a bind parameter.** It routes the string
+through `sqlalchemy.text()`, so a colon inside a SQL literal is read as a
+placeholder. `LIKE '%"relevant":true%'` fails with
+`A value is required for bind parameter 'true'`. Escape colons as `\:` and use a
+raw string:
+
+```python
+op.execute(r"""... LIKE '%"relevant"\:true%' ...""")
+```
+
+`test_migration_0007_sql_has_no_accidental_bind_parameters` pins this for `0007`
+by parsing the inline SQL through `text()` and asserting it yields no bind
+parameters. Worth copying for any revision with inline SQL.
+
+**Debugging aid:** `docker-verify` dumps `api` and `db` container logs on failure
+(added 2026-08-19). If a migration fails in CI, the traceback is in that step —
+do not guess from the health timeout.
