@@ -177,3 +177,88 @@ def test_feed_page_query_count_is_bounded(db):
     # main query + selectinload(cluster_tags, tag) + selectinload(cluster_entities, entity)
     # ~= 5 statements, independent of the cluster count (would be ~13 with N+1).
     assert count["n"] <= 6, f"expected bounded query count, got {count['n']}"
+
+
+# --- brief 15 SK-5: headline previews ----------------------------------------
+
+def test_preview_headlines_exclude_the_clusters_own_headline(pg_db):
+    """Echoing the headline back is noise, and makes a card look self-corroborating.
+
+    Shipped without this and it was visible in production immediately: a
+    two-source cluster previewed its own headline twice, once bare and once
+    with a publication suffix.
+    """
+    from datetime import datetime
+
+    from app.core.queries import get_variant_headline_previews
+    from app.models import (
+        Cluster,
+        ClusterStatus,
+        ClusterVariant,
+        EventType,
+        IngestMethod,
+        RawItem,
+        Source,
+        SourceCategory,
+        StoryVariant,
+    )
+
+    source = Source(
+        name="PreviewSrc",
+        category=SourceCategory.PRESS,
+        ingest_method=IngestMethod.RSS,
+        base_url="https://preview.example.com",
+    )
+    pg_db.add(source)
+    pg_db.flush()
+
+    headline = "Sharks Extend Affiliation With ECHL Wichita"
+    cluster = Cluster(
+        headline=headline,
+        event_type=EventType.OTHER,
+        status=ClusterStatus.ACTIVE,
+        first_seen_at=datetime.utcnow(),
+        last_seen_at=datetime.utcnow(),
+        source_count=0,
+        tokens=[],
+        entities_agg=[],
+    )
+    pg_db.add(cluster)
+    pg_db.flush()
+
+    titles = [
+        headline,                                   # the headline itself
+        f"{headline} - Yardbarker",                 # same, wearing a suffix
+        "Barracuda add Wichita as ECHL partner",    # genuinely different
+    ]
+    for i, title in enumerate(titles):
+        url = f"https://preview.example.com/{i}"
+        raw = RawItem(
+            source_id=source.id, original_url=url, canonical_url=url, raw_title=title
+        )
+        pg_db.add(raw)
+        pg_db.flush()
+        variant = StoryVariant(
+            raw_item_id=raw.id,
+            source_id=source.id,
+            url=url,
+            title=title,
+            published_at=datetime.utcnow(),
+            tokens=[],
+            entities=[],
+            event_type=EventType.OTHER,
+        )
+        pg_db.add(variant)
+        pg_db.flush()
+        pg_db.add(ClusterVariant(cluster_id=cluster.id, variant_id=variant.id))
+    pg_db.flush()
+
+    previews = get_variant_headline_previews(pg_db, [cluster.id])
+    assert previews.get(cluster.id) == ["Barracuda add Wichita as ECHL partner"]
+
+
+def test_preview_headlines_empty_for_unknown_clusters(pg_db):
+    from app.core.queries import get_variant_headline_previews
+
+    assert get_variant_headline_previews(pg_db, []) == {}
+    assert get_variant_headline_previews(pg_db, [999999]) == {}

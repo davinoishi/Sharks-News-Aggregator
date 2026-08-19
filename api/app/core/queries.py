@@ -9,6 +9,7 @@ from sqlalchemy import and_, desc, func, or_
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.datetime_utils import utcnow
+from app.enrichment.clustering import normalize_title_for_matching
 from app.models import (
     Cluster,
     ClusterEntity,
@@ -187,11 +188,17 @@ def get_variant_headline_previews(db: Session, cluster_ids: List[int]) -> dict:
     without an extra request, and salvages the story even when the matcher is
     wrong.
 
-    Excludes the cluster's own headline: repeating it back adds nothing. Ordered
-    the same way the expanded list is (official→press→other, then recency) so
-    the preview is a prefix of what expanding reveals, not a different set.
+    Excludes the cluster's own headline, and any variant that is only the same
+    headline wearing a publication suffix ("... - Yardbarker") — echoing the
+    headline back at the reader is noise, and worse, it makes a card look like
+    it corroborates itself.
 
-    Returns ``{cluster_id: [title, ...]}``, omitting single-variant clusters.
+    Ordered the same way the expanded list is (official→press→other, then
+    recency) so the preview is a prefix of what expanding reveals, not a
+    different set.
+
+    Returns ``{cluster_id: [title, ...]}``, omitting clusters with nothing left
+    to show.
     """
     if not cluster_ids:
         return {}
@@ -209,6 +216,12 @@ def get_variant_headline_previews(db: Session, cluster_ids: List[int]) -> dict:
         .all()
     )
 
+    headlines = dict(
+        db.query(Cluster.id, Cluster.headline)
+        .filter(Cluster.id.in_(cluster_ids))
+        .all()
+    )
+
     grouped: dict = {}
     for cluster_id, title, category, published_at in rows:
         if not title:
@@ -221,15 +234,18 @@ def get_variant_headline_previews(db: Session, cluster_ids: List[int]) -> dict:
     previews: dict = {}
     for cluster_id, entries in grouped.items():
         entries.sort(key=lambda e: e[0], reverse=True)
-        seen = set()
+        # Compare on the normalized form so a publication suffix does not
+        # smuggle the headline back in as a distinct string.
+        headline_key = normalize_title_for_matching(headlines.get(cluster_id) or "")
+        seen = {headline_key} if headline_key else set()
         titles = []
         for _, title in entries:
-            normalized = title.strip()
-            if not normalized or normalized in seen:
+            key = normalize_title_for_matching(title)
+            if not key or key in seen:
                 continue
-            seen.add(normalized)
-            titles.append(normalized)
-        if len(titles) > 1:
+            seen.add(key)
+            titles.append(title.strip())
+        if titles:
             previews[cluster_id] = titles[:PREVIEW_HEADLINE_LIMIT]
     return previews
 
