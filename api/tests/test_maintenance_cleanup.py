@@ -170,3 +170,49 @@ def test_purge_deletes_old_raw_items_with_variants(pg_db):
     assert pg_db.query(RawItem).filter(RawItem.id == old_raw_id).first() is None
     assert pg_db.query(Cluster).filter(Cluster.id == old_cluster_id).first() is None
     assert pg_db.query(RawItem).filter(RawItem.id == new_raw_id).first() is not None
+
+
+def test_cleanup_keeps_stubs_ingest_retained_on_purpose(pg_db):
+    """The two stub rules must not fight each other.
+
+    Ingest now persists the stubs it rejects, flagged, because they are the
+    only ground truth for what a machine-generated stub looks like (brief 16 —
+    only 15 low_value positives survived anywhere before this). Those rows
+    match the retroactive cleanup's filter by construction, so without the
+    exclusion this task would delete them within a day and the capture would be
+    silently pointless.
+    """
+    from app.models import RawItem
+    from app.tasks.ingest import INGEST_STUB_FLAG
+    from app.tasks.maintenance import run_scoreboard_stub_cleanup
+
+    source = Source(
+        name="Retained Src",
+        category=SourceCategory.PRESS,
+        ingest_method=IngestMethod.RSS,
+        base_url="https://retained.example.com",
+    )
+    pg_db.add(source)
+    pg_db.flush()
+
+    title = "Florida Panthers vs. San Jose Sharks Live Updates, Score, and Play-by-play - October 1, 2026"
+    url = "https://retained.example.com/kept-stub"
+    kept = RawItem(
+        source_id=source.id,
+        original_url=url,
+        canonical_url=url,
+        raw_title=title,
+        extra_metadata={INGEST_STUB_FLAG: True},
+    )
+    pg_db.add(kept)
+    pg_db.flush()
+    kept_id = kept.id
+
+    # An unflagged stub of the same shape — this one is still backlog to clear.
+    legacy_id, _ = _seed_story(pg_db, source, title)
+
+    result = run_scoreboard_stub_cleanup(pg_db)
+
+    assert pg_db.query(RawItem).filter(RawItem.id == kept_id).first() is not None
+    assert pg_db.query(RawItem).filter(RawItem.id == legacy_id).first() is None
+    assert result["raw_items_deleted"] == 1

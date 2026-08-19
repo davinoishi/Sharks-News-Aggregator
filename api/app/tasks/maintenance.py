@@ -81,11 +81,21 @@ def run_scoreboard_stub_cleanup(db) -> dict:
     Deletes raw_items whose title matches a scoreboard marker (cascading to
     story_variants and cluster_variants), then drops clusters left with no
     variants.
+
+    **Skips rows flagged INGEST_STUB_FLAG.** Ingest now persists the stubs it
+    rejects, on purpose, as the only ground truth for what a machine-generated
+    stub looks like (brief 16). Those rows match this filter by construction —
+    without the exclusion this task would delete them within a day and the
+    capture would be silently pointless.
     """
-    from sqlalchemy import exists, or_
+    from sqlalchemy import Text, exists, or_
 
     from app.models import Cluster, ClusterVariant, RawItem
-    from app.tasks.ingest import SCOREBOARD_TITLE_MARKERS, is_scoreboard_stub
+    from app.tasks.ingest import (
+        INGEST_STUB_FLAG,
+        SCOREBOARD_TITLE_MARKERS,
+        is_scoreboard_stub,
+    )
 
     # SQL prefilter, then confirm with is_scoreboard_stub so the deletion rule
     # has a single source of truth with the ingest filter. The prefilter must
@@ -95,6 +105,10 @@ def run_scoreboard_stub_cleanup(db) -> dict:
     # MATCHUP_STUB_RE and the schedule-stub rule, neither of which needs a
     # marker word. is_scoreboard_stub does the actual narrowing.
     candidates = db.query(RawItem.id, RawItem.raw_title).filter(
+        # Retained-on-purpose stubs are evidence, not backlog. Compared as text
+        # because raw_items.metadata is `json`, not `jsonb` — there is no
+        # containment operator available without a cast.
+        ~RawItem.extra_metadata.cast(Text).contains(f'"{INGEST_STUB_FLAG}": true'),
         or_(
             RawItem.raw_title.ilike("watch%"),
             RawItem.raw_title.ilike("%matchup%"),

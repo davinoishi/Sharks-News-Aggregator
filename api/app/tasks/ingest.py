@@ -56,6 +56,11 @@ WATCH_VS_TITLE_RE = re.compile(r"^\s*watch\b.*\bvs\.?\b", re.IGNORECASE)
 # matchup: three things to watch").
 MATCHUP_STUB_RE = re.compile(r"\|\s*(?:nhl\s+)?matchup\s*\|", re.IGNORECASE)
 
+# Marks a raw_item kept as evidence rather than as an article: it is a
+# machine-generated stub, it is never enriched, and the retroactive stub cleanup
+# must leave it alone. Read by freeze_eval_corpus to label low_value positives.
+INGEST_STUB_FLAG = "ingest_stub"
+
 # --- Schedule stubs ----------------------------------------------------------
 # Marker lists only catch phrasings we've already seen. Schedule pages
 # ("San Jose Sharks vs. Vegas Golden Knights - 2026-09-27 - TSN") carry no
@@ -343,11 +348,32 @@ def ingest_rss(db: Session, source) -> dict:
                     entry_url = resolved['url']
                     entry_title = resolved.get('title', entry_title)
 
-            # Drop auto-generated scoreboard/live-score pages (no reporting)
+            # Auto-generated scoreboard/live-score pages carry no reporting, so
+            # they never reach enrichment. They ARE persisted, flagged, because
+            # they are the only ground truth we have for what a machine-generated
+            # stub looks like — and discarding them left brief 16 unable to
+            # measure low_value detection at all (only 15 positives survived
+            # anywhere). Cheap: no page fetch (verify_age=False), deduped like
+            # everything else so a feed cannot re-create the same stub every ten
+            # minutes, and cleared by the same 30-day purge.
             if is_scoreboard_stub(entry_title):
                 logger.info("  ⊘ Skipped scoreboard stub: %s", entry_title)
+                stub_item = create_raw_item(
+                    db=db,
+                    source_id=source.id,
+                    source_item_id=entry.get('id'),
+                    original_url=entry_url,
+                    raw_title=entry_title,
+                    raw_description=entry.get('summary'),
+                    published_at=parse_published_date(entry),
+                    verify_age=False,
+                    extra_metadata={INGEST_STUB_FLAG: True},
+                )
+                # Deliberately NOT enqueued for enrichment: the point is to keep
+                # the evidence, not to spend an LLM call on a scoreboard widget.
+                if stub_item:
+                    stub_items += 1
                 skipped_items += 1
-                stub_items += 1
                 continue
 
             # Create raw_item with idempotency
@@ -466,11 +492,15 @@ def create_raw_item(
     source_item_id: Optional[str] = None,
     published_at: Optional[datetime] = None,
     verify_age: bool = False,
+    extra_metadata: Optional[dict] = None,
 ) -> Optional[object]:
     """
     Create a raw_item with idempotency checks.
 
     Args:
+        extra_metadata: Stored on the row as-is. Used to flag deliberately
+            retained non-articles (see ``INGEST_STUB_FLAG``) so later passes can
+            tell "kept as evidence" from "kept to be enriched".
         verify_age: When True (RSS ingestion), cross-check the article's own
             publication date against the feed-supplied one and reject items
             whose true date is older than ``max_article_age_days`` or that have
@@ -566,6 +596,7 @@ def create_raw_item(
         raw_title=raw_title,
         raw_description=raw_description,
         published_at=published_at,
+        extra_metadata=extra_metadata or {},
     )
 
     db.add(raw_item)
