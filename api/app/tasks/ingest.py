@@ -367,6 +367,14 @@ def ingest_rss(db: Session, source) -> dict:
                     raw_description=entry.get('summary'),
                     published_at=parse_published_date(entry),
                     verify_age=False,
+                    # Stubs are evidence, not feed content, so the age gate does
+                    # not apply. Without this the capture is near-empty in the
+                    # offseason — the first two stubs seen after deploy were June
+                    # pages still sitting in feeds, both silently age-rejected —
+                    # and the whole point is to accumulate positives *before* the
+                    # season. Still bounded: deduped, never enriched, and cleared
+                    # by the same 30-day purge.
+                    enforce_max_age=False,
                     extra_metadata={INGEST_STUB_FLAG: True},
                 )
                 # Deliberately NOT enqueued for enrichment: the point is to keep
@@ -493,6 +501,7 @@ def create_raw_item(
     published_at: Optional[datetime] = None,
     verify_age: bool = False,
     extra_metadata: Optional[dict] = None,
+    enforce_max_age: bool = True,
 ) -> Optional[object]:
     """
     Create a raw_item with idempotency checks.
@@ -501,6 +510,11 @@ def create_raw_item(
         extra_metadata: Stored on the row as-is. Used to flag deliberately
             retained non-articles (see ``INGEST_STUB_FLAG``) so later passes can
             tell "kept as evidence" from "kept to be enriched".
+        enforce_max_age: When False, skip the ``max_article_age_days`` rejection.
+            Only for rows kept as evidence rather than as feed content: the age
+            gate exists to keep stale articles off the feed, and a stub never
+            reaches the feed at all. A two-month-old scoreboard page is a
+            perfectly good ``low_value`` example.
         verify_age: When True (RSS ingestion), cross-check the article's own
             publication date against the feed-supplied one and reject items
             whose true date is older than ``max_article_age_days`` or that have
@@ -527,7 +541,7 @@ def create_raw_item(
 
     # Fast reject: the feed itself admits the item is old. Avoids fetching the
     # article page for items we'd discard anyway.
-    if published_at and _too_old(published_at):
+    if enforce_max_age and published_at and _too_old(published_at):
         return None
 
     # Normalize URL for deduplication
