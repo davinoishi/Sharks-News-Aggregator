@@ -17,6 +17,7 @@ from app.core.queries import (
     format_cluster_for_feed,
     get_cluster_variants_sorted,
     get_entities_by_prominence,
+    get_related_clusters,
     get_top_variant_urls,
     get_variant_headline_previews,
     search_entities_by_name,
@@ -91,9 +92,11 @@ def get_feed(
     cluster_ids = [c.id for c in clusters]
     top_urls = get_top_variant_urls(db, cluster_ids)
     previews = get_variant_headline_previews(db, cluster_ids)
+    related = get_related_clusters(db, cluster_ids)
     for item in cluster_items:
         item["top_url"] = top_urls.get(item["id"])
         item["preview_headlines"] = previews.get(item["id"], [])
+        item["related"] = related.get(item["id"], [])
 
     next_cursor = None
     if has_more and clusters:

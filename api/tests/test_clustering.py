@@ -597,3 +597,93 @@ def test_cluster_backfills_a_missing_story_key_from_a_later_variant(pg_db):
     )
     pg_db.refresh(cluster)
     assert cluster.story_key == "celebrini-rookie-card-auction"
+
+
+def test_near_miss_clusters_are_recorded_as_related(pg_db):
+    """SK-4: the repayment for splitting more.
+
+    The card-auction and pipeline stories are split by brief 14's gate. The
+    comparison that split them is already paid for — recording it means the
+    reader is offered the sibling story instead of hitting a dead end.
+    """
+    from app.models import ClusterRelation
+
+    src = _source(pg_db)
+    now = datetime.utcnow()
+    entities = _celebrini(pg_db)
+    cid1 = _cluster(
+        pg_db, src, "Macklin Celebrini Card Auction Nears $500K & It's Not Done",
+        now, "prospect", entity_ids=entities,
+    )
+    cid2 = _cluster(
+        pg_db, src, "San Jose Sharks are No. 1 in NHL Pipeline Rankings for 2026",
+        now, "prospect", entity_ids=entities,
+    )
+    assert cid1 != cid2
+
+    a_id, b_id = ClusterRelation.ordered(cid1, cid2)
+    relation = (
+        pg_db.query(ClusterRelation)
+        .filter(
+            ClusterRelation.cluster_a_id == a_id,
+            ClusterRelation.cluster_b_id == b_id,
+        )
+        .first()
+    )
+    assert relation is not None
+
+
+def test_relations_are_stored_once_per_unordered_pair(pg_db):
+    """Symmetric fact, one row — two rows could disagree with each other."""
+    from app.models import ClusterRelation
+
+    src = _source(pg_db)
+    now = datetime.utcnow()
+    entities = _celebrini(pg_db)
+    _cluster(
+        pg_db, src, "Macklin Celebrini Card Auction Nears $500K & It's Not Done",
+        now, "prospect", entity_ids=entities,
+    )
+    _cluster(
+        pg_db, src, "San Jose Sharks are No. 1 in NHL Pipeline Rankings for 2026",
+        now, "prospect", entity_ids=entities,
+    )
+    rows = pg_db.query(ClusterRelation).all()
+    for row in rows:
+        assert row.cluster_a_id < row.cluster_b_id
+    pairs = {(r.cluster_a_id, r.cluster_b_id) for r in rows}
+    assert len(pairs) == len(rows)
+
+
+def test_relations_are_capped_per_cluster(pg_db):
+    """A hub story must not relate to every article of the month.
+
+    Unbounded accumulation on a popular cluster is the same failure shape as
+    RM-4 itself.
+    """
+    from app.core.config import settings
+    from app.enrichment.clustering import record_cluster_relations
+    from app.models import ClusterRelation
+
+    src = _source(pg_db)
+    now = datetime.utcnow()
+    hub = _cluster(pg_db, src, "Hub story about the Sharks roster", now, "other")
+
+    others = [
+        _cluster(pg_db, src, f"Unrelated Sharks story number {i}", now, "other")
+        for i in range(settings.max_relations_per_cluster + 4)
+    ]
+    # Descending scores so the pruning has a clear "strongest" set to keep.
+    record_cluster_relations(
+        pg_db, hub, [(0.9 - i * 0.01, other) for i, other in enumerate(others)]
+    )
+    pg_db.flush()
+
+    held = (
+        pg_db.query(ClusterRelation)
+        .filter(
+            (ClusterRelation.cluster_a_id == hub) | (ClusterRelation.cluster_b_id == hub)
+        )
+        .count()
+    )
+    assert held <= settings.max_relations_per_cluster

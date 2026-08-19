@@ -55,6 +55,14 @@ class Settings(BaseSettings):
     # articles are treated as the same story; below it, as different ones. A
     # missing key on either side is "no information", never a mismatch.
     story_key_agreement_threshold: float = 0.50
+    # "Related stories" (brief 15, SK-4). A candidate scoring at least this much
+    # but not merging is recorded as a relation rather than discarded — the
+    # repayment for briefs 14/15 splitting more aggressively. Sits below
+    # cluster_similarity_threshold by construction; a value at or above it would
+    # only ever record pairs that already merged.
+    cluster_relation_threshold: float = 0.45
+    # Cap per cluster so a hub story cannot accumulate unbounded relations.
+    max_relations_per_cluster: int = 5
 
     # Ingestion age gate
     max_article_age_days: int = 7

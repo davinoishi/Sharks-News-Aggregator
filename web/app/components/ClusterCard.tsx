@@ -38,6 +38,8 @@ export function ClusterCard({
     (cluster.source_count ?? 0) - previewHeadlines.length,
   );
 
+  const related = cluster.related ?? [];
+
   const handleLinkClick = () => {
     // Record the click (fire and forget); default link behavior continues.
     ApiClient.recordClusterClick(cluster.id);
@@ -138,6 +140,39 @@ export function ClusterCard({
                   </button>
                 );
               })}
+            </div>
+          )}
+
+          {/* Related stories. Briefs 14 and 15 deliberately split more, on the
+              principle that a wrong merge costs the reader the story while a
+              duplicate card costs them a glance. This is the repayment: the
+              sibling story is one click away instead of lost. Links go to the
+              related story's own source — there is no per-cluster page here. */}
+          {related.length > 0 && (
+            <div className="mb-3">
+              <h3 className="text-label uppercase text-content-muted mb-1">
+                Related
+              </h3>
+              <ul className="space-y-1">
+                {related.map((item) => (
+                  <li key={item.id}>
+                    {item.url ? (
+                      <a
+                        href={item.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={handleLinkClick}
+                        className={`text-meta text-action hover:underline ${focusRing}`}
+                      >
+                        {item.headline}
+                        <span className="sr-only"> (opens in a new tab)</span>
+                      </a>
+                    ) : (
+                      <span className="text-meta text-content-muted">{item.headline}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
 

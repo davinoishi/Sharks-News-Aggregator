@@ -70,8 +70,10 @@ SK-3.
 
 ## Execution status (2026-08-19)
 
-**Shipped: SK-1, SK-2, SK-5, SK-6, SK-7.** Deferred: SK-3 and SK-4, both for
-reasons the brief itself gives.
+**Shipped: SK-1, SK-2, SK-4, SK-5, SK-6, SK-7.** Deferred: SK-3 only.
+
+`SK-4` landed separately (2026-08-19) once brief 14 and the rest of 15 were
+deployed — see the note under its own task below.
 
 **SK-3 is deferred by this brief's own instruction.** It says *"Do this last,
 behind the SK-2 measurement"* — and that measurement needs `story_key` to have
@@ -82,16 +84,18 @@ re-break the role-headline case while the replacement signal is still unproven.
 Revisit once the decision log shows `key=agree`/`key=differ` firing on real
 traffic.
 
-**SK-4 is deferred as too large for this PR.** Related-stories links need a new
-table, a migration, relation recording in the matcher, an API field and a web
-surface — a second schema change and a new UI concept on top of a PR that already
-carries one migration plus API, worker and web changes. It is the repayment for
-over-splitting, so it should not be dropped; it wants its own pass.
+**SK-4 shipped in its own pass**, as planned — related-stories links needed a
+second table, a migration, matcher changes, an API field and a web surface,
+which did not belong on top of a PR already carrying one migration.
 
-Note the practical consequence of deferring both: **brief 14's accepted
-regression is still live.** The role-headline case still splits, and there is no
-"Related stories" link yet to soften a split. `story_key` is what fixes it, and
-only once clusters have accumulated keys.
+One design decision it forced, not anticipated by this brief: **the site has no
+per-cluster route**, so "related" has nowhere internal to link. Each related
+entry therefore carries that story's own top source URL. That serves the actual
+goal — the reader reaches the story — and avoids inventing a page.
+
+Consequence of `SK-3` still being open: brief 14's accepted regression remains
+live. The role-headline case still splits. It is now *softened* rather than
+fixed, since a split pair shows up as related to each other.
 
 ---
 

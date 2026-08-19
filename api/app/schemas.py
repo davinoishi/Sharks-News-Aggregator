@@ -45,6 +45,11 @@ class ClusterItem(BaseModel):
     # instead of hidden behind "View sources" (brief 15, SK-5). Empty for
     # single-variant clusters.
     preview_headlines: List[str] = []
+    # Clusters the matcher nearly merged this one with. Briefs 14/15 split more
+    # on purpose; this is what keeps a split card from being a dead end for the
+    # reader (brief 15, SK-4). Each entry carries the story's own top URL —
+    # there is no per-cluster page to link to.
+    related: List[dict] = []
 
 
 class EntityItem(BaseModel):

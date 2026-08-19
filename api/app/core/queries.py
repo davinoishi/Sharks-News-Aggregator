@@ -13,6 +13,7 @@ from app.enrichment.clustering import normalize_title_for_matching
 from app.models import (
     Cluster,
     ClusterEntity,
+    ClusterRelation,
     ClusterStatus,
     ClusterTag,
     ClusterVariant,
@@ -248,6 +249,88 @@ def get_variant_headline_previews(db: Session, cluster_ids: List[int]) -> dict:
         if titles:
             previews[cluster_id] = titles[:PREVIEW_HEADLINE_LIMIT]
     return previews
+
+
+# Related stories shown per card. Three is enough to rescue a split story and
+# few enough that the card does not become a second feed (brief 15, SK-4).
+RELATED_CLUSTER_LIMIT = 3
+
+
+def get_related_clusters(db: Session, cluster_ids: List[int]) -> dict:
+    """Map each cluster id to the clusters the matcher nearly merged it with.
+
+    Briefs 14 and 15 split more on purpose. This is what stops that costing the
+    reader anything: a split card offers the sibling story instead of being a
+    dead end.
+
+    Relations are stored once per unordered pair (``cluster_a_id`` is always the
+    smaller id), so a lookup has to match on either column and normalise the
+    direction on the way out.
+
+    Each related entry carries the top source URL, because there is no
+    per-cluster page on the site to link to — the useful destination is the
+    story itself.
+
+    Returns ``{cluster_id: [{"id", "headline", "url"}, ...]}``.
+    """
+    if not cluster_ids:
+        return {}
+
+    rows = (
+        db.query(
+            ClusterRelation.cluster_a_id,
+            ClusterRelation.cluster_b_id,
+            ClusterRelation.score,
+        )
+        .filter(
+            or_(
+                ClusterRelation.cluster_a_id.in_(cluster_ids),
+                ClusterRelation.cluster_b_id.in_(cluster_ids),
+            )
+        )
+        .order_by(ClusterRelation.score.desc().nullslast())
+        .all()
+    )
+    if not rows:
+        return {}
+
+    requested = set(cluster_ids)
+    pairs: dict = {}
+    other_ids = set()
+    for a_id, b_id, score in rows:
+        for owner, other in ((a_id, b_id), (b_id, a_id)):
+            if owner in requested:
+                bucket = pairs.setdefault(owner, [])
+                if len(bucket) < RELATED_CLUSTER_LIMIT:
+                    bucket.append((other, score))
+                    other_ids.add(other)
+
+    if not other_ids:
+        return {}
+
+    # Only active clusters: a related pointer into a purged or archived cluster
+    # is worse than no pointer.
+    headlines = dict(
+        db.query(Cluster.id, Cluster.headline)
+        .filter(Cluster.id.in_(other_ids), Cluster.status == ClusterStatus.ACTIVE)
+        .all()
+    )
+    urls = get_top_variant_urls(db, list(headlines.keys()))
+
+    related: dict = {}
+    for owner, entries in pairs.items():
+        items = [
+            {
+                "id": other,
+                "headline": headlines[other],
+                "url": urls.get(other),
+            }
+            for other, _ in entries
+            if other in headlines
+        ]
+        if items:
+            related[owner] = items
+    return related
 
 
 def get_cluster_with_details(db: Session, cluster_id: int) -> Optional[Cluster]:

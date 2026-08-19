@@ -44,6 +44,10 @@ export interface Cluster {
    *  rather than hidden behind "View sources" (brief 15, SK-5). Empty for
    *  single-variant clusters. */
   preview_headlines?: string[];
+  /** Clusters the matcher nearly merged this one with. Briefs 14/15 split more
+   *  on purpose; this keeps a split card from being a dead end (brief 15, SK-4).
+   *  Each entry carries its own top URL — there is no per-cluster page. */
+  related?: { id: number; headline: string; url?: string | null }[];
   variants?: StoryVariant[];
 }
 
