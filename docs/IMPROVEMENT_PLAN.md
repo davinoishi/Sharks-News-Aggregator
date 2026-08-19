@@ -14,7 +14,8 @@ verification steps.
 
 | | Item | Where |
 |---|------|-------|
-| **Next up** | `RM-2` — relevance: a Sharks player's name admits an article about another team | [below](#rm-2--relevance-a-sharks-players-name-admits-an-article-about-another-team) |
+| **Next up, brief written** | `RM-4` — clustering: unrelated stories land on the same card | [below](#rm-4--clustering-unrelated-stories-land-on-the-same-card) · [brief 14](briefs/brief-14-cluster-merge-precision.md) |
+| Open | `RM-2` — relevance: a Sharks player's name admits an article about another team | [below](#rm-2--relevance-a-sharks-players-name-admits-an-article-about-another-team) |
 | Open, one attempt reverted | `RM-3` — relevance: "Sharks" is not a hockey word | [below](#rm-3--relevance-sharks-is-not-a-hockey-word) |
 | Planned brief | Brief 10 — MCP interface for agent access | [below](#brief-10--mcp-interface-for-agent-access-planned-2026-07-25) |
 | Planned brief | Brief 11 — richer public metrics, without cookies | [below](#brief-11--richer-public-metrics-without-cookies-planned-2026-07-25) |
@@ -22,7 +23,14 @@ verification steps.
 | Backlog | `R3-*` — round-3 review (P1–P3) | [below](#r3-backlog) |
 | Deferred | `RM-1` — Threads via self-hosted RSSHub | [below](#rm-1--threads-accounts-as-sources-via-self-hosted-rsshub) |
 
-`RM-2` is ahead of the remaining SEO work on purpose: the topic pages shipped in
+`RM-4` is first because it silently loses stories the pipeline already fetched,
+enriched and got *right*. A mis-clustered article is not merely noise like an
+off-team story — it is hidden behind a "View sources" control on a card the
+reader has no reason to open, so a reader who has finished with that storyline
+never sees it at all. `RM-2` and `RM-3` decide **whether an article belongs in
+the feed**; `RM-4` decides **which card it lands on** once it does.
+
+`RM-2` remains ahead of the remaining SEO work: the topic pages shipped in
 brief 13 make an explicit promise in their `<h1>`, and a page that is a third
 Oilers content will not hold a ranking it wins.
 
@@ -236,6 +244,139 @@ currently promises the policy will be updated if analytics are ever added.
 # Roadmap / backlog
 
 Deferred items, specified well enough to execute later without re-research.
+
+### RM-4 — Clustering: unrelated stories land on the same card
+
+*Found 2026-08-19 from a reader report: the card "Macklin Celebrini Card Auction
+Nears $500K & It's Not Done" also held two articles about The Athletic's NHL
+pipeline rankings. Scoped for execution in
+[brief 14](briefs/brief-14-cluster-merge-precision.md).*
+
+**Why this ranks above the relevance work.** An off-team story (RM-2) is visible
+noise the reader can skip. A mis-clustered story is an *invisible* loss: variant
+titles live behind the "View sources" control
+(`web/app/components/ClusterCard.tsx:146`), so a reader who is done with the
+card-auction storyline never expands it and never learns the pipeline rankings
+came out. The pipeline is doing the expensive work — fetch, relevance, entity
+extraction, LLM classification — correctly, and then filing the result where
+nobody looks.
+
+**The correct failure direction is over-splitting.** A duplicate card costs the
+reader one redundant glance. A wrong merge costs them the story. Any tuning
+under this item is to be judged asymmetrically: prefer a new cluster whenever the
+evidence for merging is not positive.
+
+#### The mechanism (proven)
+
+`calculate_similarity_score()` (`api/app/enrichment/clustering.py:478`) scores a
+candidate pair as `0.55·E + 0.35·T + 0.10·K`, and `is_match()`
+(`clustering.py:731`) merges at `S >= 0.62` behind an entity gate of `E >= 0.50`.
+Two articles about the same player with the same event type therefore score
+`0.55·1.0 + 0.35·0 + 0.10·1.0 = 0.65` and merge **while sharing no words at
+all**. Reproduced against the reported card with the real functions:
+
+```
+'Macklin Celebrini Card Auction Nears $500K' vs 'San Jose Sharks are No. 1 in NHL Pipeline Rankings'
+  T = 0.000   title_similarity = 0.212   shared title tokens = 0
+  E = 1.00, K = 1.0  ->  S = 0.650  match = True
+```
+
+Nothing in the scoring asks whether the two articles are about the same *story*.
+It asks whether they are about the same *person*, and `filter_team_entities()`
+guarantees the surviving entities are exactly people — so `E` saturates at 1.0
+for any two articles about a single-star cluster. The defect is worst precisely
+where coverage is heaviest.
+
+Compounding it, the entity's own name is counted **twice** — once in `E`, and
+again in `T`, because "macklin"/"celebrini" are ordinary headline tokens. That is
+why raising the token threshold cannot fix this: measured over real pairs, the
+good merges bottom out at `T = 0.200` and the bad merges reach `T = 0.200`.
+Removing entity-derived tokens from `T` separates them.
+
+#### Contributing defects
+
+- **The summary-name bypass has no topic gate** (`clustering.py:371`). A shared
+  person name in two LLM summaries plus `K >= 0.5` merges outright, skipping the
+  score entirely. Meanwhile `CLASSIFY_PROMPT_USER`
+  (`api/app/services/openrouter.py:72`) instructs the model to lead every summary
+  with the subject's full name, explicitly so that "two stories about the same
+  person cluster together". The prompt and the matcher reinforce each other in
+  the wrong direction.
+- **Clusters never age out.** The candidate window filters on
+  `Cluster.last_seen_at >= window_start` (`clustering.py:181`), and
+  `update_cluster_metadata()` pushes `last_seen_at` forward on every join
+  (`clustering.py:910`). "72 hours" means 72 hours since the *last* addition, not
+  since the story broke, so a busy cluster is immortal.
+- **The entity path is untested.** Every case in `api/tests/test_clustering.py`
+  passes `entities=[]` (`_cluster`, line 57), so the 0.55-weight term that causes
+  this bug is never exercised. `test_unrelated_stories_do_not_merge` uses
+  different players *and* different event types, and passes trivially.
+
+#### Measured 2026-08-19 (offseason, 225 clusters in the live feed)
+
+Of the 35 clusters holding 3+ surviving variants, 5 have mean pairwise headline
+token overlap below 0.15 — i.e. their members share almost no vocabulary:
+
+| Cohesion | Span | Variants | Cluster |
+|---|---|---|---|
+| 0.032 | 46h | 4 | NHL Rumors: Sharks willing to offer Celebrini max contract |
+| 0.041 | 157h | 6 | Connor McDavid Speaks Out On Darnell Nurse Trade |
+| 0.111 | 179h | 10 | 'Mac is crazy': Leafs' McKenna on summer training with Celebrini |
+| 0.135 | 130h | 7 | Macklin Celebrini Named IIHF Male Player of the Year |
+| 0.143 | 127h | 8 | **Macklin Celebrini Card Auction Nears $500K** (the reported card) |
+
+Cohesion alone does not catch everything — cluster 4055 scores 0.197 but holds
+**116 variants across 435 hours**, having absorbed "5 Restricted Free Agents
+Still Unsigned", "Cale Makar Extension Questions Emerge" and a fantasy-hockey
+top-100 list into the Celebrini extension story. Size and span are the second
+detector. The five largest clusters in the feed span 146–435 hours against event
+windows of 24–72 hours.
+
+Two illustrative contents:
+
+- Cluster 3835 (`other`, entities `{Celebrini, Sharks}`) holds the Celebrini
+  hometown-discount story alongside a Jason Robertson extension story, a
+  Tarasenko free-agency story and John Marino signing with the Mammoth.
+- Cluster 4003 (`trade`, entities `{Nurse, Sharks}`) holds the McDavid/Nurse
+  reaction alongside **"Edmonton police to introduce involuntary detention
+  detox"** — a non-hockey Edmonton Journal video. That item is *also* a relevance
+  failure and belongs to RM-2/RM-3; it is listed here because it shows how far a
+  magnet cluster reaches.
+
+**Over-merging causes under-merging.** The pipeline-rankings story exists twice:
+two copies inside the card-auction cluster (4152) and one in cluster 4188, which
+is itself mixed (a Yahoo copy plus an unrelated SJHN Daily roundup). Variants are
+absorbed by whichever magnet cluster they touch first, so the real story never
+accumulates its own sources and never earns a card of its own.
+
+#### Not yet attributed
+
+The E+K hole above is proven by computation. The merge path taken by each
+production cluster listed here is **not** known — `match_or_create_cluster()` has
+six routes to a merge (syndication UUID, game identifier, title similarity,
+strong containment, title name-match, score, summary name-match) and logs at
+`debug`, which production does not retain. Instrumenting the decision is
+therefore the first task of brief 14, not an afterthought: the remaining routes
+get attributed with data rather than guessed at. This is the RM-3 lesson applied
+in advance — see `[[relevance-change-seasonal-measurement]]`.
+
+#### Scope split
+
+- **[Brief 14](briefs/brief-14-cluster-merge-precision.md) — written, ready to
+  execute.** Instrument the decision; require positive topical evidence for any
+  merge; stop double-counting entity names; gate the summary-name bypass; bound
+  cluster lifetime; test the entity path; split the existing bad clusters.
+- **Brief 15 — not yet written.** The durable fix: have the classifier emit a
+  canonical `story_key` topic slug in the JSON it already returns (zero extra LLM
+  calls) and make story-key agreement the primary merge signal. Plus a "Related
+  stories" link between near-miss clusters to pay back the cost of splitting, an
+  offline eval harness over labelled pairs, and surfacing 2–3 variant headlines
+  inline on the card so a bad merge is visible without expanding it.
+
+Lexical similarity cannot separate "Celebrini's rookie card sold for $1.28M" from
+"Celebrini tops the pipeline rankings" — the shared words *are* his name. Brief
+14 blocks the zero-evidence merges, which is a strict improvement and kills the
+reported bug; brief 15 is what actually decides the hard cases.
 
 ### RM-2 — Relevance: a Sharks player's name admits an article about another team
 
