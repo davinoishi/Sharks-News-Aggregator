@@ -77,9 +77,29 @@ slugs 404.
 > pairs), `api/eval/pairs.seed.jsonl` (19 hand-labelled clustering pairs from
 > the RM-4 measurement), and `api/eval/README.md`.
 >
-> **Still to do here:** run it on the Pi — nothing is captured until it is
-> executed — and make a human labelling pass over the derived labels. Everything
-> below describes what was built; treat it as the record, not as pending work.
+> **Run on the Pi 2026-08-19.** 615 items — `accepted` 150, `rejected` 150,
+> `llm_compared` 150, `clustered` 150, `low_value_suspect` 15 (all that exist in
+> retained data) — plus 400 unlabelled candidate pairs. Covers published dates
+> **2026-07-17 → 2026-08-13**. Stored at `eval_corpus/` on the Pi and copied
+> into `backups/`; not in git (R3-A1).
+>
+> ⚠️ **The corpus straddles a model switch — do not analyse it as one
+> population.** `llm_model` shows two models, with a clean boundary:
+>
+> | Model | Range | n |
+> |---|---|---|
+> | `google/gemma-4-26b-a4b-it` | 2026-07-17 → 07-24 | 309 |
+> | `google/gemini-2.5-flash-lite` | 2026-07-23 → 08-13 | 278 |
+>
+> Any keyword-vs-LLM rate computed across the whole window silently averages two
+> models. **Split on `llm_model` in EV-4.** The upside: this is unplanned A/B
+> data on real production traffic — gemma-4 vs the current model over an
+> overlapping period — so part of the bake-off may already be answerable from
+> what is now frozen, before spending anything on new inference.
+>
+> **Still to do here:** a human labelling pass over the derived labels, and
+> re-freezing in November for the in-season comparison. Everything below
+> describes what was built; treat it as the record, not as pending work.
 
 - **Approach.** A script that snapshots N `raw_items` (title, description, source
   category, existing entity IDs) to a versioned file in the repo, before the
