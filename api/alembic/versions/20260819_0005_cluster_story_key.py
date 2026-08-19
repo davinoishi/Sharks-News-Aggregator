@@ -24,6 +24,7 @@ Indexed because the matcher looks clusters up by key on every candidate pass.
 from typing import Sequence, Union
 
 import sqlalchemy as sa
+
 from alembic import op
 
 # revision identifiers, used by Alembic.
