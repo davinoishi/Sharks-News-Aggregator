@@ -36,6 +36,20 @@ class Settings(BaseSettings):
     # bigram itself carries most of the evidence.
     title_name_jaccard_threshold: float = 0.40
     title_name_min_shared_tokens: int = 4
+    # Topical-evidence gate (RM-4, brief 14). Entity overlap and event-type
+    # compatibility may corroborate a merge but never cause one: a score-path
+    # merge additionally requires shared non-entity headline vocabulary, or a
+    # similar LLM summary. Deliberately permissive — the gate exists to block
+    # the zero-evidence case, not to arbitrate close calls. See brief 15 for
+    # the signal that decides the hard pairs.
+    topic_evidence_threshold: float = 0.0
+    summary_evidence_threshold: float = 0.45
+    # Absolute ceiling on how far a cluster's first article may pre-date the
+    # article being placed into it. Measured against the incoming variant's
+    # publication time, never wall-clock, so a genuinely late syndicated copy
+    # of an old story still finds its siblings. Stops a busy cluster from
+    # being kept alive indefinitely by its own traffic.
+    cluster_max_age_hours: int = 96
 
     # Ingestion age gate
     max_article_age_days: int = 7

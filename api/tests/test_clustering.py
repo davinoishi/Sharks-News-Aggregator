@@ -8,7 +8,15 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from app.models import EventType, IngestMethod, RawItem, Source, SourceCategory, StoryVariant
+from app.models import (
+    Entity,
+    EventType,
+    IngestMethod,
+    RawItem,
+    Source,
+    SourceCategory,
+    StoryVariant,
+)
 from app.tasks.enrich import match_or_create_cluster, normalize_tokens
 
 pytestmark = pytest.mark.skipif(
@@ -31,7 +39,25 @@ def _source(db):
     return s
 
 
-def _variant(db, source, title, published_at, event_type="signing", url=None, llm_summary=None):
+def _entity(db, name, entity_type="player"):
+    """Get-or-create a real Entity row.
+
+    Entity IDs must resolve to rows: filter_team_entities() and
+    entity_name_tokens() both query the table, so a bare integer would silently
+    disable the entity path (which is how it went untested until RM-4).
+    """
+    slug = Entity.make_slug(name)
+    existing = db.query(Entity).filter(Entity.slug == slug).first()
+    if existing:
+        return existing
+    e = Entity(name=name, slug=slug, entity_type=entity_type)
+    db.add(e)
+    db.flush()
+    return e
+
+
+def _variant(db, source, title, published_at, event_type="signing", url=None,
+             llm_summary=None, entity_ids=None):
     global _n
     _n += 1
     url = url or f"https://src.example.com/{_n}"
@@ -45,7 +71,7 @@ def _variant(db, source, title, published_at, event_type="signing", url=None, ll
         title=title,
         published_at=published_at,
         tokens=normalize_tokens(title),
-        entities=[],
+        entities=list(entity_ids or []),
         event_type=EventType(event_type),
         extra_metadata={"llm_summary": llm_summary} if llm_summary else {},
     )
@@ -54,9 +80,14 @@ def _variant(db, source, title, published_at, event_type="signing", url=None, ll
     return v
 
 
-def _cluster(db, source, title, published_at, event_type="signing", url=None, llm_summary=None):
-    v = _variant(db, source, title, published_at, event_type, url=url, llm_summary=llm_summary)
-    return match_or_create_cluster(db, v, v.tokens, [], event_type, source, tag_names=[])
+def _cluster(db, source, title, published_at, event_type="signing", url=None,
+             llm_summary=None, entity_ids=None):
+    entity_ids = list(entity_ids or [])
+    v = _variant(db, source, title, published_at, event_type, url=url,
+                 llm_summary=llm_summary, entity_ids=entity_ids)
+    return match_or_create_cluster(
+        db, v, v.tokens, entity_ids, event_type, source, tag_names=[]
+    )
 
 
 def test_same_story_two_sources_merge_into_one_cluster(pg_db):
@@ -296,3 +327,162 @@ def test_headline_repick_keeps_the_incumbent_on_a_tie(pg_db):
     cluster = pg_db.query(Cluster).filter(Cluster.id == cid).first()
     pg_db.refresh(cluster)
     assert cluster.headline == "Celebrini signs contract extension with Sharks"
+
+
+# --- RM-4 / brief 14: the entity path ----------------------------------------
+#
+# Every test above this line passes entities=[], so the 0.55-weight entity term
+# in calculate_similarity_score() — the term that caused RM-4 — had no coverage
+# at all. These hold entities and event type constant and vary only the topic,
+# which is the shape of the production failure.
+
+def _celebrini(db):
+    return [
+        _entity(db, "Macklin Celebrini").id,
+        _entity(db, "San Jose Sharks", "team").id,
+    ]
+
+
+def test_same_player_same_event_different_story_does_not_merge(pg_db):
+    """The reported card: a rookie-card auction and the pipeline rankings.
+
+    Same player, same event type, zero shared vocabulary. Scored
+    0.55*1.0 + 0.35*0.0 + 0.10*1.0 = 0.65 against a 0.62 bar and merged.
+    """
+    src = _source(pg_db)
+    now = datetime.utcnow()
+    entities = _celebrini(pg_db)
+    cid1 = _cluster(
+        pg_db, src, "Macklin Celebrini Card Auction Nears $500K & It's Not Done",
+        now, "prospect", entity_ids=entities,
+    )
+    cid2 = _cluster(
+        pg_db, src, "San Jose Sharks are No. 1 in NHL Pipeline Rankings for 2026",
+        now, "prospect", entity_ids=entities,
+    )
+    assert cid1 != cid2
+
+
+def test_star_player_cluster_does_not_absorb_unrelated_signing_news(pg_db):
+    """From the 116-variant Celebrini extension cluster in production."""
+    src = _source(pg_db)
+    now = datetime.utcnow()
+    entities = _celebrini(pg_db)
+    cid1 = _cluster(
+        pg_db, src, "Sharks sign Celebrini to 5-year, $94M extension",
+        now, "signing", entity_ids=entities,
+    )
+    cid2 = _cluster(
+        pg_db, src, "5 Restricted Free Agents Still Unsigned With Camp Approaching",
+        now, "signing", entity_ids=entities,
+    )
+    assert cid1 != cid2
+
+
+def test_star_player_cluster_does_not_absorb_countdown_filler(pg_db):
+    """From the IIHF cluster, which had accumulated six unrelated stories."""
+    src = _source(pg_db)
+    now = datetime.utcnow()
+    entities = _celebrini(pg_db)
+    cid1 = _cluster(
+        pg_db, src, "Macklin Celebrini Named IIHF Male Player of the Year",
+        now, "prospect", entity_ids=entities,
+    )
+    cid2 = _cluster(
+        pg_db, src, "71 Days to Opening Day: Macklin Celebrini",
+        now, "prospect", entity_ids=entities,
+    )
+    assert cid1 != cid2
+
+
+def test_same_story_still_merges_with_entities_present(pg_db):
+    """The counter-test: the gate must not break real same-story merging."""
+    src = _source(pg_db)
+    now = datetime.utcnow()
+    entities = _celebrini(pg_db)
+    cid1 = _cluster(
+        pg_db, src, "Macklin Celebrini Card Auction Nears $500K & It's Not Done",
+        now, "prospect", entity_ids=entities,
+    )
+    cid2 = _cluster(
+        pg_db, src, "Record-Setting Macklin Celebrini Card Highlights Goldin Auctions",
+        now, "prospect", entity_ids=entities,
+    )
+    assert cid1 == cid2
+
+
+def test_wire_syndication_still_merges_with_entities_present(pg_db):
+    """The Graf re-signing: 52 variants in production and correct.
+
+    This is the control for the whole brief — if it stops forming, the topical
+    evidence gate has gone too far.
+    """
+    src = _source(pg_db)
+    now = datetime.utcnow()
+    entities = [
+        _entity(pg_db, "Collin Graf").id,
+        _entity(pg_db, "San Jose Sharks", "team").id,
+    ]
+    cid1 = _cluster(
+        pg_db, src, "Sharks ink Graf to 3-year contract with $4.25M AAV",
+        now, "signing", entity_ids=entities,
+    )
+    cid2 = _cluster(
+        pg_db, src, "The Sharks re-sign F Collin Graf to a 3-year, $12.75M contract",
+        now, "signing", entity_ids=entities,
+    )
+    assert cid1 == cid2
+
+
+def test_role_headline_bridge_needs_evidence_beyond_the_name(pg_db):
+    """Deliberate, documented regression from CM-2 — see brief 15.
+
+    The entity-free version of this scenario
+    (test_role_headline_merges_with_named_sibling_via_summary) still merges,
+    because stripping nothing leaves headline overlap behind. Once the subject
+    is a known entity, these two share *only* the name — which is structurally
+    identical to the bad pairs above, so no lexical rule can keep them apart.
+    Splitting is the accepted trade under brief 14's governing principle;
+    story_key (brief 15) is what restores the merge.
+    """
+    src = _source(pg_db)
+    now = datetime.utcnow()
+    entities = [
+        _entity(pg_db, "Keaton Verhoeff").id,
+        _entity(pg_db, "San Jose Sharks", "team").id,
+    ]
+    cid1 = _cluster(
+        pg_db, src,
+        "San Jose Sharks prospect Keaton Verhoeff to return to North Dakota",
+        now, "prospect", llm_summary="Keaton Verhoeff returns to North Dakota",
+        entity_ids=entities,
+    )
+    cid2 = _cluster(
+        pg_db, src,
+        "San Jose Sharks' first round draft pick finalizes plans for upcoming season",
+        now, "prospect", llm_summary="Keaton Verhoeff finalizes upcoming season plans",
+        entity_ids=entities,
+    )
+    assert cid1 != cid2
+
+
+def test_cluster_stops_accepting_variants_once_its_story_is_old(pg_db):
+    """CM-5: the window follows the cluster's own clock, not its traffic.
+
+    Under the old last_seen_at anchor every join renewed the lease, so a busy
+    cluster never aged out — production held one spanning 435 hours against a
+    72-hour window.
+    """
+    src = _source(pg_db)
+    t0 = datetime.utcnow() - timedelta(hours=200)
+    title = "Sharks sign Libor Hajek to a one year contract"
+
+    cid1 = _cluster(pg_db, src, title, t0, "signing")
+    # 60h later: inside the 72h window, joins, and pushes last_seen_at forward.
+    cid2 = _cluster(pg_db, src, title, t0 + timedelta(hours=60), "signing")
+    assert cid1 == cid2
+
+    # 120h after the story broke. last_seen_at is only 60h old, so the old
+    # filter still offered this cluster as a candidate; first_seen_at does not.
+    cid3 = _cluster(pg_db, src, title, t0 + timedelta(hours=120), "signing")
+    assert cid3 != cid1

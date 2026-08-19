@@ -21,6 +21,7 @@ from app.models import (
     ClusterStatus,
     ClusterTag,
     ClusterVariant,
+    Entity,
     EventType,
     SiteMetrics,
     Source,
@@ -105,6 +106,59 @@ def normalize_tokens(text: str) -> List[str]:
     return tokens
 
 
+def log_cluster_decision(route: str, cluster_id, variant, detail: str = "") -> None:
+    """Record which route placed a variant, at INFO (CM-1).
+
+    ``match_or_create_cluster`` has seven possible outcomes and the per-candidate
+    detail is at DEBUG, which production does not retain — so an observed bad
+    card could not be attributed to the route that caused it. One line per
+    decision, not per candidate: a busy ingest evaluates many candidates per
+    variant.
+    """
+    logger.info(
+        "cluster_decision route=%s cluster_id=%s variant_id=%s%s",
+        route,
+        cluster_id,
+        getattr(variant, "id", None),
+        f" {detail}" if detail else "",
+    )
+
+
+def entity_name_tokens(db: Session, entity_ids) -> set:
+    """Tokens that come from the names of ``entity_ids``.
+
+    These are already credited by the entity-overlap score E, so counting them
+    again in a token comparison double-counts the one thing two articles about
+    the same player are guaranteed to share. "Macklin Celebrini Card Auction"
+    and "Celebrini Tops Pipeline Rankings" have a non-trivial token overlap
+    made up entirely of his name (RM-4).
+    """
+    ids = {int(entity_id) for entity_id in (entity_ids or [])}
+    if not ids:
+        return set()
+
+    names = db.query(Entity.name).filter(Entity.id.in_(ids)).all()
+    strip = set()
+    for (name,) in names:
+        if name:
+            strip |= set(normalize_tokens(name))
+    return strip
+
+
+def topic_similarity(tokens_v, tokens_c, strip: set) -> float:
+    """Jaccard over headline tokens with entity-derived tokens removed.
+
+    This is the evidence that two articles are about the same *story* rather
+    than about the same *person*. Returns 0.0 when either side has nothing left
+    after stripping, which is the case the caller is looking for.
+    """
+    set_v = {t for t in tokens_v if t not in strip}
+    set_c = {t for t in tokens_c if t not in strip}
+    if not set_v or not set_c:
+        return 0.0
+    return len(set_v & set_c) / max(1, len(set_v | set_c))
+
+
 def match_or_create_cluster(
     db: Session,
     variant,
@@ -128,6 +182,21 @@ def match_or_create_cluster(
     Returns:
         cluster_id
     """
+    # Determine the time window relative to the story, not worker time. A late
+    # syndicated copy of a five-day-old story should still see another copy
+    # published on the same day. Using utcnow() made accepted seven-day-old
+    # items ineligible for even an exact title comparison.
+    time_window = get_time_window_for_event(event_type)
+    variant_time = ensure_aware(variant.published_at) or utcnow()
+    window_start = variant_time - time_window
+    window_end = variant_time + time_window
+
+    # Absolute ceiling on cluster age, applied to *every* match route including
+    # syndication and game identity (RM-4/CM-5). Measured against the incoming
+    # variant's publication time rather than wall-clock, so the pipeline stays
+    # publication-relative.
+    max_age_start = variant_time - timedelta(hours=settings.cluster_max_age_hours)
+
     # Step 1: Exact syndicated-content match. Regional publishers commonly
     # expose the same wire/video asset under different hosts while retaining a
     # shared UUID in the URL. Keep both variants, but put them on one card.
@@ -140,6 +209,7 @@ def match_or_create_cluster(
             .join(StoryVariant, StoryVariant.id == ClusterVariant.variant_id)
             .filter(
                 Cluster.status == ClusterStatus.ACTIVE,
+                Cluster.first_seen_at >= max_age_start,
                 StoryVariant.id != variant.id,
                 StoryVariant.url.ilike(f"%{identifier}%"),
             )
@@ -147,10 +217,8 @@ def match_or_create_cluster(
             .first()
         )
         if syndicated_cluster:
-            logger.debug(
-                "  → Syndication match (%s): clustering with #%s",
-                syndication_key,
-                syndicated_cluster.id,
+            log_cluster_decision(
+                "syndication", syndicated_cluster.id, variant, detail=syndication_key
             )
             update_cluster_metadata(
                 db, syndicated_cluster, variant, tokens, entities, source, tag_names
@@ -164,21 +232,17 @@ def match_or_create_cluster(
             db.commit()
             return syndicated_cluster.id
 
-    # Step 2: Determine time window relative to the story, not worker time.
-    # A late syndicated copy of a five-day-old story should still see another
-    # copy published on the same day. Using utcnow() made accepted seven-day-old
-    # items ineligible for even an exact title comparison.
-    time_window = get_time_window_for_event(event_type)
-    variant_time = ensure_aware(variant.published_at) or utcnow()
-    window_start = variant_time - time_window
-    window_end = variant_time + time_window
-
-    # Load clusters whose observed publication interval overlaps the window.
-    # last_seen_at also keeps a still-evolving cluster eligible even when its
-    # first article is older than the event window.
+    # Step 2: Load candidate clusters.
+    #
+    # Anchored on first_seen_at, not last_seen_at (RM-4/CM-5). The old filter
+    # kept a cluster eligible for 72h after its *most recent* addition, so every
+    # join renewed the lease and a busy cluster never aged out — production held
+    # one spanning 435 hours against a 72-hour window. A cluster's eligibility
+    # now depends on when its story broke, not on how much traffic it attracts.
     candidates = db.query(Cluster).filter(
         Cluster.status == ClusterStatus.ACTIVE,
-        Cluster.last_seen_at >= window_start,
+        Cluster.first_seen_at >= window_start,
+        Cluster.first_seen_at >= max_age_start,
         Cluster.first_seen_at <= window_end,
     ).all()
 
@@ -198,12 +262,15 @@ def match_or_create_cluster(
             game_cluster = db.query(Cluster).filter(
                 Cluster.status == ClusterStatus.ACTIVE,
                 Cluster.game_identifier == game_identifier,
-                Cluster.last_seen_at >= window_start,
+                Cluster.first_seen_at >= window_start,
+                Cluster.first_seen_at >= max_age_start,
                 Cluster.first_seen_at <= window_end,
             ).first()
 
             if game_cluster:
-                logger.debug("  → Game match (%s): clustering with #%s", game_identifier, game_cluster.id)
+                log_cluster_decision(
+                    "game", game_cluster.id, variant, detail=game_identifier
+                )
                 update_cluster_metadata(db, game_cluster, variant, tokens, entities, source, tag_names)
                 cluster_variant = ClusterVariant(
                     cluster_id=game_cluster.id,
@@ -237,6 +304,7 @@ def match_or_create_cluster(
 
     best_title_match = None
     best_title_rank = (0.0, 0.0, 0.0)
+    best_title_route = "title"
     for cluster in candidates:
         cluster_titles = candidate_titles.get(cluster.id, set())
         if cluster.headline:
@@ -271,14 +339,23 @@ def match_or_create_cluster(
                 if rank > best_title_rank:
                     best_title_match = cluster
                     best_title_rank = rank
+                    # Which of the three title tests carried it, most specific
+                    # first — the routes have very different failure modes and
+                    # CM-1 exists so they can be told apart in production.
+                    if title_sim >= settings.title_similarity_threshold:
+                        best_title_route = "title"
+                    elif strong_containment:
+                        best_title_route = "containment"
+                    else:
+                        best_title_route = "title_name"
 
     if best_title_match is not None:
         title_confidence = best_title_rank[0]
-        logger.debug(
-            "  → Title match (confidence=%.2f, jaccard=%.2f): clustering with #%s",
-            title_confidence,
-            best_title_rank[1],
+        log_cluster_decision(
+            best_title_route,
             best_title_match.id,
+            variant,
+            detail=f"confidence={title_confidence:.2f} jaccard={best_title_rank[1]:.2f}",
         )
         update_cluster_metadata(
             db, best_title_match, variant, tokens, entities, source, tag_names
@@ -317,6 +394,15 @@ def match_or_create_cluster(
         if variant.title else []
     )
 
+    # Tokens contributed by the variant's own entity names. Built from the
+    # *unfiltered* entity list on purpose: team names ("San Jose Sharks") are
+    # excluded from E by filter_team_entities, but they appear in nearly every
+    # headline we ingest, so leaving them in the topical comparison would let
+    # any two Sharks headlines clear the gate on the word "Sharks" alone. The
+    # strip-set is completed per candidate with that cluster's entity names.
+    variant_entity_tokens = entity_name_tokens(db, entities)
+
+    best_topic_evidence = (0.0, 0.0)
     for cluster in candidates:
         # Get cluster's aggregated entities and tokens
         cluster_entities = cluster.entities_agg or []
@@ -364,10 +450,15 @@ def match_or_create_cluster(
             entities_c=cluster_clustering_entities,
         )
 
-        # Shared subject name in the summaries + a compatible event type is
-        # enough on its own: the lexical/entity signals are structurally absent
-        # when one headline hides the subject behind a role. The 72h event
-        # window already scopes this to the same news cycle.
+        # Shared subject name in the summaries + a compatible event type. The
+        # lexical/entity signals are structurally absent when one headline hides
+        # its subject behind a role ("Sharks' first-round pick finalizes plans").
+        #
+        # This merges on the name alone, which makes it a blanket "same person,
+        # compatible event type" rule — and CLASSIFY_PROMPT_USER tells the model
+        # to lead every summary with the subject's full name, so it fires on
+        # nearly every pair of stories about a star player (RM-4). The topical
+        # evidence gate below is what now holds it in check (CM-4).
         summary_name_match = (
             bool(summary_name_keys)
             and bool(cluster.llm_summary)
@@ -375,23 +466,73 @@ def match_or_create_cluster(
             and bool(summary_name_keys & extract_person_name_keys(cluster.llm_summary))
         )
 
-        logger.debug(
-            "  → Candidate #%s: E=%.3f T=%.3f K=%.3f L=%.3f S=%.3f "
-            "entities_comparable=%s matched=%s summary_name_match=%s",
-            cluster.id, E, T, K, L, S, entities_comparable, matched,
-            summary_name_match,
+        # Topical evidence: do these two articles share anything beyond the
+        # people they are about? Compared against every title in the cluster,
+        # not just its headline, for the same reason step 2.5 does.
+        strip = variant_entity_tokens | entity_name_tokens(db, cluster_entities)
+        cluster_all_titles = candidate_titles.get(cluster.id, set())
+        if cluster.headline:
+            cluster_all_titles = cluster_all_titles | {cluster.headline}
+        T_topic = 0.0
+        for cluster_title in cluster_all_titles:
+            T_topic = max(T_topic, topic_similarity(
+                variant_title_tokens,
+                normalize_tokens(normalize_title_for_matching(cluster_title)),
+                strip,
+            ))
+
+        # The same entity-strip applied to the summaries. Raw L cannot be used
+        # here: the prompt's "lead with the person's full name" instruction puts
+        # the name in both summaries, which is a third of a 5-10 word string, so
+        # raw L separates the canonical merge-this pair from the canonical
+        # don't-merge pair by 0.007 — noise, not a threshold (RM-4).
+        L_topic = 0.0
+        if L > 0.0 and cluster.llm_summary:
+            L_topic = topic_similarity(
+                normalize_tokens(normalize_title_for_matching(llm_summary)),
+                normalize_tokens(normalize_title_for_matching(cluster.llm_summary)),
+                strip,
+            )
+
+        # Entity overlap and event-type compatibility may corroborate a merge
+        # but must never cause one. Without this, same player + same event type
+        # scored 0.55*1.0 + 0.35*0.0 + 0.10*1.0 = 0.65 against a 0.62 bar and
+        # merged two articles sharing no words at all (RM-4).
+        topical_evidence = (
+            T_topic > settings.topic_evidence_threshold
+            or L_topic >= settings.summary_evidence_threshold
         )
 
-        if matched or summary_name_match:
+        logger.debug(
+            "  → Candidate #%s: E=%.3f T=%.3f T_topic=%.3f K=%.3f L=%.3f "
+            "L_topic=%.3f S=%.3f entities_comparable=%s matched=%s "
+            "summary_name_match=%s topical_evidence=%s",
+            cluster.id, E, T, T_topic, K, L, L_topic, S, entities_comparable,
+            matched, summary_name_match, topical_evidence,
+        )
+
+        if (matched or summary_name_match) and topical_evidence:
             if S > best_score + 0.000001:
                 best_cluster = cluster
                 best_score = S
+                best_topic_evidence = (T_topic, L_topic)
 
     # Step 4: Create cluster if no match found
     if best_cluster is None:
         cluster = create_cluster(db, variant, tokens, entities, event_type, source, game_identifier, tag_names)
+        log_cluster_decision(
+            "new_cluster", cluster.id, variant,
+            detail=f"candidates={len(candidates)}",
+        )
     else:
         cluster = best_cluster
+        log_cluster_decision(
+            "score", cluster.id, variant,
+            detail=(
+                f"S={best_score:.3f} T_topic={best_topic_evidence[0]:.3f} "
+                f"L_topic={best_topic_evidence[1]:.3f}"
+            ),
+        )
         # Update cluster metadata
         update_cluster_metadata(db, cluster, variant, tokens, entities, source, tag_names)
 
