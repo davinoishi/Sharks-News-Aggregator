@@ -341,13 +341,16 @@ def classify_article(
     description: str,
     source,
     url: str = "",
-) -> Tuple[str, List[str], Optional[str], bool]:
+) -> Tuple[str, List[str], Optional[str], bool, Optional[str]]:
     """
     Classify event type, tags, and generate clustering summary.
     Uses LLM via OpenRouter with keyword-based fallback.
 
     Returns:
-        Tuple of (event_type, tag_names, llm_summary, low_value).
+        Tuple of (event_type, tag_names, llm_summary, low_value, story_key).
+        story_key is the canonical topic slug used as the primary clustering
+        signal (brief 15); None on any keyword-fallback path, which the matcher
+        reads as "no information" rather than as a mismatch.
         low_value is the LLM's judgment that the page is a machine-generated
         stub (streaming promo, score widget, odds page). It complements the
         keyword filter at ingest (is_scoreboard_stub) — the LLM catches
@@ -358,6 +361,7 @@ def classify_article(
     tag_names = []
     event_type = "other"
     low_value = False
+    story_key = None
 
     if settings.llm_tagging_enabled:
         try:
@@ -370,9 +374,11 @@ def classify_article(
                 tag_names = result.tags
                 llm_summary = result.summary
                 low_value = result.low_value
+                story_key = result.story_key
                 logger.info(
-                    "  LLM classified: event=%s, tags=%s, summary=%s, low_value=%s",
-                    event_type, tag_names, llm_summary, low_value,
+                    "  LLM classified: event=%s, tags=%s, summary=%s, "
+                    "story_key=%s, low_value=%s",
+                    event_type, tag_names, llm_summary, story_key, low_value,
                 )
             else:
                 logger.warning("  LLM classification error: %s, falling back to keywords", result.error)
@@ -393,7 +399,7 @@ def classify_article(
     if ('barracuda' in title.lower() or 'sjbarracuda' in url_lower) and 'Barracuda' not in tag_names:
         tag_names.append('Barracuda')
 
-    return event_type, tag_names, llm_summary, low_value
+    return event_type, tag_names, llm_summary, low_value, story_key
 
 
 def classify_tags_keyword(title: str, source) -> List[str]:

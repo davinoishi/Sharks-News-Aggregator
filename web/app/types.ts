@@ -40,6 +40,10 @@ export interface Cluster {
   // real link without fetching cluster detail. Absent if the cluster has no
   // variants.
   top_url?: string | null;
+  /** A few sibling headlines, so a mis-merged story is visible on the card
+   *  rather than hidden behind "View sources" (brief 15, SK-5). Empty for
+   *  single-variant clusters. */
+  preview_headlines?: string[];
   variants?: StoryVariant[];
 }
 

@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 import pytest
 
 from app.models import (
+    Cluster,
     Entity,
     EventType,
     IngestMethod,
@@ -57,7 +58,7 @@ def _entity(db, name, entity_type="player"):
 
 
 def _variant(db, source, title, published_at, event_type="signing", url=None,
-             llm_summary=None, entity_ids=None):
+             llm_summary=None, entity_ids=None, story_key=None):
     global _n
     _n += 1
     url = url or f"https://src.example.com/{_n}"
@@ -73,7 +74,11 @@ def _variant(db, source, title, published_at, event_type="signing", url=None,
         tokens=normalize_tokens(title),
         entities=list(entity_ids or []),
         event_type=EventType(event_type),
-        extra_metadata={"llm_summary": llm_summary} if llm_summary else {},
+        extra_metadata={
+            k: v for k, v in
+            (("llm_summary", llm_summary), ("story_key", story_key))
+            if v
+        },
     )
     db.add(v)
     db.flush()
@@ -81,10 +86,11 @@ def _variant(db, source, title, published_at, event_type="signing", url=None,
 
 
 def _cluster(db, source, title, published_at, event_type="signing", url=None,
-             llm_summary=None, entity_ids=None):
+             llm_summary=None, entity_ids=None, story_key=None):
     entity_ids = list(entity_ids or [])
     v = _variant(db, source, title, published_at, event_type, url=url,
-                 llm_summary=llm_summary, entity_ids=entity_ids)
+                 llm_summary=llm_summary, entity_ids=entity_ids,
+                 story_key=story_key)
     return match_or_create_cluster(
         db, v, v.tokens, entity_ids, event_type, source, tag_names=[]
     )
@@ -486,3 +492,108 @@ def test_cluster_stops_accepting_variants_once_its_story_is_old(pg_db):
     # filter still offered this cluster as a candidate; first_seen_at does not.
     cid3 = _cluster(pg_db, src, title, t0 + timedelta(hours=120), "signing")
     assert cid3 != cid1
+
+
+# --- brief 15: story keys ----------------------------------------------------
+
+def test_story_key_agreement_merges_across_unlike_headlines(pg_db):
+    """The recall side of RM-4.
+
+    These two cover the same story and production put them on *different*
+    cards (4152 and 4188) because their headlines share little beyond the
+    names. A shared story_key is enough evidence to merge them.
+    """
+    src = _source(pg_db)
+    now = datetime.utcnow()
+    entities = _celebrini(pg_db)
+    cid1 = _cluster(
+        pg_db, src,
+        "Macklin Celebrini, Michael Misa make Sharks clear No. 1 in The Athletic's pipeline rankings",
+        now, "prospect", entity_ids=entities, story_key="sharks-pipeline-ranking",
+    )
+    cid2 = _cluster(
+        pg_db, src, "San Jose Sharks are No. 1 in NHL Pipeline Rankings for 2026",
+        now, "prospect", entity_ids=entities, story_key="sharks-pipeline-ranking-2026",
+    )
+    assert cid1 == cid2
+
+
+def test_differing_story_keys_veto_a_merge_lexical_evidence_would_allow(pg_db):
+    """The case brief 14 could not reach.
+
+    "Sharks sign Celebrini to 5-year, $94M extension" and "Cale Makar Extension
+    Questions Emerge" share the word "extension", so brief 14's evidence gate
+    passes them. Differing story keys are what finally separates them.
+    """
+    src = _source(pg_db)
+    now = datetime.utcnow()
+    entities = _celebrini(pg_db)
+    cid1 = _cluster(
+        pg_db, src, "Sharks sign Celebrini to 5-year, $94M extension",
+        now, "signing", entity_ids=entities, story_key="celebrini-contract-extension",
+    )
+    cid2 = _cluster(
+        pg_db, src, "Cale Makar Extension Questions Emerge",
+        now, "signing", entity_ids=entities, story_key="cale-makar-extension-speculation",
+    )
+    assert cid1 != cid2
+
+
+def test_missing_story_key_falls_back_to_brief_14_behaviour(pg_db):
+    """Absent is not a mismatch.
+
+    Every cluster predating brief 15 has no key, as does anything classified by
+    the keyword fallback. Those must keep merging on the old evidence rather
+    than being vetoed for lacking a signal they never had.
+    """
+    src = _source(pg_db)
+    now = datetime.utcnow()
+    entities = _celebrini(pg_db)
+    # Neither side has a key — the same-story pair from brief 14 still merges.
+    cid1 = _cluster(
+        pg_db, src, "Macklin Celebrini Card Auction Nears $500K & It's Not Done",
+        now, "prospect", entity_ids=entities,
+    )
+    cid2 = _cluster(
+        pg_db, src, "Record-Setting Macklin Celebrini Card Highlights Goldin Auctions",
+        now, "prospect", entity_ids=entities,
+    )
+    assert cid1 == cid2
+
+
+def test_one_sided_story_key_does_not_veto(pg_db):
+    """A key on only one side is still "unknown", not "differ"."""
+    src = _source(pg_db)
+    now = datetime.utcnow()
+    entities = _celebrini(pg_db)
+    cid1 = _cluster(
+        pg_db, src, "Macklin Celebrini Card Auction Nears $500K & It's Not Done",
+        now, "prospect", entity_ids=entities,
+    )
+    cid2 = _cluster(
+        pg_db, src, "Record-Setting Macklin Celebrini Card Highlights Goldin Auctions",
+        now, "prospect", entity_ids=entities,
+        story_key="celebrini-rookie-card-auction",
+    )
+    assert cid1 == cid2
+
+
+def test_cluster_backfills_a_missing_story_key_from_a_later_variant(pg_db):
+    """A keyword-fallback first variant must not blind the cluster forever."""
+    src = _source(pg_db)
+    now = datetime.utcnow()
+    entities = _celebrini(pg_db)
+    cid = _cluster(
+        pg_db, src, "Macklin Celebrini Card Auction Nears $500K & It's Not Done",
+        now, "prospect", entity_ids=entities,
+    )
+    cluster = pg_db.query(Cluster).filter(Cluster.id == cid).first()
+    assert cluster.story_key is None
+
+    _cluster(
+        pg_db, src, "Record-Setting Macklin Celebrini Card Highlights Goldin Auctions",
+        now, "prospect", entity_ids=entities,
+        story_key="celebrini-rookie-card-auction",
+    )
+    pg_db.refresh(cluster)
+    assert cluster.story_key == "celebrini-rookie-card-auction"

@@ -211,6 +211,13 @@ def _describe_health(health) -> str:
             for s in health.broken_sources
         )
         parts.append(f"broken sources: {names}")
+    if health.oversized_clusters:
+        worst = health.oversized_clusters[0]
+        parts.append(
+            f"oversized clusters: {len(health.oversized_clusters)} "
+            f"(worst #{worst['id']} — {worst['variants']} variants over "
+            f"{worst['span_hours']}h: {worst['headline']})"
+        )
     return "; ".join(parts)
 
 
@@ -230,6 +237,7 @@ def _send_webhook_alert(message: str, health) -> bool:
         "content": message,
         "conditions": health.conditions,
         "broken_sources": health.broken_sources,
+        "oversized_clusters": health.oversized_clusters,
         "last_scan_at": health.last_scan_at.isoformat() if health.last_scan_at else None,
     }
     try:
@@ -248,9 +256,16 @@ def monitor_pipeline_health():
 
     Flags the pipeline degraded when the newest source fetch is older than 3x
     the ingest interval, or when any approved source has hit the broken
-    threshold (fetch_error_count >= 3). On a degraded condition it logs at ERROR
-    and, if ALERT_WEBHOOK_URL is set, POSTs a short JSON alert — de-duplicated so
-    the same condition doesn't re-fire more than once per alert_dedup_hours.
+    threshold (fetch_error_count >= 3). On any alertable condition it logs and,
+    if ALERT_WEBHOOK_URL is set, POSTs a short JSON alert — de-duplicated so the
+    same condition doesn't re-fire more than once per alert_dedup_hours.
+
+    Note the two are not the same set. ``oversized_clusters`` (brief 15, SK-6)
+    is an alertable condition that deliberately does NOT set ``degraded``: a
+    mis-merged card is a content-quality problem, not an outage, and flipping
+    /health would train an uptime pinger to cry wolf. So this task keys off
+    ``health.conditions``, not ``health.degraded`` — an earlier version returned
+    early on "not degraded" and would have swallowed the advisory entirely.
 
     Runs every ~30 minutes via Celery Beat.
     """
@@ -258,12 +273,15 @@ def monitor_pipeline_health():
     try:
         health = check_pipeline_health(db)
 
-        if not health.degraded:
+        if not health.conditions:
             logger.debug("Pipeline health OK")
             return {"status": "ok", "degraded": False}
 
         summary = _describe_health(health)
-        logger.error("Pipeline degraded: %s", summary)
+        if health.degraded:
+            logger.error("Pipeline degraded: %s", summary)
+        else:
+            logger.warning("Pipeline advisory: %s", summary)
 
         # De-duplicate per condition: only alert if we haven't fired for this
         # condition within the dedup window.
@@ -277,7 +295,8 @@ def monitor_pipeline_health():
 
         alert_sent = False
         if conditions_to_alert:
-            message = f"Sharks aggregator pipeline degraded: {summary}"
+            label = "degraded" if health.degraded else "advisory"
+            message = f"Sharks aggregator pipeline {label}: {summary}"
             alert_sent = _send_webhook_alert(message, health)
             # Record the fire time regardless of webhook success so a flapping
             # condition with no webhook configured doesn't spin; the ERROR log
@@ -286,8 +305,8 @@ def monitor_pipeline_health():
                 set_site_metric(db, _ALERT_STATE_PREFIX + condition, now_ts)
 
         return {
-            "status": "degraded",
-            "degraded": True,
+            "status": "degraded" if health.degraded else "advisory",
+            "degraded": health.degraded,
             "conditions": health.conditions,
             "alerted": conditions_to_alert,
             "webhook_sent": alert_sent,

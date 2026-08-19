@@ -124,6 +124,44 @@ def log_cluster_decision(route: str, cluster_id, variant, detail: str = "") -> N
     )
 
 
+def story_key_similarity(key_v: Optional[str], key_c: Optional[str]) -> float:
+    """Compare two story_key slugs by token overlap, not string equality.
+
+    The model emits near-misses for the same event — "celebrini-card-auction"
+    against "celebrini-rookie-card-auction" — so equality would throw away most
+    of the signal. Jaccard over hyphen-split parts keeps them together while
+    still separating "celebrini-rookie-card-auction" from
+    "sharks-pipeline-ranking".
+
+    Returns 0.0 when either key is missing. Callers must treat that as "no
+    information" rather than as a mismatch — see ``story_key_verdict``.
+    """
+    if not key_v or not key_c:
+        return 0.0
+    parts_v = {p for p in key_v.split("-") if p}
+    parts_c = {p for p in key_c.split("-") if p}
+    if not parts_v or not parts_c:
+        return 0.0
+    return len(parts_v & parts_c) / len(parts_v | parts_c)
+
+
+def story_key_verdict(key_v: Optional[str], key_c: Optional[str]) -> tuple:
+    """Return (verdict, score) where verdict is 'agree' | 'differ' | 'unknown'.
+
+    Three-valued on purpose. Two keys that disagree is real evidence the
+    articles are different stories — the signal RM-4 lacked entirely — but a
+    *missing* key is not evidence of anything, and collapsing the two into a
+    boolean is exactly how entity overlap came to act as a guaranteed negative
+    (see calculate_similarity_score's docstring).
+    """
+    if not key_v or not key_c:
+        return "unknown", 0.0
+    score = story_key_similarity(key_v, key_c)
+    if score >= settings.story_key_agreement_threshold:
+        return "agree", score
+    return "differ", score
+
+
 def entity_name_tokens(db: Session, entity_ids) -> set:
     """Tokens that come from the names of ``entity_ids``.
 
@@ -373,6 +411,10 @@ def match_or_create_cluster(
     # Use LLM summary for enhanced semantic matching when available
     llm_summary = (variant.extra_metadata or {}).get("llm_summary") if hasattr(variant, 'extra_metadata') else None
     has_llm_signal = bool(llm_summary) and settings.llm_clustering_enabled
+    variant_story_key = (
+        (variant.extra_metadata or {}).get("story_key")
+        if hasattr(variant, "extra_metadata") else None
+    )
 
     best_cluster = None
     best_score = 0.0
@@ -403,6 +445,7 @@ def match_or_create_cluster(
     variant_entity_tokens = entity_name_tokens(db, entities)
 
     best_topic_evidence = (0.0, 0.0)
+    best_key = ("unknown", 0.0)
     for cluster in candidates:
         # Get cluster's aggregated entities and tokens
         cluster_entities = cluster.entities_agg or []
@@ -494,21 +537,31 @@ def match_or_create_cluster(
                 strip,
             )
 
+        # The story_key verdict. "agree" is positive topical evidence in its own
+        # right; "differ" vetoes the merge outright, which is the signal no
+        # lexical measure could supply — "Celebrini's card sold" and "Celebrini
+        # tops the pipeline" share only his name (brief 15). "unknown" (either
+        # side missing a key) falls through to the brief 14 behaviour unchanged.
+        key_verdict, key_score = story_key_verdict(variant_story_key, cluster.story_key)
+
         # Entity overlap and event-type compatibility may corroborate a merge
         # but must never cause one. Without this, same player + same event type
         # scored 0.55*1.0 + 0.35*0.0 + 0.10*1.0 = 0.65 against a 0.62 bar and
         # merged two articles sharing no words at all (RM-4).
         topical_evidence = (
-            T_topic > settings.topic_evidence_threshold
+            key_verdict == "agree"
+            or T_topic > settings.topic_evidence_threshold
             or L_topic >= settings.summary_evidence_threshold
         )
+        if key_verdict == "differ":
+            topical_evidence = False
 
         logger.debug(
             "  → Candidate #%s: E=%.3f T=%.3f T_topic=%.3f K=%.3f L=%.3f "
-            "L_topic=%.3f S=%.3f entities_comparable=%s matched=%s "
+            "L_topic=%.3f S=%.3f key=%s(%.2f) entities_comparable=%s matched=%s "
             "summary_name_match=%s topical_evidence=%s",
-            cluster.id, E, T, T_topic, K, L, L_topic, S, entities_comparable,
-            matched, summary_name_match, topical_evidence,
+            cluster.id, E, T, T_topic, K, L, L_topic, S, key_verdict, key_score,
+            entities_comparable, matched, summary_name_match, topical_evidence,
         )
 
         if (matched or summary_name_match) and topical_evidence:
@@ -516,6 +569,7 @@ def match_or_create_cluster(
                 best_cluster = cluster
                 best_score = S
                 best_topic_evidence = (T_topic, L_topic)
+                best_key = (key_verdict, key_score)
 
     # Step 4: Create cluster if no match found
     if best_cluster is None:
@@ -530,7 +584,8 @@ def match_or_create_cluster(
             "score", cluster.id, variant,
             detail=(
                 f"S={best_score:.3f} T_topic={best_topic_evidence[0]:.3f} "
-                f"L_topic={best_topic_evidence[1]:.3f}"
+                f"L_topic={best_topic_evidence[1]:.3f} "
+                f"key={best_key[0]}({best_key[1]:.2f})"
             ),
         )
         # Update cluster metadata
@@ -919,7 +974,9 @@ def create_cluster(
     """
     event_type_enum = EventType[event_type.upper()] if event_type.upper() in EventType.__members__ else EventType.OTHER
 
-    llm_summary = (variant.extra_metadata or {}).get("llm_summary") if hasattr(variant, 'extra_metadata') else None
+    extra = (variant.extra_metadata or {}) if hasattr(variant, 'extra_metadata') else {}
+    llm_summary = extra.get("llm_summary")
+    story_key = extra.get("story_key")
 
     published_at = variant.published_at or utcnow()
     cluster = Cluster(
@@ -932,6 +989,7 @@ def create_cluster(
         entities_agg=entities,
         game_identifier=game_identifier,
         llm_summary=llm_summary,
+        story_key=story_key,
     )
 
     db.add(cluster)
@@ -1067,12 +1125,20 @@ def update_cluster_metadata(db: Session, cluster, variant, tokens: List[str], en
     # Backfill a missing cluster summary when a later enrichment call succeeds.
     # The old behavior permanently left the cluster without an LLM signal if
     # OpenRouter happened to fail for the first variant.
-    variant_summary = (
-        (variant.extra_metadata or {}).get("llm_summary")
-        if hasattr(variant, "extra_metadata") else None
-    )
+    variant_extra = (variant.extra_metadata or {}) if hasattr(variant, "extra_metadata") else {}
+    variant_summary = variant_extra.get("llm_summary")
     if not cluster.llm_summary and variant_summary:
         cluster.llm_summary = variant_summary
+
+    # Same backfill for story_key: a cluster whose first variant was classified
+    # by the keyword fallback (or created before brief 15) has no key, and the
+    # first LLM-classified member to arrive should give it one. Never overwrite
+    # an existing key — the cluster's identity is set by the story it started
+    # as, and letting each new member rewrite it would make the signal drift
+    # exactly the way the headline used to.
+    variant_key = variant_extra.get("story_key")
+    if not cluster.story_key and variant_key:
+        cluster.story_key = variant_key
 
     # Re-pick the headline across the whole membership now that the summary is
     # current. Runs after the backfill above so a cluster whose first variant

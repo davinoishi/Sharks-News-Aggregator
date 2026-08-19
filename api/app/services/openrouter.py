@@ -76,7 +76,22 @@ to the name from the text). This lets two stories about the same person cluster
 together. E.g. 'Celebrini contract extension analysis', 'Keaton Verhoeff returns
 to North Dakota'.
 
-Respond as JSON: {{"tags": ["Tag1", "Tag2"], "event_type": "game", "summary": "Keaton Verhoeff returns to North Dakota", "low_value": false, "confidence": "HIGH"}}"""
+story_key: a lowercase hyphenated slug of 2-5 words naming THE EVENT, not the
+subject. Two articles covering the same event must produce the SAME key; two
+articles about the same person covering DIFFERENT events must produce
+DIFFERENT keys. This is the single most important field for grouping — get the
+event right, and do not let a famous name pull unrelated stories together.
+
+  'Macklin Celebrini Card Auction Nears $500K'      -> celebrini-rookie-card-auction
+  'Celebrini rookie card sells for $1.28M'          -> celebrini-rookie-card-auction
+  'Celebrini, Misa make Sharks No. 1 in pipeline'   -> sharks-pipeline-ranking
+  'Sharks are No. 1 in NHL Pipeline Rankings 2026'  -> sharks-pipeline-ranking
+  'Sharks sign Celebrini to 5-year, $94M extension' -> celebrini-contract-extension
+
+The first two share a key; the next two share a different key; all five are
+about Macklin Celebrini, and that is not what decides the key.
+
+Respond as JSON: {{"tags": ["Tag1", "Tag2"], "event_type": "game", "summary": "Keaton Verhoeff returns to North Dakota", "story_key": "keaton-verhoeff-north-dakota-return", "low_value": false, "confidence": "HIGH"}}"""
 
 
 @dataclass
@@ -89,11 +104,40 @@ class RelevanceResult:
     latency_ms: int
 
 
+# story_key slugs are compared, never trusted as identifiers: the model will
+# emit near-misses ("celebrini-card-auction" vs "celebrini-rookie-card-auction"),
+# so normalization only has to make them comparable, not canonical.
+_STORY_KEY_STRIP_RE = re.compile(r"[^a-z0-9-]+")
+_STORY_KEY_DASHES_RE = re.compile(r"-{2,}")
+STORY_KEY_MAX_LEN = 80
+
+
+def normalize_story_key(value) -> Optional[str]:
+    """Coerce a model-supplied story_key to a comparable slug, or None.
+
+    Returns None rather than a salvaged fragment when there is nothing usable:
+    the matcher reads absent as "no information" and present as evidence, so a
+    garbage key is strictly worse than no key.
+    """
+    if not isinstance(value, str):
+        return None
+    slug = _STORY_KEY_STRIP_RE.sub("-", value.strip().lower())
+    slug = _STORY_KEY_DASHES_RE.sub("-", slug).strip("-")
+    if not slug:
+        return None
+    return slug[:STORY_KEY_MAX_LEN].strip("-") or None
+
+
 @dataclass
 class ClassificationResult:
     tags: List[str] = field(default_factory=list)
     event_type: str = "other"
     summary: Optional[str] = None
+    # Canonical topic slug naming the EVENT, used as the primary clustering
+    # signal (brief 15). None whenever the LLM is disabled, errors, or returns
+    # something unusable — never a guess, because a wrong key is worse than no
+    # key: the matcher treats absent as "no information" and present as evidence.
+    story_key: Optional[str] = None
     # True when the LLM judged the page a machine-generated stub (streaming
     # promo, score widget, odds page) rather than reporting. Fail-open: stays
     # False on LLM errors so an outage never suppresses real news.
@@ -313,6 +357,8 @@ class OpenRouterService:
         if isinstance(summary, str):
             summary = summary[:100]
 
+        story_key = normalize_story_key(parsed.get("story_key"))
+
         low_value = parsed.get("low_value", False)
         if isinstance(low_value, str):
             low_value = low_value.lower() in ("true", "yes")
@@ -321,6 +367,7 @@ class OpenRouterService:
             tags=tags,
             event_type=event_type,
             summary=summary,
+            story_key=story_key,
             low_value=bool(low_value),
             confidence=parsed.get("confidence"),
             error=None,

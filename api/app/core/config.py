@@ -50,6 +50,11 @@ class Settings(BaseSettings):
     # of an old story still finds its siblings. Stops a busy cluster from
     # being kept alive indefinitely by its own traffic.
     cluster_max_age_hours: int = 96
+    # story_key (brief 15). Keys are compared by token overlap, not equality —
+    # the model emits near-misses for the same event. Above the threshold two
+    # articles are treated as the same story; below it, as different ones. A
+    # missing key on either side is "no information", never a mismatch.
+    story_key_agreement_threshold: float = 0.50
 
     # Ingestion age gate
     max_article_age_days: int = 7

@@ -68,6 +68,33 @@ SK-3.
 
 ---
 
+## Execution status (2026-08-19)
+
+**Shipped: SK-1, SK-2, SK-5, SK-6, SK-7.** Deferred: SK-3 and SK-4, both for
+reasons the brief itself gives.
+
+**SK-3 is deferred by this brief's own instruction.** It says *"Do this last,
+behind the SK-2 measurement"* — and that measurement needs `story_key` to have
+run in production against real articles. On the day SK-1 deploys, every existing
+cluster has no key and every comparison takes the "unknown" fallback, so there is
+nothing to measure yet. Retiring the name-leading instruction before then would
+re-break the role-headline case while the replacement signal is still unproven.
+Revisit once the decision log shows `key=agree`/`key=differ` firing on real
+traffic.
+
+**SK-4 is deferred as too large for this PR.** Related-stories links need a new
+table, a migration, relation recording in the matcher, an API field and a web
+surface — a second schema change and a new UI concept on top of a PR that already
+carries one migration plus API, worker and web changes. It is the repayment for
+over-splitting, so it should not be dropped; it wants its own pass.
+
+Note the practical consequence of deferring both: **brief 14's accepted
+regression is still live.** The role-headline case still splits, and there is no
+"Related stories" link yet to soften a split. `story_key` is what fixes it, and
+only once clusters have accumulated keys.
+
+---
+
 ## SK-1 — Emit `story_key` from the classifier
 
 - **Approach.** Add `story_key` to `CLASSIFY_PROMPT_USER`'s JSON contract and to

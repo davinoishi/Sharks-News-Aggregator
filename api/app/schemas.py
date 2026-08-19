@@ -41,6 +41,10 @@ class ClusterItem(BaseModel):
     # Top-ranked source URL (official→press→other), so the frontend can make the
     # headline a real link without an extra round-trip (U3). None if no variants.
     top_url: Optional[str] = None
+    # A few sibling headlines, so a mis-merged story is visible on the card
+    # instead of hidden behind "View sources" (brief 15, SK-5). Empty for
+    # single-variant clusters.
+    preview_headlines: List[str] = []
 
 
 class EntityItem(BaseModel):

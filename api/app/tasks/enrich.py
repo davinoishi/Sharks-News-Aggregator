@@ -188,7 +188,7 @@ def enrich_raw_item(self, raw_item_id: int):
             )
 
         # Step 3: Classify event type and tags (LLM with keyword fallback)
-        event_type_str, tag_names, llm_summary, low_value = classify_article(
+        event_type_str, tag_names, llm_summary, low_value, story_key = classify_article(
             db, text, entity_ids, raw_item.raw_title or "", description,
             source, url=raw_item.canonical_url or ""
         )
@@ -214,6 +214,8 @@ def enrich_raw_item(self, raw_item_id: int):
         extra_metadata = {}
         if llm_summary:
             extra_metadata["llm_summary"] = llm_summary
+        if story_key:
+            extra_metadata["story_key"] = story_key
 
         variant = StoryVariant(
             raw_item_id=raw_item.id,

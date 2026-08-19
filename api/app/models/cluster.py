@@ -68,6 +68,13 @@ class Cluster(Base):
     click_count = Column(Integer, default=0)
     game_identifier = Column(String(20), nullable=True, index=True)
     llm_summary = Column(Text, nullable=True)
+    # Canonical topic slug naming the event this cluster covers (brief 15).
+    # Primary clustering signal: a shared key is strong evidence two articles
+    # are the same story, and differing keys are evidence they are not — which
+    # is what entity overlap alone could never tell (RM-4). Nullable, because a
+    # keyword-fallback variant has none and absent must read as "no
+    # information", never as a mismatch.
+    story_key = Column(String(80), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), default=utcnow)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 

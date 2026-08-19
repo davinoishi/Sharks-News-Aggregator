@@ -116,3 +116,42 @@ def test_classify_low_value_accepts_string_and_defaults_false(svc, monkeypatch):
 def test_classify_low_value_false_on_error(svc, monkeypatch):
     monkeypatch.setattr(svc, "_call_chat", lambda *a, **k: (None, "timeout"))
     assert svc.classify_and_summarize("title").low_value is False
+
+
+# --- brief 15: story_key -----------------------------------------------------
+
+def test_normalize_story_key_coerces_model_output():
+    from app.services.openrouter import normalize_story_key
+
+    assert normalize_story_key("Celebrini-Rookie-Card-Auction") == "celebrini-rookie-card-auction"
+    assert normalize_story_key("  celebrini rookie card  ") == "celebrini-rookie-card"
+    assert normalize_story_key("CELEBRINI--CARD!!") == "celebrini-card"
+    assert normalize_story_key("a" * 200) == "a" * 80
+
+
+def test_normalize_story_key_returns_none_rather_than_a_fragment():
+    """A garbage key is strictly worse than no key.
+
+    The matcher reads absent as "no information" and present as evidence, so
+    salvaging something unusable would turn a model slip into a false veto.
+    """
+    from app.services.openrouter import normalize_story_key
+
+    for junk in (None, "", "   ", "!!!", "-----", 123, [], {}):
+        assert normalize_story_key(junk) is None
+
+
+def test_story_key_verdict_is_three_valued():
+    from app.enrichment.clustering import story_key_verdict
+
+    # Near-misses for the same event agree; equality would lose this.
+    assert story_key_verdict(
+        "celebrini-rookie-card-auction", "celebrini-card-auction"
+    )[0] == "agree"
+    # Same person, different events — the case no lexical measure separates.
+    assert story_key_verdict(
+        "celebrini-rookie-card-auction", "celebrini-contract-extension"
+    )[0] == "differ"
+    # Missing on either side is "no information", never a mismatch.
+    assert story_key_verdict("celebrini-rookie-card-auction", None)[0] == "unknown"
+    assert story_key_verdict(None, None)[0] == "unknown"
