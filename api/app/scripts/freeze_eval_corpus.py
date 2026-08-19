@@ -24,9 +24,17 @@ measures the wrong thing, and a corpus of only recent items measures August. The
 strata are:
 
     accepted            became a story_variant — the ordinary case, the control
+    ingest_stub         rejected by the ingest-time stub filter and kept on
+                        purpose (INGEST_STUB_FLAG). These are the only
+                        HIGH-CONFIDENCE low_value positives: a rule matched
+                        them, so the label is not a guess. Before that flag
+                        existed these rows were discarded outright and
+                        low_value could not be measured at all.
     low_value_suspect   relevance-approved but never became a variant, which is
-                        how a low_value stub looks after the fact (the flag
-                        itself is not persisted — enrich.py just skips)
+                        how an LLM-flagged low_value stub looks after the fact
+                        (that flag is still not persisted — enrich.py just
+                        skips). Weaker label than ingest_stub: "no variant" has
+                        other causes.
     rejected            relevance rejected it
     llm_compared        carries both a keyword result and an LLM response —
                         the RM-2 seam. Not "disagreed": that cannot be filtered
@@ -50,13 +58,21 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from sqlalchemy import func
+from sqlalchemy import Text, func
 
 from app.core.database import SessionLocal
 from app.models import Cluster, ClusterVariant, RawItem, Source, StoryVariant
 from app.models.validation_log import ValidationLog, ValidationResult
+from app.tasks.ingest import INGEST_STUB_FLAG
 
-STRATA = ("accepted", "low_value_suspect", "rejected", "llm_compared", "clustered")
+STRATA = (
+    "accepted",
+    "ingest_stub",
+    "low_value_suspect",
+    "rejected",
+    "llm_compared",
+    "clustered",
+)
 
 
 def _record(raw, source, variant, log, cluster_id, stratum):
@@ -99,7 +115,10 @@ def _record(raw, source, variant, log, cluster_id, stratum):
         "labels": {
             # What production did, not what is correct. Under test.
             "relevant": (log.result == ValidationResult.APPROVED) if log else (variant is not None),
-            "low_value": stratum == "low_value_suspect",
+            "low_value": stratum in ("ingest_stub", "low_value_suspect"),
+            # ingest_stub is a rule match, not an inference — the only label in
+            # this corpus that is not derived from a decision under test.
+            "low_value_confidence": "high" if stratum == "ingest_stub" else "derived",
             "keyword_matched": log.keyword_matched if log else None,
         },
         "label_source": "derived",
@@ -133,6 +152,14 @@ def _collect(db, per_stratum):
     )
 
     counts = {}
+    # First: a rule matched these, so the label is solid. Taking them before the
+    # broader strata also stops an over-broad filter from claiming them.
+    counts["ingest_stub"] = add(
+        base.filter(
+            RawItem.extra_metadata.cast(Text).contains(f'"{INGEST_STUB_FLAG}": true')
+        ).all(),
+        "ingest_stub",
+    )
     # Named for what the filter actually selects: rows carrying BOTH a keyword
     # result and an LLM response. Whether they *disagree* cannot be expressed in
     # SQL while llm_response is a truncated String(100) (EV-1) — the verdict
