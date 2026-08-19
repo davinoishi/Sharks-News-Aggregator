@@ -183,3 +183,37 @@ def test_extract_published_date_missing_returns_none():
     from app.tasks.ingest import extract_published_date
 
     assert extract_published_date("<html><body>no date here</body></html>") is None
+
+
+def test_enforce_max_age_false_keeps_an_old_item(db, source):
+    """Stub capture must not be filtered by a gate meant for feed content.
+
+    The age gate keeps stale articles off the feed; a retained stub never
+    reaches the feed. Observed on deploy: the first two stubs seen were June
+    pages still sitting in RSS feeds, both silently age-rejected, so the
+    capture retained nothing at all.
+    """
+    from app.tasks.ingest import INGEST_STUB_FLAG
+
+    old = datetime.utcnow() - timedelta(days=60)
+
+    rejected = create_raw_item(
+        db=db,
+        source_id=source.id,
+        original_url="https://src.example.com/old-stub-rejected",
+        raw_title="Stanley Cup Final 2026 scores, schedule, where to watch",
+        published_at=old,
+    )
+    assert rejected is None
+
+    kept = create_raw_item(
+        db=db,
+        source_id=source.id,
+        original_url="https://src.example.com/old-stub-kept",
+        raw_title="Stanley Cup Final 2026 scores, schedule, stream",
+        published_at=old,
+        enforce_max_age=False,
+        extra_metadata={INGEST_STUB_FLAG: True},
+    )
+    assert kept is not None
+    assert kept.extra_metadata[INGEST_STUB_FLAG] is True
