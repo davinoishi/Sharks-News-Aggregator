@@ -56,6 +56,25 @@ jobs:
           done
           echo "::error::API did not become healthy"; exit 1
 
+      # The API starts with `alembic upgrade head && uvicorn`, so a failing
+      # migration means uvicorn never runs and the health loop above times out
+      # with no clue why. Without these logs the only visible symptom is
+      # "API did not become healthy", which is the same message for a bad
+      # migration, a bad import and a genuinely slow start — debugging it from
+      # outside CI is guesswork.
+      - name: Container logs (on failure)
+        if: failure()
+        run: |
+          echo "::group::api"
+          docker compose -f docker-compose.yml -f docker-compose.pi.yml logs --no-color --tail=200 api || true
+          echo "::endgroup::"
+          echo "::group::db"
+          docker compose -f docker-compose.yml -f docker-compose.pi.yml logs --no-color --tail=50 db || true
+          echo "::endgroup::"
+          echo "::group::ps"
+          docker compose -f docker-compose.yml -f docker-compose.pi.yml ps || true
+          echo "::endgroup::"
+
       - name: Services are running
         run: |
           docker compose -f docker-compose.yml -f docker-compose.pi.yml ps
