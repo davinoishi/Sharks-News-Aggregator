@@ -92,10 +92,16 @@ slugs 404.
 > | `google/gemini-2.5-flash-lite` | 2026-07-23 → 08-13 | 278 |
 >
 > Any keyword-vs-LLM rate computed across the whole window silently averages two
-> models. **Split on `llm_model` in EV-4.** The upside: this is unplanned A/B
-> data on real production traffic — gemma-4 vs the current model over an
-> overlapping period — so part of the bake-off may already be answerable from
-> what is now frozen, before spending anything on new inference.
+> models. **Split on `llm_model` in EV-4.**
+>
+> **This is NOT A/B data — corrected 2026-08-19.** An earlier note here claimed
+> it was. Checked against the database: `raw_items scored by >1 distinct model:
+> **0**`. The models ran in *sequence*, so the two groups are different articles
+> from different news weeks, and any difference between them confounds model with
+> news period. The observed rates are close but not comparably so — gemini
+> 323/1,592 keyword-rejected-but-LLM-relevant (20.3%), gemma 68/309 (22.0%).
+> Nothing about the bake-off is already answered. **EV-3 is what creates a real
+> A/B**, by replaying one frozen corpus through both models.
 >
 > **Still to do here:** a human labelling pass over the derived labels, and
 > re-freezing in November for the in-season comparison. Everything below
@@ -114,6 +120,61 @@ slugs 404.
   Reuse brief 15's SK-7 pair format rather than inventing a second one.
 - **Verify.** The corpus loads without a database; regenerating it from the same
   inputs is deterministic.
+
+## Readiness assessment (2026-08-19) — read before starting this brief
+
+Measured against the frozen corpus. **Roughly two thirds of this brief is
+unblocked; the scoring half is not**, for three independent reasons.
+
+| Task | Ready | Blocker |
+|---|---|---|
+| EV-1 widen `llm_response` | yes | — |
+| EV-2 freeze corpus | **done** | — |
+| EV-3 replay harness | yes | — |
+| EV-4 precision/recall | **no** | no labels; `low_value` under-powered; `story_key` absent |
+| EV-5 bake off + decide | **no** | depends on EV-4 |
+
+**1. There are zero human labels.** `label_source == "human"` is 0 of 615. Every
+label is `derived` — it records what production did, which is what is under
+test — so scoring a candidate against them measures *agreement with the current
+model*, not correctness. That is the one thing this brief must not do. The input
+side is fine: 611 of 615 items carry both title and description, so replay works.
+
+**EV-1 is future-proofing, not an unblock.** 577 of 581 stored responses are
+already truncated at 100 chars and widening the column does not retrieve them —
+but all 581 remain prefix-recoverable for the relevance verdict, which is what
+the analysis needs. Widen it so *future* rows are clean; do not expect to
+recover the past.
+
+**2. `low_value` cannot be measured, and most of its ground truth is already
+destroyed.** Only **15 positives** exist in the corpus — too few for precision
+and recall, where one or two flips is the whole signal. The larger population is
+unrecoverable: `is_scoreboard_stub` in `api/app/tasks/ingest.py:347` skips
+schedule and scoreboard stubs **before a `raw_item` row is created**, so only a
+counter survives them.
+
+This is load-bearing for the brief's premise. RM-4 named `low_value` as one of
+the two places model capability plausibly pays, so **the headline question is
+currently unanswerable**, and re-freezing does not help. It needs a code change
+to start persisting ingest-time rejects before the data to measure against
+exists at all. That change is urgent for the same reason EV-2 was: every day it
+is not in, more ground truth is discarded permanently.
+
+**3. `story_key` does not exist.** EV-4 wants story-key agreement on
+known-same/known-different pairs; that field ships in brief 15. A third of EV-4
+is unreachable until then.
+
+### Suggested split
+
+- **Doable now:** EV-1, EV-3, plus persisting ingest-time stub rejections.
+- **Then:** a labelling pass, most usefully over a stratified subsample (~200)
+  rather than all 615. If an LLM produces the first pass, **write that into the
+  method**: models scored against LLM-authored labels are partly measured on
+  agreement with that LLM. Disclosed and spot-checked by a human it is a normal
+  approach; discovered afterwards it invalidates the result.
+- **After brief 15:** the `story_key` half of EV-4, then EV-5.
+
+---
 
 ## EV-3 — Replay harness
 
