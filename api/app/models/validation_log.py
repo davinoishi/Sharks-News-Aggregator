@@ -37,7 +37,12 @@ class ValidationLog(Base):
         raw_item_id: Foreign key to raw_items table
         method: Validation method used (llm, keyword, skip)
         result: Validation result (approved, rejected, error)
-        llm_response: Raw response from LLM (YES/NO/etc)
+        llm_response: Raw response from LLM. Text, not String(100) — the old
+            width truncated OpenRouter's JSON mid-object and forced every
+            analysis to recover the verdict by prefix match (brief 16, EV-1).
+        llm_relevant: The parsed verdict, so the common query is ordinary SQL.
+            Nullable: a row whose verdict cannot be read is unknown, not
+            rejected.
         llm_model: Model identifier used for LLM check
         llm_confidence: LLM confidence level (HIGH, MEDIUM, LOW)
         llm_reason: LLM chain-of-thought explanation
@@ -59,7 +64,8 @@ class ValidationLog(Base):
     )
     method = Column(Enum(ValidationMethod), nullable=False)
     result = Column(Enum(ValidationResult), nullable=False)
-    llm_response = Column(String(100), nullable=True)
+    llm_response = Column(Text, nullable=True)
+    llm_relevant = Column(Boolean, nullable=True)
     llm_model = Column(String(100), nullable=True)
     llm_confidence = Column(String(10), nullable=True)
     llm_reason = Column(Text, nullable=True)

@@ -58,7 +58,19 @@ slugs 404.
 
 ---
 
-## EV-1 — Widen the validation log
+## EV-1 — Widen the validation log ✅ done (2026-08-19)
+
+> Shipped as migration `0007_widen_validation_log`: `llm_response` becomes
+> `Text`, and a nullable `llm_relevant` boolean holds the parsed verdict, now
+> written at log time by `log_validation` rather than re-derived on every read.
+> Existing rows are backfilled where the verdict survived truncation (the
+> `{"relevant": ...}` prefix does), and left NULL where it did not — **NULL
+> means unknown, never rejected.**
+>
+> As predicted in the readiness section, this does not recover the 577
+> already-truncated responses. It makes every row written from here on clean,
+> which is the point: the in-season corpus is the one that matters.
+
 
 - **Approach.** Alembic migration: `validation_logs.llm_response` to `Text`, and
   add a nullable boolean for the parsed verdict so the common query is ordinary

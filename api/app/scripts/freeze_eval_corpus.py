@@ -98,15 +98,17 @@ def _record(raw, source, variant, log, cluster_id, stratum):
         "cluster_id": cluster_id,
         "event_type": getattr(variant.event_type, "value", None) if variant else None,
         "llm_summary": (variant.extra_metadata or {}).get("llm_summary") if variant else None,
-        # The keyword-vs-LLM comparison RM-2 turns on. Kept as raw fields, not
-        # a derived "disagreed" boolean: llm_response is String(100) and the
-        # stored JSON is truncated (EV-1 widens it), so the verdict has to be
-        # recovered by prefix match and that recovery belongs in the analysis,
-        # not baked irreversibly into the corpus.
+        # The keyword-vs-LLM comparison RM-2 turns on. Still kept as raw
+        # fields rather than a derived "disagreed" boolean, so the analysis can
+        # redo the comparison however it likes. ``llm_relevant`` is the parsed
+        # verdict written at log time (EV-1); rows predating that column carry
+        # a backfilled value where it was recoverable and NULL where it was
+        # not — NULL means unknown, never rejected.
         "validation": {
             "method": getattr(log.method, "value", None) if log else None,
             "result": getattr(log.result, "value", None) if log else None,
             "keyword_matched": log.keyword_matched if log else None,
+            "llm_relevant": log.llm_relevant if log else None,
             "llm_response": log.llm_response if log else None,
             "llm_reason": log.llm_reason if log else None,
             "llm_model": log.llm_model if log else None,
