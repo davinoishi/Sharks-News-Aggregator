@@ -14,7 +14,8 @@ verification steps.
 
 | | Item | Where |
 |---|------|-------|
-| **Next up, brief written** | `RM-4` — clustering: unrelated stories land on the same card | [below](#rm-4--clustering-unrelated-stories-land-on-the-same-card) · [brief 14](briefs/brief-14-cluster-merge-precision.md) |
+| **In progress** | `RM-4` — clustering: unrelated stories land on the same card. Brief 14 **deployed**; brief 15 **5 of 7 shipped**; `SK-3`, `SK-4` outstanding | [below](#rm-4--clustering-unrelated-stories-land-on-the-same-card) |
+| **Next up** | Brief 16's unblocked third — and **persisting ingest-time stub rejections**, which is discarding ground truth daily | [brief 16](briefs/brief-16-llm-eval-harness.md) |
 | Open | `RM-2` — relevance: a Sharks player's name admits an article about another team | [below](#rm-2--relevance-a-sharks-players-name-admits-an-article-about-another-team) |
 | Open, one attempt reverted | `RM-3` — relevance: "Sharks" is not a hockey word | [below](#rm-3--relevance-sharks-is-not-a-hockey-word) |
 | Planned brief | Brief 10 — MCP interface for agent access | [below](#brief-10--mcp-interface-for-agent-access-planned-2026-07-25) |
@@ -33,6 +34,14 @@ the feed**; `RM-4` decides **which card it lands on** once it does.
 `RM-2` remains ahead of the remaining SEO work: the topic pages shipped in
 brief 13 make an explicit promise in their `<h1>`, and a page that is a third
 Oilers content will not hold a ranking it wins.
+
+**Status as of 2026-08-19.** Brief 14 is deployed and the mega-clusters are inert
+(they now fall outside their own candidate window, so they accept nothing new);
+their existing membership is untouched by design and ages off with the 30-day
+purge. Brief 15 shipped `SK-1`, `SK-2`, `SK-5`, `SK-6`, `SK-7`. Brief 16 has been
+assessed rather than executed: `EV-2` is done (615-item corpus frozen), `EV-1`
+and `EV-3` are unblocked, and `EV-4`/`EV-5` are blocked on labels — see its
+readiness section before starting it.
 
 ## Architecture context (read before any brief)
 
@@ -453,27 +462,56 @@ in advance — see `[[relevance-change-seasonal-measurement]]`.
 
 #### Scope split
 
-- **[Brief 14](briefs/brief-14-cluster-merge-precision.md) — written, ready to
-  execute.** Instrument the decision; require positive topical evidence for any
-  merge; stop double-counting entity names; gate the summary-name bypass; bound
-  cluster lifetime; test the entity path; split the existing bad clusters.
-- **[Brief 15](briefs/brief-15-story-keys.md) — written.** The durable fix: have
-  the classifier emit a canonical `story_key` topic slug in the JSON it already
-  returns (zero extra LLM calls) and make story-key agreement the primary merge
-  signal; retire the name-leading summary instruction that this item proved is a
-  cause; a "Related stories" link between near-miss clusters to pay back the cost
-  of splitting; surfacing variant headlines inline on the card; an oversized-
-  cluster alert; and a pair-eval harness.
-- **[Brief 16](briefs/brief-16-llm-eval-harness.md) — written.** The LLM replay
-  harness and model bake-off, split out of brief 15 because it serves RM-2 and
-  RM-3 equally, has its own prerequisites (widen `validation_logs.llm_response`,
-  freeze a corpus before the 30-day purge), and is eval tooling rather than
-  pipeline code.
+- **[Brief 14](briefs/brief-14-cluster-merge-precision.md) — ✅ done and deployed
+  (#139, 2026-08-19).** `CM-1`…`CM-7` all shipped. Two deviations recorded in the
+  brief: `CM-4` gates on `L_topic` rather than raw `L` (raw `L` separated the two
+  canonical cases by 0.007 — noise, not a threshold), and `CM-3`'s strip-set is
+  built from the unfiltered entity list so "Sharks" cannot clear the gate alone.
+  **`CM-7` was deliberately not run** — cluster 4152 is being left to age out
+  through the 30-day purge rather than split by hand.
+- **[Brief 15](briefs/brief-15-story-keys.md) — ⚠️ 5 of 7 shipped (#144).**
+  `SK-1` (emit `story_key`), `SK-2` (three-valued key verdict in the matcher),
+  `SK-5` (sibling headlines on the card), `SK-6` (oversized-cluster advisory),
+  `SK-7` (pair-eval harness reporting precision and recall separately).
+  **Outstanding:**
+  - `SK-3` — retire the name-leading summary instruction. Deferred by the
+    brief's own instruction: it must follow the `SK-2` measurement, and on
+    deploy day every cluster has no key so there is nothing to measure yet.
+    Revisit once the decision log shows `key=agree`/`key=differ` on real traffic.
+  - `SK-4` — "Related stories" links between near-miss clusters. Needs a second
+    table, migration, matcher change, API field and web surface. **This is the
+    repayment for deliberate over-splitting and should not be dropped:** until
+    it lands, a split card is a dead end for the reader.
+- **[Brief 16](briefs/brief-16-llm-eval-harness.md) — ⚠️ assessed, partially
+  done.** `EV-2` shipped early (#139/#141) and ran on the Pi: 615 items frozen,
+  covering 2026-07-17 → 08-13. The rest is **not** ready — see the brief's
+  readiness section. Short version: no human labels exist, `low_value` has only
+  15 positives and most of its ground truth is *already destroyed* because
+  `ingest.py` discards stubs before creating a `raw_item`, and `story_key`
+  agreement cannot be scored until brief 15's `SK-1` has run in production.
 
 Lexical similarity cannot separate "Celebrini's rookie card sold for $1.28M" from
 "Celebrini tops the pipeline rankings" — the shared words *are* his name. Brief
 14 blocks the zero-evidence merges, which is a strict improvement and kills the
 reported bug; brief 15 is what actually decides the hard cases.
+
+#### What to do next on RM-4
+
+1. **Persist ingest-time stub rejections** (`api/app/tasks/ingest.py:347`). Not
+   in any brief yet, and the most time-sensitive item here: every day it is not
+   in, more `low_value` ground truth is discarded permanently, exactly the
+   argument that made `EV-2` urgent. Small change.
+2. **Read the `cluster_decision` log** after a week of brief 14 + 15 traffic.
+   `CM-1` names the deciding route on every placement, so the remaining bad
+   merges can be attributed rather than guessed at. The syndication-UUID route
+   (route 1, no content check at all) is the leading unexamined suspect.
+3. **Re-measure the cohesion table** (method in brief 14) and compare against the
+   pre-brief-14 baseline. Three data points distinguish a fix from a regression;
+   two do not. Then repeat in-season — everything measured so far is August, and
+   game-day clustering is barely exercised in the offseason.
+4. **`SK-4`, then `SK-3`** — in that order. `SK-4` repays the splitting this work
+   deliberately introduced; `SK-3` needs production evidence that `story_key`
+   carries the role-headline case before the name-leading instruction is removed.
 
 ### RM-2 — Relevance: a Sharks player's name admits an article about another team
 
