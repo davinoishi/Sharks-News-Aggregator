@@ -125,3 +125,12 @@ parameters. Worth copying for any revision with inline SQL.
 **Debugging aid:** `docker-verify` dumps `api` and `db` container logs on failure
 (added 2026-08-19). If a migration fails in CI, the traceback is in that step —
 do not guess from the health timeout.
+
+**Known gap:** `0005_cluster_story_key` does **not** carry the guard from trap 1,
+and by that reasoning should have failed on a fresh database — but it passed CI
+and deployed cleanly, so the mechanism has a wrinkle nobody has pinned down. It
+is harmless on every environment where it has already run; the exposure is a
+rebuild from an empty database. Tracked as `OPS-1` in
+[IMPROVEMENT_PLAN.md](IMPROVEMENT_PLAN.md). **Nobody has demonstrated that a
+from-empty `alembic upgrade head` succeeds on the current chain** — if you are
+about to rebuild an environment, verify that first.

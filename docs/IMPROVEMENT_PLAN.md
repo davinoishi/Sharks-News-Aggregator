@@ -16,6 +16,7 @@ verification steps.
 |---|------|-------|
 | **In progress** | `RM-4` — clustering: unrelated stories land on the same card. Brief 14 **deployed**; brief 15 **5 of 7 shipped**; `SK-3`, `SK-4` outstanding | [below](#rm-4--clustering-unrelated-stories-land-on-the-same-card) |
 | **Next up** | Brief 16's unblocked third — and **persisting ingest-time stub rejections**, which is discarding ground truth daily | [brief 16](briefs/brief-16-llm-eval-harness.md) |
+| Open, ops risk | `OPS-1` — a from-scratch rebuild may fail to start on migration `0005` | [below](#ops-1--a-from-scratch-rebuild-may-fail-to-start-on-migration-0005) |
 | Open | `RM-2` — relevance: a Sharks player's name admits an article about another team | [below](#rm-2--relevance-a-sharks-players-name-admits-an-article-about-another-team) |
 | Open, one attempt reverted | `RM-3` — relevance: "Sharks" is not a hockey word | [below](#rm-3--relevance-sharks-is-not-a-hockey-word) |
 | Planned brief | Brief 10 — MCP interface for agent access | [below](#brief-10--mcp-interface-for-agent-access-planned-2026-07-25) |
@@ -516,6 +517,49 @@ reported bug; brief 15 is what actually decides the hard cases.
 4. **`SK-4`, then `SK-3`** — in that order. `SK-4` repays the splitting this work
    deliberately introduced; `SK-3` needs production evidence that `story_key`
    carries the role-headline case before the name-leading instruction is removed.
+
+### OPS-1 — A from-scratch rebuild may fail to start on migration `0005`
+
+*Found 2026-08-19 while executing brief 15. Not user-visible today; it is a
+disaster-recovery risk, so the moment it matters is the worst possible moment to
+discover it.*
+
+**The mechanism.** `0001_baseline` runs
+`Base.metadata.create_all(checkfirst=True)` against the **current** models, so on
+an empty database it creates every table and column the code knows about today —
+before any later revision runs. A later revision that does a bare
+`op.add_column` / `op.create_table` for something the baseline just made fails
+with DuplicateColumn / DuplicateTable.
+
+That is not an ordinary migration error. The API's command is
+`alembic upgrade head && uvicorn` (`docker-compose.yml`), so **a raising
+migration means uvicorn never starts.** The only symptom is a service that never
+comes up.
+
+`0006` and `0007` are guarded on the inspector for exactly this reason (see
+[MIGRATIONS.md](MIGRATIONS.md) → "Two traps that take the whole API down").
+**`0005_cluster_story_key` is not guarded.**
+
+**What is unexplained, and why the item is worth keeping open.** By the
+reasoning above `0005` should have failed `docker-verify` on a fresh database,
+and it did not — it passed, and deployed cleanly to the Pi. So either the
+mechanism has a wrinkle not yet understood, or `0005` is latent and survives by
+luck. Both readings end in the same place: nobody has demonstrated that a
+from-empty `alembic upgrade head` succeeds on the current chain.
+
+**Why it matters.** Every existing environment is fine — the Pi is at `0007`,
+CI's `docker-verify` passes. The exposure is a rebuild: restoring the Pi after
+hardware failure, standing up a second environment, or any onboarding that
+starts from an empty database. `R3-O1` (off-device backups) is about being able
+to *restore*; this is about the restore actually booting.
+
+**Cheapest fix, if not investigating.** Add the same inspector guard to `0005`
+that `0006` and `0007` carry. It is a no-op on every database where the
+revision has already run, so it costs nothing to apply pre-emptively.
+
+**Verify with:** an empty database and `alembic upgrade head` — from the repo,
+not from a dump. Worth doing as a CI job (a "fresh database boots" check) rather
+than a one-off, since the trap re-arms with every new revision.
 
 ### RM-2 — Relevance: a Sharks player's name admits an article about another team
 
