@@ -422,6 +422,13 @@ is ~$120. **Select on accuracy, not price.** Claude figures are Anthropic list
 rates (cached 2026-06-24) and OpenRouter may add margin; the Gemini figure is
 approximate — verify both live per `[[openrouter-model]]`.
 
+**Production has already run two models.** The corpus frozen 2026-08-19 shows
+`google/gemma-4-26b-a4b-it` through 2026-07-24 and `google/gemini-2.5-flash-lite`
+from 2026-07-23 — so a month of real traffic was scored by two different models,
+and any rate computed over that whole window averages them. Split on `llm_model`
+before drawing conclusions from `validation_logs`; the flip side is that some of
+the bake-off may be answerable from existing data without new inference.
+
 Measuring accuracy needs a replay harness that does not exist yet, plus two
 prerequisites: `validation_logs.llm_response` is `String(100)` and truncates the
 JSON (already noted under RM-2), and `run_purge_old_items` deletes `raw_items`
