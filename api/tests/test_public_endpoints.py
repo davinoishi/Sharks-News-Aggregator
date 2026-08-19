@@ -409,3 +409,86 @@ def test_public_sources_excludes_submissions_and_unapproved(pg):
     assert "User Submissions" not in names
     assert "Rejected Outlet" not in names
     assert "Unsupported Outlet" not in names
+
+
+# --- brief 16 EV-1: the parsed verdict is stored, not re-derived --------------
+
+def test_log_validation_stores_the_parsed_verdict():
+    """EV-1: analysis should be ordinary SQL, not a prefix match on JSON."""
+    from app.utils import parse_llm_approved
+
+    assert parse_llm_approved('{"relevant": true, "confidence": "HIGH"}') is True
+    assert parse_llm_approved('{"relevant": false}') is False
+    # Truncated at 100 chars — the shape 577 of 581 production rows are in.
+    truncated = '{"relevant": true, "reason": "Article covers the San Jose Sharks roster and their pro'
+    assert parse_llm_approved(truncated) is True
+    # Nothing recoverable.
+    assert parse_llm_approved("") is False
+
+
+def test_validation_log_accepts_an_untruncated_response(pg_db):
+    """The column is Text now; a full OpenRouter payload must round-trip."""
+    from app.models import IngestMethod, RawItem, Source, SourceCategory
+    from app.models.validation_log import (
+        ValidationLog,
+        ValidationMethod,
+        ValidationResult,
+    )
+
+    source = Source(
+        name="EV1 Src",
+        category=SourceCategory.PRESS,
+        ingest_method=IngestMethod.RSS,
+        base_url="https://ev1.example.com",
+    )
+    pg_db.add(source)
+    pg_db.flush()
+    raw = RawItem(
+        source_id=source.id,
+        original_url="https://ev1.example.com/a",
+        canonical_url="https://ev1.example.com/a",
+        raw_title="A",
+    )
+    pg_db.add(raw)
+    pg_db.flush()
+
+    long_response = '{"relevant": true, "reason": "' + ("x" * 500) + '"}'
+    log = ValidationLog(
+        raw_item_id=raw.id,
+        method=ValidationMethod.LLM,
+        result=ValidationResult.APPROVED,
+        llm_response=long_response,
+        llm_relevant=True,
+    )
+    pg_db.add(log)
+    pg_db.flush()
+    pg_db.refresh(log)
+    assert log.llm_response == long_response
+    assert len(log.llm_response) > 100
+    assert log.llm_relevant is True
+
+
+def test_migration_0007_sql_has_no_accidental_bind_parameters():
+    """op.execute routes strings through text(), which reads `:name` as a bind.
+
+    An unescaped LIKE '%"relevant":true%' fails at runtime with "A value is
+    required for bind parameter 'true'" — and because the API starts with
+    `alembic upgrade head && uvicorn`, that takes the whole service down rather
+    than surfacing as a migration error anyone would notice locally.
+    """
+    import re
+    from pathlib import Path
+
+    from sqlalchemy import text
+
+    migration = (
+        Path(__file__).resolve().parents[1]
+        / "alembic"
+        / "versions"
+        / "20260819_0007_widen_validation_log.py"
+    )
+    body = migration.read_text()
+    statements = re.findall(r'op\.execute\(\s*r?"""(.*?)"""\s*\)', body, re.S)
+    assert statements, "expected inline SQL in the migration"
+    for sql in statements:
+        assert not text(sql)._bindparams, f"unescaped colon in: {sql[:80]}"

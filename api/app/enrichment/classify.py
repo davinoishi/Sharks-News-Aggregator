@@ -14,6 +14,7 @@ from app.enrichment.entities import filter_team_entities, get_entity_names
 from app.models.validation_log import ValidationLog, ValidationMethod, ValidationResult
 from app.services.openrouter import check_relevance as llm_check_relevance
 from app.services.openrouter import classify_and_summarize as llm_classify_and_summarize
+from app.utils import parse_llm_approved
 
 logger = logging.getLogger(__name__)
 
@@ -286,6 +287,10 @@ def log_validation(
         method=method,
         result=result,
         llm_response=llm_response,
+        # Parse once, at write time, so analysis is ordinary SQL rather than a
+        # prefix match on stored JSON (brief 16, EV-1). None when there is no
+        # response at all — unknown, not rejected.
+        llm_relevant=parse_llm_approved(llm_response) if llm_response else None,
         llm_model=llm_model,
         llm_confidence=llm_confidence,
         llm_reason=llm_reason,
