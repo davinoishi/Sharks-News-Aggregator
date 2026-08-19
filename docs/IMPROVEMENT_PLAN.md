@@ -469,22 +469,25 @@ in advance — see `[[relevance-change-seasonal-measurement]]`.
   built from the unfiltered entity list so "Sharks" cannot clear the gate alone.
   **`CM-7` was deliberately not run** — cluster 4152 is being left to age out
   through the 30-day purge rather than split by hand.
-- **[Brief 15](briefs/brief-15-story-keys.md) — ⚠️ 5 of 7 shipped (#144).**
+- **[Brief 15](briefs/brief-15-story-keys.md) — ⚠️ 6 of 7 shipped (#144, #148).**
   `SK-1` (emit `story_key`), `SK-2` (three-valued key verdict in the matcher),
   `SK-5` (sibling headlines on the card), `SK-6` (oversized-cluster advisory),
-  `SK-7` (pair-eval harness reporting precision and recall separately).
-  **Outstanding:**
+  `SK-4` (related-stories links), `SK-7` (pair-eval harness reporting precision
+  and recall separately). **Outstanding:**
   - `SK-3` — retire the name-leading summary instruction. Deferred by the
     brief's own instruction: it must follow the `SK-2` measurement, and on
     deploy day every cluster has no key so there is nothing to measure yet.
     Revisit once the decision log shows `key=agree`/`key=differ` on real traffic.
-  - `SK-4` — "Related stories" links between near-miss clusters. Needs a second
-    table, migration, matcher change, API field and web surface. **This is the
-    repayment for deliberate over-splitting and should not be dropped:** until
-    it lands, a split card is a dead end for the reader.
+  - ~~`SK-4`~~ — ✅ done and deployed (#148). Near-miss candidates are recorded
+    as relations and surfaced on the card, linking to the related story's own
+    source (the site has no per-cluster route). Capped at 5 per cluster so a
+    hub story cannot relate to everything.
 - **[Brief 16](briefs/brief-16-llm-eval-harness.md) — ⚠️ assessed, partially
   done.** `EV-2` shipped early (#139/#141) and ran on the Pi: 615 items frozen,
-  covering 2026-07-17 → 08-13. The rest is **not** ready — see the brief's
+  covering 2026-07-17 → 08-13. `EV-1` shipped (#149): `llm_response` is `Text`
+  and `llm_relevant` holds the parsed verdict, backfilled with **zero
+  disagreements** against the prefix hack RM-2 used, so historical analysis
+  stays comparable. The rest is **not** ready — see the brief's
   readiness section. Short version: no human labels exist, `low_value` has only
   15 positives and most of its ground truth is *already destroyed* because
   `ingest.py` discards stubs before creating a `raw_item`, and `story_key`
@@ -497,10 +500,11 @@ reported bug; brief 15 is what actually decides the hard cases.
 
 #### What to do next on RM-4
 
-1. **Persist ingest-time stub rejections** (`api/app/tasks/ingest.py:347`). Not
-   in any brief yet, and the most time-sensitive item here: every day it is not
-   in, more `low_value` ground truth is discarded permanently, exactly the
-   argument that made `EV-2` urgent. Small change.
+1. ~~**Persist ingest-time stub rejections**~~ — ✅ done and deployed (#146,
+   #147). Stubs are kept with an `ingest_stub` flag, never enriched, and
+   excluded from the retroactive stub cleanup that would otherwise delete them
+   within a day. `freeze_eval_corpus` samples them first as the only
+   high-confidence `low_value` positives.
 2. **Read the `cluster_decision` log** after a week of brief 14 + 15 traffic.
    `CM-1` names the deciding route on every placement, so the remaining bad
    merges can be attributed rather than guessed at. The syndication-UUID route
