@@ -28,7 +28,10 @@ strata are:
                         how a low_value stub looks after the fact (the flag
                         itself is not persisted — enrich.py just skips)
     rejected            relevance rejected it
-    llm_disagreement    keyword and LLM disagreed — the RM-2 gold seam
+    llm_compared        carries both a keyword result and an LLM response —
+                        the RM-2 seam. Not "disagreed": that cannot be filtered
+                        in SQL while llm_response is truncated (EV-1), so both
+                        verdicts are captured per item and the analysis decides
     clustered           member of a multi-variant cluster, for pair labelling
 
 **Labels are provisional.** Fields under ``labels`` are derived from what
@@ -53,7 +56,7 @@ from app.core.database import SessionLocal
 from app.models import Cluster, ClusterVariant, RawItem, Source, StoryVariant
 from app.models.validation_log import ValidationLog, ValidationResult
 
-STRATA = ("accepted", "low_value_suspect", "rejected", "llm_disagreement", "clustered")
+STRATA = ("accepted", "low_value_suspect", "rejected", "llm_compared", "clustered")
 
 
 def _record(raw, source, variant, log, cluster_id, stratum):
@@ -79,6 +82,20 @@ def _record(raw, source, variant, log, cluster_id, stratum):
         "cluster_id": cluster_id,
         "event_type": getattr(variant.event_type, "value", None) if variant else None,
         "llm_summary": (variant.extra_metadata or {}).get("llm_summary") if variant else None,
+        # The keyword-vs-LLM comparison RM-2 turns on. Kept as raw fields, not
+        # a derived "disagreed" boolean: llm_response is String(100) and the
+        # stored JSON is truncated (EV-1 widens it), so the verdict has to be
+        # recovered by prefix match and that recovery belongs in the analysis,
+        # not baked irreversibly into the corpus.
+        "validation": {
+            "method": getattr(log.method, "value", None) if log else None,
+            "result": getattr(log.result, "value", None) if log else None,
+            "keyword_matched": log.keyword_matched if log else None,
+            "llm_response": log.llm_response if log else None,
+            "llm_reason": log.llm_reason if log else None,
+            "llm_model": log.llm_model if log else None,
+            "llm_confidence": log.llm_confidence if log else None,
+        },
         "labels": {
             # What production did, not what is correct. Under test.
             "relevant": (log.result == ValidationResult.APPROVED) if log else (variant is not None),
@@ -116,13 +133,19 @@ def _collect(db, per_stratum):
     )
 
     counts = {}
-    counts["llm_disagreement"] = add(
+    # Named for what the filter actually selects: rows carrying BOTH a keyword
+    # result and an LLM response. Whether they *disagree* cannot be expressed in
+    # SQL while llm_response is a truncated String(100) (EV-1) — the verdict
+    # needs a prefix match on the stored JSON. Capture both signals per item and
+    # let the analysis decide; over-selecting here is the safe direction, since
+    # the alternative is discovering after the purge that the row was not kept.
+    counts["llm_compared"] = add(
         base.filter(
             ValidationLog.keyword_matched.isnot(None),
             ValidationLog.llm_response.isnot(None),
             ValidationLog.result != ValidationResult.ERROR,
         ).all(),
-        "llm_disagreement",
+        "llm_compared",
     )
     counts["rejected"] = add(
         base.filter(ValidationLog.result == ValidationResult.REJECTED).all(), "rejected"
