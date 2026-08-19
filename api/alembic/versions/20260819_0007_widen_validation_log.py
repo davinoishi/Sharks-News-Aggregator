@@ -72,12 +72,18 @@ def upgrade() -> None:
     # of parse_llm_approved: presence of the key decides that a verdict is
     # readable, and the literal decides which way. Rows with no recoverable
     # verdict are deliberately left NULL.
+    #
+    # Colons are escaped as \: throughout. op.execute() routes the string
+    # through sqlalchemy.text(), which reads `:name` as a bind parameter — an
+    # unescaped '%"relevant":true%' fails with "A value is required for bind
+    # parameter 'true'". The space-separated form is not safe either; both are
+    # escaped so neither can regress into the other.
     op.execute(
-        """
+        r"""
         UPDATE validation_logs
         SET llm_relevant = (
-            lower(llm_response) LIKE '%"relevant": true%'
-            OR lower(llm_response) LIKE '%"relevant":true%'
+            lower(llm_response) LIKE '%"relevant"\: true%'
+            OR lower(llm_response) LIKE '%"relevant"\:true%'
         )
         WHERE llm_response IS NOT NULL
           AND llm_response LIKE '%"relevant"%'

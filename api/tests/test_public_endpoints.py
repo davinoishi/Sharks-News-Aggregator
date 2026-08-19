@@ -466,3 +466,29 @@ def test_validation_log_accepts_an_untruncated_response(pg_db):
     assert log.llm_response == long_response
     assert len(log.llm_response) > 100
     assert log.llm_relevant is True
+
+
+def test_migration_0007_sql_has_no_accidental_bind_parameters():
+    """op.execute routes strings through text(), which reads `:name` as a bind.
+
+    An unescaped LIKE '%"relevant":true%' fails at runtime with "A value is
+    required for bind parameter 'true'" — and because the API starts with
+    `alembic upgrade head && uvicorn`, that takes the whole service down rather
+    than surfacing as a migration error anyone would notice locally.
+    """
+    import re
+    from pathlib import Path
+
+    from sqlalchemy import text
+
+    migration = (
+        Path(__file__).resolve().parents[1]
+        / "alembic"
+        / "versions"
+        / "20260819_0007_widen_validation_log.py"
+    )
+    body = migration.read_text()
+    statements = re.findall(r'op\.execute\(\s*r?"""(.*?)"""\s*\)', body, re.S)
+    assert statements, "expected inline SQL in the migration"
+    for sql in statements:
+        assert not text(sql)._bindparams, f"unescaped colon in: {sql[:80]}"
