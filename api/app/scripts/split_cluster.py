@@ -150,10 +150,12 @@ def split_cluster(cluster_id: int, variant_ids: list[int], dry_run: bool = False
         db.add(new_cluster)
         db.flush()
 
+        # The ClusterVariant junction IS the cluster link. StoryVariant has no
+        # cluster_id column, so there is nothing to update on the variant rows
+        # themselves (clustering.py assigns variant.cluster_id in four places;
+        # those are transient attribute sets that never reach the database).
         for link in links:
             link.cluster_id = new_cluster.id
-        for v in moving:
-            v.cluster_id = new_cluster.id
         db.flush()
 
         # Carry the source cluster's tags over as a starting point. They are
