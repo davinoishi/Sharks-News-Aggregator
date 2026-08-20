@@ -28,3 +28,4 @@ Project docs for the Sharks News Aggregator. Start with the root
 | [IMPROVEMENT_PLAN.md](IMPROVEMENT_PLAN.md) | **Open work only** — planned briefs, the R2/R3 review backlogs, and the roadmap |
 | [IMPROVEMENT_PLAN_ARCHIVE.md](IMPROVEMENT_PLAN_ARCHIVE.md) | Completed work, and the findings register defining the `S1`/`C1`/`P3` ids the older briefs reference |
 | [briefs/](briefs/) | The individual execution briefs (historical record) |
+| [../api/eval/README.md](../api/eval/README.md) | Eval sets and how to run the two harnesses (clustering pairs, corpus freeze) |
