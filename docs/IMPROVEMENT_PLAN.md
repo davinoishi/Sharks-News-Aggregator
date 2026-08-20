@@ -498,6 +498,50 @@ Lexical similarity cannot separate "Celebrini's rookie card sold for $1.28M" fro
 14 blocks the zero-evidence merges, which is a strict improvement and kills the
 reported bug; brief 15 is what actually decides the hard cases.
 
+#### Measured baseline (2026-08-19, after briefs 14 + 15)
+
+First real run of the `SK-7` pair harness against the 19 hand-labelled pairs,
+driving the actual matcher on a scratch Postgres:
+
+| | Precision | Recall |
+|---|---|---|
+| After briefs 14 + 15 | 0.750 | 0.857 |
+| After stripping domain-generic tokens (#154) | **0.857** | **0.857** |
+
+Reproduce with (scratch database, never production — the script refuses
+production-looking names and wipes between pairs):
+
+```
+docker compose -f docker-compose.yml -f docker-compose.pi.yml exec -T \
+  -e PYTHONPATH=/app -w /app api python -m app.scripts.eval_pairs \
+  --database-url postgresql+psycopg://USER:PW@db:5432/eval_pairs_scratch \
+  --pairs /tmp/pairs.seed.jsonl --verbose
+```
+
+**Both remaining mismatches are already documented, and neither is a surprise:**
+
+- *"Sharks sign Celebrini to 5-year, $94M extension"* vs *"Cale Makar Extension
+  Questions Emerge"* — over-merges on the shared word "extension". Brief 14
+  predicted this survivor explicitly. `story_key` is the fix, and `SK-3` is what
+  makes that signal load-bearing.
+- *"3 Cards to Watch at Goldin"* vs *"Card Auction Nears $500K"* — splits
+  because "card"/"cards" do not match without stemming. Brief 14's known lost
+  merge.
+
+**Two defects in the harness itself had to be fixed before any of this meant
+anything** (#154), and both are worth remembering when reading eval output:
+
+- It rolled back after each pair for isolation, but `match_or_create_cluster`
+  **commits internally**, so every pair saw the clusters built by every previous
+  pair. Isolation now comes from truncating between pairs.
+- The seed pairs carried titles only, so everything ran through the entityless
+  fallback rather than the production path.
+
+Its first run reported precision 1.000 / recall 0.143 and the Graf syndication
+control failing. Both were artifacts. **A harness that reports confident numbers
+from an unrealistic setup is worse than no harness** — check its inputs before
+believing a regression.
+
 #### What to do next on RM-4
 
 1. ~~**Persist ingest-time stub rejections**~~ — ✅ done and deployed (#146,
@@ -506,6 +550,9 @@ reported bug; brief 15 is what actually decides the hard cases.
    within a day. `freeze_eval_corpus` samples them first as the only
    high-confidence `low_value` positives.
 2. **Read the `cluster_decision` log** after a week of brief 14 + 15 traffic.
+   Not ready at 2026-08-19: three hours of production gave 4 story keys, 1
+   relation and 1 verdict. At ~7 new clusters/day (41% multi-variant) roughly
+   two weeks gets to ~50 verdicts, which is when `SK-3` becomes decidable.
    `CM-1` names the deciding route on every placement, so the remaining bad
    merges can be attributed rather than guessed at. The syndication-UUID route
    (route 1, no content check at all) is the leading unexamined suspect.
