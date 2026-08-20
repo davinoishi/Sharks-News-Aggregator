@@ -16,7 +16,6 @@ verification steps.
 |---|------|-------|
 | **In progress** | `RM-4` — clustering: unrelated stories land on the same card. Brief 14 **deployed**; brief 15 **5 of 7 shipped**; `SK-3`, `SK-4` outstanding | [below](#rm-4--clustering-unrelated-stories-land-on-the-same-card) |
 | **Next up** | Brief 16's unblocked third — and **persisting ingest-time stub rejections**, which is discarding ground truth daily | [brief 16](briefs/brief-16-llm-eval-harness.md) |
-| Open, ops risk | `OPS-1` — a from-scratch rebuild may fail to start on migration `0005` | [below](#ops-1--a-from-scratch-rebuild-may-fail-to-start-on-migration-0005) |
 | Open | `RM-2` — relevance: a Sharks player's name admits an article about another team | [below](#rm-2--relevance-a-sharks-players-name-admits-an-article-about-another-team) |
 | Open, one attempt reverted | `RM-3` — relevance: "Sharks" is not a hockey word | [below](#rm-3--relevance-sharks-is-not-a-hockey-word) |
 | Planned brief | Brief 10 — MCP interface for agent access | [below](#brief-10--mcp-interface-for-agent-access-planned-2026-07-25) |
@@ -518,48 +517,48 @@ reported bug; brief 15 is what actually decides the hard cases.
    deliberately introduced; `SK-3` needs production evidence that `story_key`
    carries the role-headline case before the name-leading instruction is removed.
 
-### OPS-1 — A from-scratch rebuild may fail to start on migration `0005`
+### OPS-1 — Rebuild risk: investigated and closed, 2026-08-19
 
-*Found 2026-08-19 while executing brief 15. Not user-visible today; it is a
-disaster-recovery risk, so the moment it matters is the worst possible moment to
-discover it.*
+**Resolved: not a risk. The premise was wrong.** Kept as a record because the
+wrong version of this was in the plan for a few hours and the correction is
+more useful than the item.
 
-**The mechanism.** `0001_baseline` runs
-`Base.metadata.create_all(checkfirst=True)` against the **current** models, so on
-an empty database it creates every table and column the code knows about today —
-before any later revision runs. A later revision that does a bare
-`op.add_column` / `op.create_table` for something the baseline just made fails
-with DuplicateColumn / DuplicateTable.
+**What was claimed.** That `0001_baseline`'s
+`Base.metadata.create_all(checkfirst=True)` creates everything the models define
+on an empty database, so later revisions collide, and that
+`0005_cluster_story_key` was unguarded and might therefore break a rebuild.
 
-That is not an ordinary migration error. The API's command is
-`alembic upgrade head && uvicorn` (`docker-compose.yml`), so **a raising
-migration means uvicorn never starts.** The only symptom is a service that never
-comes up.
+**What is actually true.** `infra/postgres/init/001_init.sql` is mounted at
+`/docker-entrypoint-initdb.d` (`docker-compose.yml`), so **Postgres runs it
+automatically when the data directory is first initialised** — creating the real
+schema, enum types included. On a rebuild the order is: init SQL builds the
+schema → `0001_baseline`'s `create_all` is a near no-op → later revisions apply
+against a schema that already looks like production. That path works, and
+`docker-verify` exercises it on every CI run.
 
-`0006` and `0007` are guarded on the inspector for exactly this reason (see
-[MIGRATIONS.md](MIGRATIONS.md) → "Two traps that take the whole API down").
-**`0005_cluster_story_key` is not guarded.**
+**The `0005` / `0006` asymmetry has a plain explanation, not luck:**
 
-**What is unexplained, and why the item is worth keeping open.** By the
-reasoning above `0005` should have failed `docker-verify` on a fresh database,
-and it did not — it passed, and deployed cleanly to the Pi. So either the
-mechanism has a wrinkle not yet understood, or `0005` is latent and survives by
-luck. Both readings end in the same place: nobody has demonstrated that a
-from-empty `alembic upgrade head` succeeds on the current chain.
+| Revision | Object | In init SQL? | `create_all` behaviour | Result |
+|---|---|---|---|---|
+| `0005` | `clusters.story_key` (column) | table yes, column no | `checkfirst` skips the whole **table**; it does not inspect columns | column absent → `add_column` succeeds |
+| `0006` | `cluster_relations` (table) | no | table missing → `create_all` **creates it** | table present → `create_table` collided |
 
-**Why it matters.** Every existing environment is fine — the Pi is at `0007`,
-CI's `docker-verify` passes. The exposure is a rebuild: restoring the Pi after
-hardware failure, standing up a second environment, or any onboarding that
-starts from an empty database. `R3-O1` (off-device backups) is about being able
-to *restore*; this is about the restore actually booting.
+So the rule is narrower than the retracted claim: **a revision adding a new
+table needs an idempotency guard; a revision adding a column to a table the init
+SQL already defines does not.** `0005` needs no guard and did not get one.
 
-**Cheapest fix, if not investigating.** Add the same inspector guard to `0005`
-that `0006` and `0007` carry. It is a no-op on every database where the
-revision has already run, so it costs nothing to apply pre-emptively.
+**How it was settled.** A test that created a bare empty database and ran
+`alembic upgrade head` against it failed at `0003` with
+`type "source_status" does not exist` — because a bare database has no init
+script, so the type was never created. That is a path this system is never
+rebuilt through, and the test was removed rather than kept as a standing false
+alarm. The real from-scratch check is `docker-verify`, which brings up the
+actual compose stack.
 
-**Verify with:** an empty database and `alembic upgrade head` — from the repo,
-not from a dump. Worth doing as a CI job (a "fresh database boots" check) rather
-than a one-off, since the trap re-arms with every new revision.
+**The one caveat worth keeping.** A rebuild that skips the init script — a
+managed Postgres instance, or restoring a dump into a database created by hand —
+does not get the enum types, and `0003` will fail. If you ever move off the
+compose-managed Postgres, apply `infra/postgres/init/001_init.sql` first.
 
 ### RM-2 — Relevance: a Sharks player's name admits an article about another team
 

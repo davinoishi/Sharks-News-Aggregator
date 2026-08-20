@@ -91,13 +91,19 @@ starts**, so the symptom is not a migration error anyone sees, it is the service
 failing to come up. In CI that surfaced as a ten-minute
 `API did not become healthy` timeout with no other detail.
 
-**1. New DDL must be idempotent.** `0001_baseline` runs
-`Base.metadata.create_all(checkfirst=True)` against the *current* models. On a
-fresh database — CI's `docker-verify`, or any rebuild from scratch — that creates
-every table and column the code knows about **today**, before your revision is
-reached. A bare `op.create_table` or `op.add_column` then fails with
-DuplicateTable / DuplicateColumn. Guard on the inspector, the way the baseline
-guards itself:
+**1. A revision that adds a new TABLE must be idempotent.** On a fresh database
+the schema is built by `infra/postgres/init/001_init.sql`, which Postgres runs
+automatically from `/docker-entrypoint-initdb.d`. `0001_baseline` then runs
+`Base.metadata.create_all(checkfirst=True)`, which is mostly a no-op — except for
+tables the init script does not define, which it **creates**. A later
+`op.create_table` for one of those then fails with DuplicateTable.
+
+Columns are not affected: `checkfirst` tests whether the *table* exists, not its
+columns, so `create_all` skips an existing table entirely and a later
+`op.add_column` on it succeeds. That is why `0005` (a column on `clusters`)
+needed no guard while `0006` (a new table) did.
+
+Guard new tables on the inspector, the way the baseline guards itself:
 
 ```python
 bind = op.get_bind()
@@ -126,11 +132,10 @@ parameters. Worth copying for any revision with inline SQL.
 (added 2026-08-19). If a migration fails in CI, the traceback is in that step —
 do not guess from the health timeout.
 
-**Known gap:** `0005_cluster_story_key` does **not** carry the guard from trap 1,
-and by that reasoning should have failed on a fresh database — but it passed CI
-and deployed cleanly, so the mechanism has a wrinkle nobody has pinned down. It
-is harmless on every environment where it has already run; the exposure is a
-rebuild from an empty database. Tracked as `OPS-1` in
-[IMPROVEMENT_PLAN.md](IMPROVEMENT_PLAN.md). **Nobody has demonstrated that a
-from-empty `alembic upgrade head` succeeds on the current chain** — if you are
-about to rebuild an environment, verify that first.
+**Rebuilding from scratch** works through the compose stack — init SQL first,
+then migrations — and `docker-verify` exercises that path on every CI run. It
+does **not** work against a bare database created by hand: with no init script
+there are no enum types, and `0003` fails with `type "source_status" does not
+exist`. If you ever move off the compose-managed Postgres, apply
+`infra/postgres/init/001_init.sql` before migrating. See `OPS-1` in
+[IMPROVEMENT_PLAN.md](IMPROVEMENT_PLAN.md) for the full investigation.
