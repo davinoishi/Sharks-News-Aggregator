@@ -224,6 +224,24 @@ def story_key_verdict(key_v: Optional[str], key_c: Optional[str]) -> tuple:
     return "differ", score
 
 
+# Tokens that name the domain rather than a story. Stripped from the topical
+# comparison for exactly the reason entity names are: they appear in a large
+# share of everything we ingest and carry no story identity, so two unrelated
+# articles sharing only these have shown no evidence of being the same story.
+#
+# "sharks" is already excluded because it is a team entity name — "nhl" and
+# "hockey" are not entities and were slipping through. Measured case: "NHL
+# Rumors: Sharks willing to offer Celebrini max contract" and "Four Potential
+# NHL Destinations For UFA Vladimir Tarasenko" cleared the gate on the single
+# shared token "nhl".
+#
+# Deliberately tiny, and it is a domain criterion rather than a stopword list:
+# anything added here can no longer contribute evidence that two articles are
+# the same story, so a word that is generic *usually* but decisive *sometimes*
+# does not belong.
+GENERIC_TOPIC_TOKENS = frozenset({"nhl", "hockey", "news"})
+
+
 def entity_name_tokens(db: Session, entity_ids) -> set:
     """Tokens that come from the names of ``entity_ids``.
 
@@ -577,7 +595,11 @@ def match_or_create_cluster(
         # Topical evidence: do these two articles share anything beyond the
         # people they are about? Compared against every title in the cluster,
         # not just its headline, for the same reason step 2.5 does.
-        strip = variant_entity_tokens | entity_name_tokens(db, cluster_entities)
+        strip = (
+            variant_entity_tokens
+            | entity_name_tokens(db, cluster_entities)
+            | GENERIC_TOPIC_TOKENS
+        )
         cluster_all_titles = candidate_titles.get(cluster.id, set())
         if cluster.headline:
             cluster_all_titles = cluster_all_titles | {cluster.headline}

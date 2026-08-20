@@ -13,10 +13,17 @@ Usage:
 
 **Requires an explicit --database-url, and it must not be production.** The
 harness seeds sources, entities and variants to drive the real
-``match_or_create_cluster``, so it needs a scratch Postgres. Everything runs
-inside a transaction that is **always rolled back**, and the script refuses a
-URL whose database name looks like the production one — belt and braces, since
-"it rolls back" is not a good enough answer for pointing a write path at prod.
+``match_or_create_cluster``, so it needs a scratch Postgres that it **wipes
+between every pair**. It refuses a URL whose database name looks like the
+production one.
+
+Wiping, not rolling back, is load-bearing: ``match_or_create_cluster`` commits
+internally (four times), so a rollback around it undoes nothing. An earlier
+version relied on rollback and silently let every pair see the clusters built
+by every previous pair — with "Macklin Celebrini Card Auction Nears $500K"
+appearing in five pairs, later comparisons were being scored against a cluster
+that already held pipeline-ranking articles. It reported plausible numbers that
+meant nothing.
 
 Postgres only: clusters and story_variants use ARRAY columns.
 
@@ -39,7 +46,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
 DEFAULT_PAIRS = "eval/pairs.seed.jsonl"
@@ -74,6 +81,20 @@ def _load_pairs(path: Path) -> list:
             continue  # unlabelled candidate pairs are not scoreable
         pairs.append(record)
     return pairs
+
+
+def _reset(engine) -> None:
+    """Truncate every table between pairs.
+
+    Each pair must be scored as if it were the only thing the matcher had ever
+    seen. ``match_or_create_cluster`` commits, so isolation cannot come from a
+    transaction — it has to be a wipe.
+    """
+    from app.core.database import Base
+
+    names = ", ".join(f'"{t.name}"' for t in Base.metadata.sorted_tables)
+    with engine.begin() as conn:
+        conn.execute(text(f"TRUNCATE {names} RESTART IDENTITY CASCADE"))
 
 
 def _run_pair(db, record, seq):
@@ -178,13 +199,11 @@ def main():
     mismatches = []
 
     for seq, record in enumerate(pairs):
+        _reset(engine)
         db = session_factory()
         try:
             merged = _run_pair(db, record, seq)
         finally:
-            # Always roll back: each pair must be scored in isolation, and
-            # nothing this harness writes should ever survive it.
-            db.rollback()
             db.close()
 
         expected = bool(record["should_merge"])
