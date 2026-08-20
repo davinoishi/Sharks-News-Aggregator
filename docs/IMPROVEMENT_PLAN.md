@@ -14,8 +14,8 @@ verification steps.
 
 | | Item | Where |
 |---|------|-------|
-| **In progress** | `RM-4` — clustering: unrelated stories land on the same card. Brief 14 **deployed**; brief 15 **5 of 7 shipped**; `SK-3`, `SK-4` outstanding | [below](#rm-4--clustering-unrelated-stories-land-on-the-same-card) |
-| **Next up** | Brief 16's unblocked third — and **persisting ingest-time stub rejections**, which is discarding ground truth daily | [brief 16](briefs/brief-16-llm-eval-harness.md) |
+| **In progress, waiting on data** | `RM-4` — clustering: unrelated stories land on the same card. Briefs 14 and 15 **deployed**; only `SK-3` outstanding, and it needs ~2 weeks of production | [below](#rm-4--clustering-unrelated-stories-land-on-the-same-card) |
+| **Next up, unblocked** | Brief 16 `EV-3` — the LLM replay harness | [brief 16](briefs/brief-16-llm-eval-harness.md) |
 | Open | `RM-2` — relevance: a Sharks player's name admits an article about another team | [below](#rm-2--relevance-a-sharks-players-name-admits-an-article-about-another-team) |
 | Open, one attempt reverted | `RM-3` — relevance: "Sharks" is not a hockey word | [below](#rm-3--relevance-sharks-is-not-a-hockey-word) |
 | Planned brief | Brief 10 — MCP interface for agent access | [below](#brief-10--mcp-interface-for-agent-access-planned-2026-07-25) |
@@ -35,13 +35,42 @@ the feed**; `RM-4` decides **which card it lands on** once it does.
 brief 13 make an explicit promise in their `<h1>`, and a page that is a third
 Oilers content will not hold a ranking it wins.
 
-**Status as of 2026-08-19.** Brief 14 is deployed and the mega-clusters are inert
-(they now fall outside their own candidate window, so they accept nothing new);
-their existing membership is untouched by design and ages off with the 30-day
-purge. Brief 15 shipped `SK-1`, `SK-2`, `SK-5`, `SK-6`, `SK-7`. Brief 16 has been
-assessed rather than executed: `EV-2` is done (615-item corpus frozen), `EV-1`
-and `EV-3` are unblocked, and `EV-4`/`EV-5` are blocked on labels — see its
-readiness section before starting it.
+### Status at 2026-08-19 — start here in a new session
+
+Everything below is deployed to the Pi and verified in production unless marked
+otherwise. PR numbers are in the individual entries.
+
+**Done and deployed**
+
+- **Brief 14** — all of `CM-1`…`CM-7`. The mega-clusters are inert: they now
+  fall outside their own candidate window, so they accept nothing new. Their
+  existing membership is untouched by design and ages off with the 30-day purge.
+  `CM-7` (the split script) exists but was **deliberately not run** — cluster
+  4152 is being left to age out.
+- **Brief 15** — `SK-1`, `SK-2`, `SK-4`, `SK-5`, `SK-6`, `SK-7`. Verified against
+  the live model: the classifier returns the intended `story_key` slugs, and the
+  card-auction vs pipeline pair now scores `differ`.
+- **Brief 16** — `EV-1` and `EV-2`. Plus **ingest-time stub rejections are now
+  persisted** (#146, #147), which was the prerequisite that made `low_value`
+  measurable at all.
+- **Measured baseline:** merge precision **0.857**, recall **0.857**. See
+  [below](#measured-baseline-2026-08-19-after-briefs-14--15) for how to
+  reproduce it.
+
+**Open, and genuinely blocked on elapsed time — not on work**
+
+- `SK-3` (retire the name-leading prompt instruction) needs `story_key` proven on
+  real traffic. Three hours after deploy: 4 keys of 229 clusters, 1 relation, 1
+  verdict. At ~7 new clusters/day, ~2 weeks reaches the ~50 verdicts that make it
+  decidable.
+- Re-measuring the cohesion table needs the same wait, and should then be
+  repeated **in-season** — everything measured so far is August.
+
+**Open and actionable now**
+
+- Brief 16 `EV-3` (replay harness), then a labelling pass, then re-freeze the
+  corpus so `low_value` has positives. Read that brief's readiness assessment
+  first — its older narrative describes blockers that have since cleared.
 
 ## Architecture context (read before any brief)
 

@@ -44,7 +44,7 @@ space is under $40/month. **Select on accuracy.** Verify current pricing on
 OpenRouter live before quoting these — see `[[openrouter-model]]`, and note some
 slugs 404.
 
-### Two prerequisites, both already known
+### Two prerequisites, both already known (both since cleared — see the readiness assessment)
 
 - **`validation_logs.llm_response` is `String(100)`** and truncates the stored
   JSON, so verdicts have to be recovered with a `LIKE '%"relevant": true%'`
@@ -133,58 +133,56 @@ slugs 404.
 - **Verify.** The corpus loads without a database; regenerating it from the same
   inputs is deterministic.
 
-## Readiness assessment (2026-08-19) — read before starting this brief
+## Readiness assessment — updated 2026-08-19 (evening)
 
-Measured against the frozen corpus. **Roughly two thirds of this brief is
-unblocked; the scoring half is not**, for three independent reasons.
+**Two of the three blockers in the original assessment have been cleared.** The
+table below is the current state; do not act on the historical narrative further
+down without checking it against this.
 
-| Task | Ready | Blocker |
+| Task | State | Note |
 |---|---|---|
-| EV-1 widen `llm_response` | yes | — |
-| EV-2 freeze corpus | **done** | — |
-| EV-3 replay harness | yes | — |
-| EV-4 precision/recall | **no** | no labels; `low_value` under-powered; `story_key` absent |
-| EV-5 bake off + decide | **no** | depends on EV-4 |
+| `EV-1` widen `llm_response` | ✅ **done** (#149) | `Text` + `llm_relevant`; backfill agrees with RM-2's prefix hack on every row |
+| `EV-2` freeze corpus | ✅ **done** (#139/#141) | 615 items, run on the Pi, covering 2026-07-17 → 08-13 |
+| `EV-3` replay harness | **ready — start here** | corpus, prompts and API key all present |
+| `EV-4` precision/recall | ⚠️ **blocked on labels only** | see below |
+| `EV-5` bake off + decide | blocked | depends on `EV-4` |
 
-**1. There are zero human labels.** `label_source == "human"` is 0 of 615. Every
-label is `derived` — it records what production did, which is what is under
-test — so scoring a candidate against them measures *agreement with the current
-model*, not correctness. That is the one thing this brief must not do. The input
-side is fine: 611 of 615 items carry both title and description, so replay works.
+**The one remaining hard blocker: there are zero human labels.**
+`label_source == "human"` is 0 of 615. Every label is `derived` — it records what
+production did, which is what is under test — so scoring a candidate against
+them measures *agreement with the current model*, not correctness. That is the
+one thing this brief must not do. Inputs are otherwise fine: 611 of 615 items
+carry both title and description.
 
-**EV-1 is future-proofing, not an unblock.** 577 of 581 stored responses are
-already truncated at 100 chars and widening the column does not retrieve them —
-but all 581 remain prefix-recoverable for the relevance verdict, which is what
-the analysis needs. Widen it so *future* rows are clean; do not expect to
-recover the past.
+**`low_value` ground truth is now accumulating, but the frozen corpus predates
+it.** `is_scoreboard_stub` used to discard stubs before a `raw_item` existed, so
+only 15 positives survived anywhere. Ingest now **persists** them with an
+`ingest_stub` flag (#146), exempt from the feed age gate (#147) and from the
+retroactive stub cleanup that would otherwise delete them within a day. They are
+never enriched. `freeze_eval_corpus` samples them first as an `ingest_stub`
+stratum — the only **high-confidence** `low_value` positives, because a rule
+matched them rather than a decision under test.
 
-**2. `low_value` cannot be measured, and most of its ground truth is already
-destroyed.** Only **15 positives** exist in the corpus — too few for precision
-and recall, where one or two flips is the whole signal. The larger population is
-unrecoverable: `is_scoreboard_stub` in `api/app/tasks/ingest.py:347` skips
-schedule and scoreboard stubs **before a `raw_item` row is created**, so only a
-counter survives them.
+Consequence: the 2026-08-19 corpus still has only 15. **Re-freeze before doing
+`EV-4`'s `low_value` work** — every day of ingest since #146 adds real positives.
 
-This is load-bearing for the brief's premise. RM-4 named `low_value` as one of
-the two places model capability plausibly pays, so **the headline question is
-currently unanswerable**, and re-freezing does not help. It needs a code change
-to start persisting ingest-time rejects before the data to measure against
-exists at all. That change is urgent for the same reason EV-2 was: every day it
-is not in, more ground truth is discarded permanently.
+**`story_key` now exists** (#144, brief 15 `SK-1`), so `EV-4`'s story-key
+agreement metric is reachable in principle. In practice it needs clusters to
+have accumulated keys: 4 of 229 three hours after deploy, ~7 new clusters/day.
+Budget roughly two weeks, the same wait `SK-3` needs.
 
-**3. `story_key` does not exist.** EV-4 wants story-key agreement on
-known-same/known-different pairs; that field ships in brief 15. A third of EV-4
-is unreachable until then.
+### Suggested order now
 
-### Suggested split
-
-- **Doable now:** EV-1, EV-3, plus persisting ingest-time stub rejections.
-- **Then:** a labelling pass, most usefully over a stratified subsample (~200)
-  rather than all 615. If an LLM produces the first pass, **write that into the
-  method**: models scored against LLM-authored labels are partly measured on
-  agreement with that LLM. Disclosed and spot-checked by a human it is a normal
-  approach; discovered afterwards it invalidates the result.
-- **After brief 15:** the `story_key` half of EV-4, then EV-5.
+1. **`EV-3`** — the replay harness. Fully unblocked, and it is what turns the
+   two sequential production models into a real A/B (they are not one as it
+   stands; see the EV-2 note).
+2. **A labelling pass**, most usefully over a stratified subsample (~200) rather
+   than all 615. If an LLM produces the first pass, **write that into the
+   method**: models scored against LLM-authored labels are partly measured on
+   agreement with that LLM. Disclosed and spot-checked it is a normal approach;
+   discovered afterwards it invalidates the result.
+3. **Re-freeze the corpus** so `low_value` has positives, then `EV-4`, then
+   `EV-5`.
 
 ---
 

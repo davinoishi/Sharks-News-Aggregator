@@ -188,6 +188,19 @@ log records the *old* behaviour for at least one ingest cycle.
 - Team tokens ("sharks", "san", "jose") are already excluded in practice because
   `filter_team_entities()` drops team entities from `E`; strip them from
   `T_topic` anyway — they are pure noise, present in nearly every headline.
+
+> **Extended after measurement (2026-08-19, #154).** Stripping entity names is
+> not enough: *"NHL Rumors: Sharks willing to offer Celebrini max contract"* and
+> *"Four Potential NHL Destinations For UFA Vladimir Tarasenko"* cleared this
+> gate on the single shared token **"nhl"** — found by the first real run of the
+> `SK-7` harness. "sharks" is only stripped because it happens to be a *team
+> entity name*; "nhl" and "hockey" are not entities and were slipping through.
+>
+> `GENERIC_TOPIC_TOKENS` in `clustering.py` now covers them. It is deliberately
+> tiny and is a **domain criterion, not a stopword list**: anything in it can no
+> longer contribute evidence that two articles are the same story, so a word
+> that is generic *usually* but decisive *sometimes* does not belong. Measured
+> effect: merge precision 0.750 → 0.857 with no recall change.
 - **Verify.** Unit tests on `T_topic` directly: the card-auction/pipeline pair
   scores 0.000; the Graf pair scores ~0.29; the two card-auction articles score
   ~0.10.
