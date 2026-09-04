@@ -22,7 +22,8 @@ verification steps.
 | Planned brief | Brief 11 — richer public metrics, without cookies | [below](#brief-11--richer-public-metrics-without-cookies-planned-2026-07-25) |
 | Backlog | `R2-*` — round-2 review leftovers (P1–P3) | [below](#r2-backlog-open-items) |
 | Backlog | `R3-*` — round-3 review (P1–P3) | [below](#r3-backlog) |
-| Deferred | `RM-1` — Threads via self-hosted RSSHub | [below](#rm-1--threads-accounts-as-sources-via-self-hosted-rsshub) |
+| Planned brief | Brief 17 `XI-1` — X/Twitter ingest via twitterapi.io | [brief 17](briefs/brief-17-x-ingest-via-twitterapi-io.md) |
+| Deferred, likely superseded by brief 17 | `RM-1` — Threads via self-hosted RSSHub | [below](#rm-1--threads-accounts-as-sources-via-self-hosted-rsshub) |
 
 `RM-4` is first because it silently loses stories the pipeline already fetched,
 enriched and got *right*. A mis-clustered article is not merely noise like an
@@ -841,6 +842,13 @@ story from a Barracuda call-up — that is how the first attempt passed review.
 the January snapshot it dropped five real articles to remove two bad ones.
 
 ### RM-1 — Threads accounts as sources via self-hosted RSSHub
+
+> **Superseded pending brief 17 (2026-09-04).** RM-1 exists to reach insiders
+> with no Bluesky mirror — first candidate Kevin Weekes. If those accounts are
+> reachable through twitterapi.io, [brief 17](briefs/brief-17-x-ingest-via-twitterapi-io.md)
+> solves the same problem for ~$2.50/month without running an RSSHub container
+> on the Pi. Do **not** build both. Close this once brief 17 confirms coverage.
+
 
 *Deferred by decision 2026-07-19 (documented, not implemented). Feasibility
 verified live that day.*
