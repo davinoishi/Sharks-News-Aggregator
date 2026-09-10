@@ -39,7 +39,7 @@ export const fetchCache = 'default-cache';
  */
 
 // Bumped when the copy on these pages actually changes.
-const ABOUT_LAST_MODIFIED = new Date('2026-07-27');
+const ABOUT_LAST_MODIFIED = new Date('2026-09-10');
 const LEGAL_LAST_MODIFIED = new Date('2026-07-27'); // "Last updated" on /legal
 const SUBMIT_LAST_MODIFIED = new Date('2026-07-27');
 
