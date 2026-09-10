@@ -9,7 +9,8 @@ export const metadata: Metadata = pageMetadata({
   title: 'About',
   description:
     'Why Sharks News Aggregator exists and who built it — a free, ad-free ' +
-    'fan project pulling San Jose Sharks news and rumors into one feed.',
+    'fan project pulling San Jose Sharks news and rumors into one feed, and ' +
+    'part of Empty Folder Projects.',
   path: '/about',
   socialTitle: 'About Sharks News Aggregator',
   socialDescription:
@@ -68,6 +69,37 @@ export default function AboutPage() {
             <p>
               Right now, the site is completely free and has no ads. It&apos;s a fan project, built
               for other fans.
+            </p>
+
+            <hr />
+
+            <h2>Part of Empty Folder Projects</h2>
+
+            <p>
+              This site is one of the{' '}
+              <a
+                href="https://emptyfolderprojects.ca"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-action hover:underline"
+              >
+                Empty Folder Projects
+              </a>
+              {' '}&mdash; a small collection of shows, games and tools built by one person working
+              with an AI agent, each with a write-up of what broke along the way.
+            </p>
+
+            <p>
+              You can see the rest of them, and the build logs, at{' '}
+              <a
+                href="https://emptyfolderprojects.ca"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-action hover:underline"
+              >
+                emptyfolderprojects.ca
+              </a>
+              .
             </p>
 
             <hr />

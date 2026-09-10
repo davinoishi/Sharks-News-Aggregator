@@ -165,6 +165,17 @@ export default async function Home() {
                 </a>
               </li>
               <li>
+                <a
+                  href="https://emptyfolderprojects.ca"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="tap-44 inline-flex items-center px-2 py-2 rounded-md text-action hover:underline"
+                >
+                  Empty Folder Projects
+                  <span className="sr-only"> (opens in a new tab)</span>
+                </a>
+              </li>
+              <li>
                 <Link href="/about" className="tap-44 inline-flex items-center px-2 py-2 rounded-md text-action hover:underline">
                   About
                 </Link>
