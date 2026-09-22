@@ -131,7 +131,7 @@ teams.
 
 ## Evidence on Hand
 
-- **Live production site** with real data: https://wplepla23gjn.nobgp.com
+- **Live production site** with real data: https://wplepla23gjn.nobgp.link
 - **Live BlueSky mirror:** `@sjsharks-news.bsky.social`
 - **Real assets:** `Logos/` (source art), `web/public/` (logo + favicons).
 - **Real copy:** `/about` (personal, first-person origin story) and `/legal`

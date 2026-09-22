@@ -16,10 +16,10 @@
 services:
   api:
     environment:
-      ALLOWED_ORIGINS: "${ALLOWED_ORIGINS:-https://wplepla23gjn.nobgp.com}"
+      ALLOWED_ORIGINS: "${ALLOWED_ORIGINS:-https://wplepla23gjn.nobgp.link}"
       # RSS channel metadata (<link> and atom:link rel="self"). Only the api
       # service serves /rss, so worker/beat don't need this.
-      PUBLIC_SITE_URL: "${PUBLIC_SITE_URL:-https://wplepla23gjn.nobgp.com}"
+      PUBLIC_SITE_URL: "${PUBLIC_SITE_URL:-https://wplepla23gjn.nobgp.link}"
       LLM_EVALUATION_MODE: "true"
       BLUESKY_ENABLED: "true"
       BLUESKY_HANDLE: "${BLUESKY_HANDLE:-sjsharks-news.bsky.social}"
@@ -35,12 +35,12 @@ services:
         # (/about, /legal, /submit) bake canonical/og:url at build time, so a
         # build arg that disagreed with the runtime env would give the site two
         # different origins depending on which page you looked at.
-        PUBLIC_SITE_URL: "${PUBLIC_SITE_URL:-https://wplepla23gjn.nobgp.com}"
+        PUBLIC_SITE_URL: "${PUBLIC_SITE_URL:-https://wplepla23gjn.nobgp.link}"
     environment:
       # Pinned here for the same reason as the api service above: the production
       # value lives in version control, so a stale .env has something to be
       # diffed against.
-      PUBLIC_SITE_URL: "${PUBLIC_SITE_URL:-https://wplepla23gjn.nobgp.com}"
+      PUBLIC_SITE_URL: "${PUBLIC_SITE_URL:-https://wplepla23gjn.nobgp.link}"
 
   worker:
     environment:
