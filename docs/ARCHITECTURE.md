@@ -9,8 +9,24 @@ The application runs on a **Raspberry Pi 5** (pi5-ai2) with public access via no
 | Service | Public URL | Local URL (on Pi) |
 |---------|------------|-------------------|
 | Web App | https://wplepla23gjn.nobgp.link | http://localhost:3001 |
-| API | https://tz2k2lxwodrv.nobgp.com | http://localhost:8001 |
+| API | https://fgp2yg5fio5w.nobgp.link (**SSO-gated**) | http://localhost:8001 |
 | BlueSky | https://bsky.app/profile/sjsharks-news.bsky.social | N/A |
+
+**The API's public URL is gated and is not how the site reaches it.** That
+tunnel is published private, so an unauthenticated request gets a `307` to
+`auth.nobgp.com` rather than the API — a plain `curl` of it will never see
+JSON. The browser never calls the API directly either (`connect-src 'self'`);
+Next reaches it over the docker network via `INTERNAL_API_URL`. The row is here
+to say what the host *is*, not to offer a fetchable endpoint.
+
+This row previously read `https://tz2k2lxwodrv.nobgp.com`, which was **not a
+noBGP service at all**. Every hostname under `nobgp.com` resolves to one shared
+edge that answers `/health` with a plain-text `OK`: invented names like
+`aaaaaaaaaaaa.nobgp.com` return the identical 2-byte 200. So that URL looked
+healthy no matter what this deployment was doing. A monitor pointed at it would
+be permanently green with the Pi unplugged. The app's own `/health` returns a
+JSON `HealthResponse` (`ok`, `timestamp`, `last_scan_at`, `degraded`) — if a
+health check is not getting JSON back, it is not talking to this API.
 
 ## Tech Stack Overview
 
