@@ -28,7 +28,11 @@ The recommended deployment is on a Raspberry Pi 5 with public access via noBGP p
 
 **Live URLs:**
 - Web: https://wplepla23gjn.nobgp.link
-- API: https://tz2k2lxwodrv.nobgp.com
+- API: https://fgp2yg5fio5w.nobgp.link — **SSO-gated**, so an unauthenticated
+  request gets a `307` to `auth.nobgp.com`, not the API. To check the API's
+  health, use `curl http://localhost:8001/health` on the Pi, which returns a
+  JSON `HealthResponse`. A plain-text `OK` from any `*.nobgp.com` host is the
+  shared noBGP edge answering, not this service.
 
 ### Pi Deployment Steps
 
