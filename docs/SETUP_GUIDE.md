@@ -27,7 +27,7 @@ BlueSky posting + LLM evaluation mode.
 The recommended deployment is on a Raspberry Pi 5 with public access via noBGP proxy.
 
 **Live URLs:**
-- Web: https://wplepla23gjn.nobgp.com
+- Web: https://wplepla23gjn.nobgp.link
 - API: https://tz2k2lxwodrv.nobgp.com
 
 ### Pi Deployment Steps

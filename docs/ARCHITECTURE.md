@@ -8,7 +8,7 @@ The application runs on a **Raspberry Pi 5** (pi5-ai2) with public access via no
 
 | Service | Public URL | Local URL (on Pi) |
 |---------|------------|-------------------|
-| Web App | https://wplepla23gjn.nobgp.com | http://localhost:3001 |
+| Web App | https://wplepla23gjn.nobgp.link | http://localhost:3001 |
 | API | https://tz2k2lxwodrv.nobgp.com | http://localhost:8001 |
 | BlueSky | https://bsky.app/profile/sjsharks-news.bsky.social | N/A |
 
@@ -338,8 +338,8 @@ See [`.env.example`](../.env.example) for the full list. Highlights:
 | `ADMIN_PANEL_PASSWORD` | - | HTTP Basic password gating `/admin` (required) |
 | `INGEST_INTERVAL_MINUTES` | 10 | RSS fetch frequency |
 | `MAX_ARTICLE_AGE_DAYS` | 7 | Reject articles older than this many days |
-| `ALLOWED_ORIGINS` | `http://localhost:3000` | CORS allowed origins. Pinned to `https://wplepla23gjn.nobgp.com` on the Pi by R2-S1 — **not** `*`, which is what this row used to claim |
-| `PUBLIC_SITE_URL` | `http://localhost:3000` | Site URL for RSS channel metadata (`<link>`, `atom:link rel="self"`). Pinned to `https://wplepla23gjn.nobgp.com` on the Pi (SEO-11). Item links are unaffected — they always point at real source URLs |
+| `ALLOWED_ORIGINS` | `http://localhost:3000` | CORS allowed origins. Pinned to `https://wplepla23gjn.nobgp.link` on the Pi by R2-S1 — **not** `*`, which is what this row used to claim |
+| `PUBLIC_SITE_URL` | `http://localhost:3000` | Site URL for RSS channel metadata (`<link>`, `atom:link rel="self"`). Pinned to `https://wplepla23gjn.nobgp.link` on the Pi (SEO-11). Item links are unaffected — they always point at real source URLs |
 | `LOG_LEVEL` | `INFO` | Logging verbosity (C4) |
 | `ALERT_WEBHOOK_URL` | (empty) | Webhook for degraded-pipeline alerts (O3) |
 | `OPENROUTER_API_KEY` | (empty) | Enables LLM relevance/classification |
