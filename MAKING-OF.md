@@ -53,3 +53,11 @@ pushed and merged from a machine with GitHub credentials. Until then the file is
 untracked file on the Pi, and the next `git pull` that brings it in will refuse to
 overwrite it: delete the Pi copy first (`rm web/public/google68323acf17ad7172.html`), then
 pull. Not verified that the Search Console "Verify" button has been pressed.
+
+**Closed, same day:** Davin pushed the branch and merged it as #167 (`0e7d4a7`); the merge
+couldn't be done from the Claude session either (`gh` TLS failure again, `gh auth token`
+empty in the sandbox). On the Pi: `rm` of the untracked copy, `git pull --ff-only`
+(`34d8411`… → `0e7d4a7`, clean, no longer behind), and the tracked file hashed to the same
+`17fd42d9…49e49f` as the hand-placed one. Rebuilt `web` (exit 0, 17 s, cache hit, `api`
+recreated again as a dependency). Public checks after: the verification file, `/`, `/rss`
+and `/sitemap.xml` all 200. Still not verified that Search Console's "Verify" was pressed.
