@@ -18,6 +18,7 @@ verification steps.
 | **Next up, unblocked** | Brief 16 `EV-3` — the LLM replay harness | [brief 16](briefs/brief-16-llm-eval-harness.md) |
 | Open | `RM-2` — relevance: a Sharks player's name admits an article about another team | [below](#rm-2--relevance-a-sharks-players-name-admits-an-article-about-another-team) |
 | Open, one attempt reverted | `RM-3` — relevance: "Sharks" is not a hockey word | [below](#rm-3--relevance-sharks-is-not-a-hockey-word) |
+| Open, not scoped | `RM-5` — headlines: a roundup title reads as a trade rumor | [below](#rm-5--headlines-a-roundup-title-reads-as-a-trade-rumor) |
 | Planned brief | Brief 10 — MCP interface for agent access | [below](#brief-10--mcp-interface-for-agent-access-planned-2026-07-25) |
 | Planned brief | Brief 11 — richer public metrics, without cookies | [below](#brief-11--richer-public-metrics-without-cookies-planned-2026-07-25) |
 | Backlog | `R2-*` — round-2 review leftovers (P1–P3) | [below](#r2-backlog-open-items) |
@@ -840,6 +841,62 @@ story from a Barracuda call-up — that is how the first attempt passed review.
 (`Sharks -rugby -NRL -cricket`). Note that tightening it to
 `"San Jose Sharks" OR "SJ Sharks"` was simulated and is **not** recommended: on
 the January snapshot it dropped five real articles to remove two bad ones.
+
+### RM-5 — Headlines: a roundup title reads as a trade rumor
+
+*Found 2026-10-18 from a reader report on Bluesky. Captured for a future release;
+not scoped into a brief yet.*
+
+**The report.** A card ran with the headline *"NHL Rumors: San Jose Sharks, and
+the Philadelphia Flyers"*, from
+`https://nhlrumors.com/nhl-rumors-san-jose-sharks-and-the-philadelphia-flyers/2026/10/15/`.
+Read as a headline, it says the Sharks and Flyers are linked in a trade rumor.
+The article is two unrelated news updates, one per team. The reader took the
+headline at its word, which is what headlines are for.
+
+**The mechanism.** The site republishes the publisher's title verbatim. A card's
+headline is `cluster.headline`, chosen by `select_cluster_headline()`
+(`api/app/enrichment/clustering.py:1137`) from its variants' RSS `<title>`s — it
+picks *which* publisher title to show, never rewrites one. The Bluesky bot posts
+the same string (`api/app/tasks/bluesky.py`). Nothing in the RSS path reads the
+article body: the LLM classifier sees only title + RSS description
+(`api/app/services/openrouter.py`, `CLASSIFY_PROMPT_USER`). Body extraction
+exists only for reader submissions (`trafilatura` in
+`api/app/tasks/submissions.py:fetch_url_metadata`).
+
+So the failure is a publisher's roundup format ("NHL Rumors: Team A, and Team
+B") that is ambiguous out of context, passed through unchanged.
+
+**The idea.** After reading the article, adjust the headline when the
+publisher's title implies something the body doesn't say. Not a general
+rewrite of every headline — publisher titles are usually right, and
+rewriting them all costs fidelity and LLM calls.
+
+**Open questions for whoever scopes this:**
+
+- **How common is it?** Not measured. A first pass: count clusters from
+  roundup-style sources (nhlrumors.com and similar) and from titles matching
+  roundup patterns (`NHL Rumors:`, `Notes:`, `Morning Skate`, two or more team
+  names joined by "and"/",") over 30 days, and read them by eye.
+- **Is the RSS description enough?** Unchecked. If nhlrumors.com's
+  description already shows two separate items, the LLM could flag
+  `roundup=true` and propose a Sharks-only headline (e.g. "Sharks update, via
+  NHL Rumors") without fetching the body at all — far cheaper.
+- **If the body is needed:** fetch through `fetch_guarded` + `trafilatura`
+  (already in the image), for flagged titles only, not every article. Mind
+  the Pi's budget and per-site politeness.
+- **Where the rewrite lives:** a new `display_headline` beside the publisher
+  title, so the original stays visible (e.g. on the variant link) and nothing
+  is lost. `cluster.headline` is read by the feed card, `/rss`
+  (`api/app/routers/feed.py`) and the Bluesky post; check the story page's
+  OG/`<title>` tags too (not checked when this was written).
+- **Guardrails:** a rewritten headline must not add a claim the article
+  doesn't make. It should go through brief 16's replay harness (`EV-3`) with
+  a few labelled roundup cases before it reaches production.
+
+**Related:** `RM-2` (a name in the title admits an article about another team)
+is the relevance-side cousin — both trust the title without testing what the
+article is about.
 
 ### RM-1 — Threads accounts as sources via self-hosted RSSHub
 

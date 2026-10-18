@@ -61,3 +61,23 @@ empty in the sandbox). On the Pi: `rm` of the untracked copy, `git pull --ff-onl
 `17fd42d9…49e49f` as the hand-placed one. Rebuilt `web` (exit 0, 17 s, cache hit, `api`
 recreated again as a dependency). Public checks after: the verification file, `/`, `/rss`
 and `/sitemap.xml` all 200. Still not verified that Search Console's "Verify" was pressed.
+
+## Session 3 — 18 Oct 2026: a headline that told the wrong story
+
+A reader on Bluesky pointed out that a card read *"NHL Rumors: San Jose Sharks, and the
+Philadelphia Flyers"* (nhlrumors.com, 15 Oct). Out of context that says Sharks–Flyers
+trade rumor; the article is two separate news items, one per team. Davin didn't want it
+fixed now, only captured, so it went into the roadmap as `RM-5` in
+`docs/IMPROVEMENT_PLAN.md` (the existing "Roadmap / backlog" section, next free ID after
+`RM-4`) rather than a new TODO file.
+
+**What was checked, from the code:** headlines are never rewritten.
+`select_cluster_headline()` (`api/app/enrichment/clustering.py:1137`) chooses among the
+variants' publisher titles; the RSS path never reads the article body (the classifier sees
+title + RSS description only); `trafilatura` body extraction exists only for reader
+submissions. So the bug is a publisher's roundup title passed through verbatim.
+
+**Not checked:** the article itself, its RSS description, or how often roundup titles
+reach the feed. Those are listed as open questions in the RM-5 entry, with the cheapest
+first: if the RSS description already shows two separate items, the classifier could flag
+a roundup without fetching anything.
