@@ -1,4 +1,7 @@
-FROM node:20-alpine
+# Node 20 reached end-of-life in April 2026 and gets no security fixes. Pinned to
+# an exact patch so a security release is a deliberate rebuild; 22.23.4 carries
+# the 21 Oct 2026 fixes.
+FROM node:22.23.4-alpine
 
 WORKDIR /app
 
