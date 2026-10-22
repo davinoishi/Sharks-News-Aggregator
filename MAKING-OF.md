@@ -81,3 +81,56 @@ submissions. So the bug is a publisher's roundup title passed through verbatim.
 reach the feed. Those are listed as open questions in the RM-5 entry, with the cheapest
 first: if the RSS description already shows two separate items, the classifier could flag
 a roundup without fetching anything.
+
+## Session 4 — 21–22 Oct 2026: off Node 20
+
+**Why.** Node's 21 Oct 2026 security release fixed ten CVEs, with patches in 22.23.4,
+24.22.1 and 26.12.1. Measured in production: the web container ran **v20.20.2**
+(`docker exec sharks-news-aggregator-web-1 node -v`). Node 20 has been end-of-life since
+April 2026, so it doesn't get these fixes or any later ones. The advisory says end-of-life
+lines are always affected. Exposure is lower than Rummy's: every server-side `fetch` in
+`web/app` goes to the internal API (`INTERNAL_API_URL`, `API_BASE_URL`), and the Python
+worker does the outside fetching. The main problem was simply the unsupported runtime
+behind a public link.
+
+**Change (PR #170, merged as 1fff6ac):**
+- `web/Dockerfile`: `node:20-alpine` → `node:22.23.4-alpine`, pinned to an exact patch so
+  a security release is a deliberate rebuild.
+- `npm install --no-audit --no-fund` (below).
+- `.github/workflows/ci.yml`: the `web` job's `node-version: 20` → `22.23.4`. The first
+  push left CI testing Node 20 while the Dockerfile said 22, and nobody would have
+  noticed while CI was green.
+
+**What went wrong on the way.**
+- npm's audit endpoint hung on 22 Oct. Test builds on the Pi finished `npm install`, then
+  sat at `silly audit bulk request failed` for minutes. The full trail, including the
+  WRONG THEORY that the new Node release's keep-alive fix was to blame (22.23.3 hung the
+  same way), is in Hawaiian Rummy's MAKING-OF session 12. Measured: the same install took
+  2 s with `--no-audit` and was killed at 45 s with it.
+- The first CI run (`39714544049`, Node 20, plain `npm ci`) had its `web` job stuck in
+  `Run npm ci` from 03:01:25 UTC and never reached typecheck. That was on a GitHub runner,
+  which suggests the hang was on npm's side, not our home connection. The step's log
+  wasn't readable while it was running, so this is consistent but not proven. Claude's
+  token can't cancel runs (`HTTP 403: Resource not accessible by personal access token`),
+  so that run was left for Davin to cancel.
+- `main` is protected: the first `gh pr merge` was refused ("base branch policy prohibits
+  the merge") while checks were running. After the CI fix, all seven checks passed on
+  `2ef366c` (`changes`, `api`, `postgres-tests`, `web`, `docker-build`, `docker-verify`,
+  `ci`), and the merge went through.
+
+**Tested before deploy:** a build from the branch on pi5-ai2 (`next build` on 22.23.4,
+EXIT 0), run as a throwaway container on the live compose network with the production
+`INTERNAL_API_URL` and `PUBLIC_SITE_URL`: `/`, `/about` and `/rss` all 200.
+
+**Deploy (22 Oct ~03:30 UTC):** at `/opt/Sharks-News-Aggregator`, `git pull --ff-only`
+to 1fff6ac, then `docker compose -f docker-compose.yml -f docker-compose.pi.yml up -d
+--build --no-deps web`. `--no-deps` was deliberate: session 2's web rebuild also recreated
+`api`. This time it didn't (api still `Up 13 days`). Build EXIT 0 (`next build` 34.9 s).
+
+**Verified after deploy:** web `node -v` **v22.23.4**, `Ready in 391ms`; on the Pi `/`,
+`/about`, `/rss`, `/sitemap.xml` and `/api/health` all 200; `/about` canonical still
+`https://wplepla23gjn.nobgp.link/about`; signed-out fetches of the public link from the Mac:
+`/`, `/about`, `/rss` and `/sitemap.xml` all 200, with the expected `<title>`.
+
+Not checked: whether Next 14.2.35 behaves differently on Node 22 anywhere the smoke paths
+don't reach (admin pages, link submission).
