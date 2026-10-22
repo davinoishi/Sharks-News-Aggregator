@@ -1,10 +1,16 @@
-FROM node:20-alpine
+# Node 20 reached end-of-life in April 2026 and gets no security fixes. Pinned to
+# an exact patch so a security release is a deliberate rebuild; 22.23.4 carries
+# the 21 Oct 2026 fixes.
+#
+# --no-audit: an audit inside a build goes to a log nobody reads, and on
+# 22 Oct 2026 npm's audit endpoint hung, stalling npm install at the end.
+FROM node:22.23.4-alpine
 
 WORKDIR /app
 
 COPY package*.json ./
 
-RUN npm install
+RUN npm install --no-audit --no-fund
 
 COPY . .
 
